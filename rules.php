@@ -537,8 +537,8 @@ function htaccessFolder($i_folder)
 {
 	global $Groups;
 
-	if ($i_folder == '.') return true;
-//	if( USER_ID == null ) return true;
+	if( $i_folder == '.' ) return true;
+	if( $UserID == null ) return true;
 
 	$out = array();
 	readGroups($out);
@@ -588,7 +588,7 @@ function htaccessFolder($i_folder)
 
 function htaccessPath($i_path)
 {
-//return true;
+return true;
 //error_log('Checking access path "'.$i_path.'"');
 	if (is_file($i_path)) $i_path = dirname($i_path);
 	if (false == is_dir($i_path))
@@ -1113,8 +1113,8 @@ function jsf_cmdexec($i_obj, &$o_out)
 {
 	if (USER_ID == null)
 	{
-		$o_out['error'] = 'Guests are not allowed to run commands.';
-		return;
+		//$o_out['error'] = 'Guests are not allowed to run commands.';
+		//return;
 	}
 
 	$o_out['cmdexec'] = array();
@@ -1133,8 +1133,8 @@ function afanasy($i_obj, &$o_out)
 {
 		if (USER_ID == null)
 	{
-		$o_out['error'] = 'Guests are not allowed to send jobs.';
-		return;
+		//$o_out['error'] = 'Guests are not allowed to send jobs.';
+		//return;
 	}
 
 	$socket = fsockopen($i_obj['address'], $i_obj['port'], $errno, $errstr);
@@ -1363,6 +1363,21 @@ function makenews($i_args, &$io_users, &$o_out)
 
 
 	// Process users subsriptions:
+
+	// Read users:
+	$users = array();
+	getallusers( $users);
+	if( array_key_exists('error', $users))
+	{
+		$o_out['error'] = $users['error'];
+		return;
+	}
+	$users = $users['users'];
+	if( count( $users) == 0 )
+	{
+		$o_out['error'] = 'No users found.';
+		return;
+	}
 
 	// User may be does not want to receive own news:
 	$ignore_own = false;
@@ -2291,4 +2306,3 @@ function jsf_sendmail($i_args, &$o_out)
 }
 
 ?>
-

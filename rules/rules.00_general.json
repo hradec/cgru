@@ -103,8 +103,8 @@
 		"template":"rules/assets/templates/project",
 		"show_files":true
 	},
-	"area":{
-		"seek":["[project]/BLOCKING.*","[project]/SCENE.*","[project]/EPISODE.*","[project]/SHOT.*","[project]/ASSETS.*","[project]/CONCEPT.*","[project]/ANIM.*","[project]/RND.*","[project]/FREELANCE.*","[project]/PROMO.*"],
+	"scenes":{
+		"seek":["[project]/SCENES","[project]/SHOTS","[project]/shots","[project]/assets","[project]/sam/render/"],
 		"uploads":{
 			"upload":{
 				"masks":[".*"],
@@ -156,8 +156,8 @@
 			}
 		},
 		"scripts":["shot.js"],
-		"-subfolders_status_hide":true,
-		"subfolders_dailies_hide":false,
+		"subfolders_status_hide":false,
+		"subfolders_dailies_hide":true,
 		"post":"shot_Post",
 			"":"custom post function",
 		"references":{
