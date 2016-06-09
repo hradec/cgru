@@ -5,8 +5,8 @@
 #endif
 
 #include "../libafanasy/environment.h"
-#include "../libafanasy/logger.h"
 #include "../libafanasy/msg.h"
+#include "../libafanasy/taskexec.h"
 
 #include "pyres.h"
 #include "res.h"
@@ -14,6 +14,7 @@
 #define AFOUTPUT
 #undef AFOUTPUT
 #include "../include/macrooutput.h"
+#include "../libafanasy/logger.h"
 
 extern bool AFRunning;
 
@@ -78,10 +79,10 @@ RenderHost::~RenderHost()
     }
 
     // Delete all tasks:
-    for( std::vector<TaskProcess*>::iterator it = m_tasks.begin(); it != m_tasks.end(); )
+    for( std::vector<TaskProcess*>::iterator it = m_taskprocesses.begin(); it != m_taskprocesses.end(); )
     {
         delete *it;
-        it = m_tasks.erase( it);
+        it = m_taskprocesses.erase( it);
     }
 }
 
@@ -93,11 +94,23 @@ RenderHost * RenderHost::getInstance()
 	return ms_obj;
 }
 
+void RenderHost::connectionEstablished()
+
+{
+	if (m_connection_lost_count > 0)
+	{
+		AF_LOG << "Reconnected to the server";
+	}
+	
+	m_connection_lost_count = 0;
+	
+	setUpdateMsgType( af::Msg::TRenderUpdate);
+}
+
 void RenderHost::setRegistered( int i_id)
 {
-    m_connected = true;
+	m_connected = true;
     m_id = i_id;
-    setUpdateMsgType( af::Msg::TRenderUpdate);
     AF_LOG << "Render registered.";
 	RenderHost::connectionEstablished();
 }
@@ -111,24 +124,23 @@ void RenderHost::connectionLost( bool i_any_case)
 
 	if( false == i_any_case )
 	{
-		printf("Connection lost count = %d of %d\n", m_connection_lost_count, af::Environment::getRenderConnectRetries());
+		AF_LOG << "Connection lost count = " << m_connection_lost_count
+			   << " of " << af::Environment::getRenderConnectRetries();
 		if( m_connection_lost_count <= af::Environment::getRenderConnectRetries() )
 		{
 			return;
 		}
 	}
 
-    m_connected = false;
-
-    m_id = 0;
-
-    // Stop all tasks:
-    for( int t = 0; t < m_tasks.size(); t++) m_tasks[t]->stop();
+	m_connected = false;
 
     // Begin to try to register again:
     setUpdateMsgType( af::Msg::TRenderRegister);
+    
+    AF_WARN << "Render connection lost, trying to reconnect...";
 
-    printf("Render connection lost, connecting...\n");
+	if( m_taskprocesses.size())
+		AF_LOG << m_taskprocesses.size() << " task(s) are still running.";
 }
 
 void RenderHost::setUpdateMsgType( int i_type)
@@ -142,18 +154,18 @@ void RenderHost::refreshTasks()
         return;
 
     // Refresh tasks:
-    for( int t = 0; t < m_tasks.size(); t++)
+    for( int t = 0; t < m_taskprocesses.size(); t++)
     {
-        m_tasks[t]->refresh();
+        m_taskprocesses[t]->refresh();
     }
 
     // Remove zombies:
-    for( std::vector<TaskProcess*>::iterator it = m_tasks.begin(); it != m_tasks.end(); )
+    for( std::vector<TaskProcess*>::iterator it = m_taskprocesses.begin(); it != m_taskprocesses.end(); )
     {
         if((*it)->isZombie())
         {
             delete *it;
-            it = m_tasks.erase( it);
+            it = m_taskprocesses.erase( it);
         }
         else
             it++;
@@ -185,23 +197,36 @@ af::Msg * RenderHost::updateServer()
 		return NULL;
 
 	m_up.setId( getId());
-
+	
 	af::Msg * msg;
+
+	#ifdef AFOUTPUT
+	AF_LOG << "Tasks size = " << m_taskprocesses.size();
+	#endif
 
 	if( m_updateMsgType == af::Msg::TRenderRegister )
 	{
+		m_tasks.clear();
+
+		// Fill tasksexecs array in parent class.
+		// This only needed on register to reconnect running tasks if any.
+		for( int i = 0; i < m_taskprocesses.size(); i++)
+			m_tasks.push_back( m_taskprocesses[i]->getTaskExec());
+
 		msg = new af::Msg( m_updateMsgType, this);
+
+		m_tasks.clear();
 	}
-	else
+	else if( m_updateMsgType == af::Msg::TRenderUpdate )
 	{
 		#ifdef AFOUTPUT
-		m_up.v_stdOut();
+		AF_LOG << m_up;
 		#endif
 		msg = new af::Msg( m_updateMsgType, &m_up);
 	}
 
 	#ifdef AFOUTPUT
-	printf(" <<< "); i_msg->v_stdOut();
+	AF_LOG << " <<< " << msg;
 	#endif
 
 	bool ok;
@@ -239,45 +264,49 @@ void RenderHost::windowsMustDie()
 
 void RenderHost::runTask( af::TaskExec * i_task)
 {
-	m_tasks.push_back( new TaskProcess( i_task, this));
+    for( int t = 0; t < m_taskprocesses.size(); t++)
+        if( m_taskprocesses[t]->getTaskExec()->equals( *i_task))
+            return;
+    
+    m_taskprocesses.push_back( new TaskProcess( i_task, this));
 }
 
 void RenderHost::stopTask( const af::MCTaskPos & i_taskpos)
 {
-    for( int t = 0; t < m_tasks.size(); t++)
+    for( int t = 0; t < m_taskprocesses.size(); t++)
     {
-        if( m_tasks[t]->is( i_taskpos))
+        if( m_taskprocesses[t]->is( i_taskpos))
         {
-            m_tasks[t]->stop();
+            m_taskprocesses[t]->stop();
             return;
         }
     }
-    AFERRAR("RenderHost::stopTask: %d tasks, no such task:", int(m_tasks.size()))
+    AFERRAR("RenderHost::stopTask: %d tasks, no such task:", int(m_taskprocesses.size()))
     i_taskpos.v_stdOut();
 }
 
 void RenderHost::closeTask( const af::MCTaskPos & i_taskpos)
 {
-    for( int t = 0; t < m_tasks.size(); t++)
+    for( int t = 0; t < m_taskprocesses.size(); t++)
     {
-        if( m_tasks[t]->is( i_taskpos))
+        if( m_taskprocesses[t]->is( i_taskpos))
         {
-			m_tasks[t]->close();
+			m_taskprocesses[t]->close();
             return;
         }
     }
-    AFERRAR("RenderHost::closeTask: %d tasks, no such task:", int(m_tasks.size()))
+    AFERRAR("RenderHost::closeTask: %d tasks, no such task:", int(m_taskprocesses.size()))
     i_taskpos.v_stdOut();
 }
 
 void RenderHost::upTaskOutput( const af::MCTaskPos & i_taskpos)
 {
 	std::string str;
-	for( int t = 0; t < m_tasks.size(); t++)
+	for( int t = 0; t < m_taskprocesses.size(); t++)
 	{
-		if( m_tasks[t]->is( i_taskpos))
+		if( m_taskprocesses[t]->is( i_taskpos))
 		{
-			str = m_tasks[t]->getOutput();
+			str = m_taskprocesses[t]->getOutput();
 			break;
 		}
 	}
@@ -293,11 +322,11 @@ void RenderHost::upTaskOutput( const af::MCTaskPos & i_taskpos)
 
 void RenderHost::listenTask( const af::MCTaskPos & i_tp, bool i_subscribe)
 {
-	for( int t = 0; t < m_tasks.size(); t++)
+	for( int t = 0; t < m_taskprocesses.size(); t++)
 	{
-		if( m_tasks[t]->is( i_tp))
+		if( m_taskprocesses[t]->is( i_tp))
 		{
-			m_tasks[t]->listenOutput( i_subscribe);
+			m_taskprocesses[t]->listenOutput( i_subscribe);
 			break;
 		}
 	}

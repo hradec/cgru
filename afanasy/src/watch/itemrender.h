@@ -26,11 +26,20 @@ public:
 	inline bool isBusy()          const { return m_busy;             }
 	inline bool isNimby()         const { return m_nimby;            }
 	inline bool isNIMBY()         const { return m_NIMBY;            }
+	inline bool isPaused()        const { return m_paused;           }
 	inline bool isDirty()         const { return m_dirty;            }
 	inline bool isWOLFalling()    const { return m_wolFalling;       }
 	inline bool isWOLSleeping()   const { return m_wolSleeping;      }
 	inline bool isWOLWaking()     const { return m_wolWaking;        }
 	inline bool hasTasks()        const { return m_tasks.size() > 0; }
+	
+	inline std::list<const af::TaskExec*> getTasks() const
+	{
+		std::list<const af::TaskExec*> l;
+		for (std::list<af::TaskExec*>::const_iterator it = m_tasks.begin() ; it != m_tasks.end() ; ++it)
+			l.push_back(*it);
+		return l;
+	}
 
 	bool calcHeight();
 
@@ -65,6 +74,7 @@ private:
 	long long m_wol_operation_time;
 	long long m_idle_time;
 	long long m_busy_time;
+	long long m_elder_task_time;
 
 	QString m_address_ip_str;
 	QString m_address_str;      ///< Client address
@@ -73,6 +83,7 @@ private:
 	bool m_busy;
 	bool m_NIMBY;
 	bool m_nimby;
+	bool m_paused;
 	bool m_dirty;
 	bool m_wolFalling;
 	bool m_wolSleeping;

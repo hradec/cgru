@@ -162,6 +162,8 @@ public:
 	inline void setErrorsTaskSameHost( int8_t value) { m_errors_task_same_host = value; }
 /// Set time to forgive error host
 	inline void setErrorsForgiveTime(     int value) { m_errors_forgive_time  = value; }
+/// Set task progress change timeout
+	inline void setTaskProgressChangeTimeout( int value) { m_task_progress_change_timeout = value; }
 
 	bool setNumeric( long long start, long long end, long long perTask = 1, long long increment = 1);
 	void setFramesPerTask( long long perTask); ///< For string tasks and per tasr dependency solve
@@ -232,10 +234,11 @@ public:
 	inline bool                hasCmdPost() const { return m_command_post.size(); }///< Whether post command is set.
 	inline const std::string & getCmdPost() const { return m_command_post;        }///< Get post command.
 
-	inline int getErrorsAvoidHost()      const { return m_errors_avoid_host;    }
-	inline int getErrorsRetries()        const { return m_errors_retries;      }
-	inline int getErrorsTaskSameHost()   const { return m_errors_task_same_host; }
-	inline int getErrorsForgiveTime()    const { return m_errors_forgive_time;  }
+	inline int getErrorsAvoidHost()           const { return m_errors_avoid_host;            }
+	inline int getErrorsRetries()             const { return m_errors_retries;               }
+	inline int getErrorsTaskSameHost()        const { return m_errors_task_same_host;        }
+	inline int getErrorsForgiveTime()         const { return m_errors_forgive_time;          }
+	inline int getTaskProgressChangeTimeout() const { return m_task_progress_change_timeout; }
 
 	inline int * getRunningTasksCounter()      { return &m_running_tasks_counter;}
 	inline int   getRunningTasksNumber() const { return  m_running_tasks_counter;}
@@ -248,6 +251,9 @@ public:
 	inline int       getProgressTasksReady()      const { return p_tasks_ready;    }
 	inline int       getProgressTasksDone()       const { return p_tasks_done;     }
 	inline int       getProgressTasksError()      const { return p_tasks_error;    }
+	inline int       getProgressTasksSkipped()    const { return p_tasks_skipped;  }
+	inline int       getProgressTasksWarning()    const { return p_tasks_warning;  }
+	inline int       getProgressTasksWaitReconn() const { return p_tasks_waitrec;  }
 	inline long long getProgressTasksSumRunTime() const { return p_tasks_run_time; }
 
 	inline void setState(           uint32_t  value ) { m_state       = value; }
@@ -330,6 +336,9 @@ protected:
 	int8_t  m_errors_task_same_host;
 	/// Time from last error to remove host from error list
 	int32_t m_errors_forgive_time;
+	/// If task progress did not change within this time, consider that it is
+	/// erroneous.
+	int32_t m_task_progress_change_timeout;
 
 	int64_t m_file_size_min;
 	int64_t m_file_size_max;
@@ -365,7 +374,7 @@ private:
 
 // Functions to update tasks progress and progeress bar:
 // (for information purpoces only, no meaning for server)
-	bool updateBars( JobProgress * progress);
+	void updateBars( JobProgress * progress);
 /// Set one exact \c pos bit in \c array to \c value .
 	static void setProgressBit( uint8_t *array, int pos, bool value);
 /// Set progress bits in \c array with \c size at \c pos to \c value .
@@ -379,8 +388,9 @@ private:
 	int32_t p_tasks_ready;     ///< Number of ready tasks.
 	int32_t p_tasks_done;      ///< Number of done tasks.
 	int32_t p_tasks_error;     ///< Number of error (failed) tasks.
-	int p_tasks_warning;       ///< Number of skipped with warnings.
-	int p_tasks_skipped;       ///< Number of skipped tasks.
+	int32_t p_tasks_warning;   ///< Number of skipped with warnings.
+	int32_t p_tasks_skipped;   ///< Number of skipped tasks.
+	int32_t p_tasks_waitrec;   ///< Number of tasks waiting for reconnect.
 	int64_t p_tasks_run_time;  ///< Tasks run time summ.
 };
 }

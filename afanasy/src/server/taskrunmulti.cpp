@@ -117,6 +117,7 @@ void TaskRunMulti::addHost( af::TaskExec * taskexec, RenderAf * render, MonitorC
 
 void TaskRunMulti::setMasterTask()
 {
+	if( isZombie()) return;
 	m_exec = m_execs.front();
 	m_hostId = m_hostids.front();
 	m_execs.pop_front();
@@ -148,7 +149,7 @@ void TaskRunMulti::startMaster( RenderContainer * renders, MonitorContainer * mo
 {
 	RenderContainerIt rendersIt( renders);
 	RenderAf * render = rendersIt.getRender( m_hostId);
-	if( render == NULL)
+	if( NULL == render)
 	{
 		AFERRAR("TaskRunMulti::startMaster: %s[%d][%d] Render id=%d is NULL.",
 			m_block->m_job->getName().c_str(), m_block->m_data->getBlockNum(), m_tasknum, m_hostId)

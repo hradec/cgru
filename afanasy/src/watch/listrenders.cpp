@@ -16,6 +16,8 @@
 #include "modelnodes.h"
 #include "viewitems.h"
 #include "watch.h"
+#include "listtasks.h"
+#include "itemjobtask.h"
 
 #include <QtCore/QEvent>
 #include <QtCore/QTimer>
@@ -45,6 +47,7 @@ ListRenders::ListRenders( QWidget* parent):
 	ctrl->addSortType(   CtrlSortFilter::TNONE);
 	ctrl->addSortType(   CtrlSortFilter::TPRIORITY);
 	ctrl->addSortType(   CtrlSortFilter::TCAPACITY);
+	ctrl->addSortType(   CtrlSortFilter::TELDERTASKTIME);
 	ctrl->addSortType(   CtrlSortFilter::TTIMELAUNCHED);
 	ctrl->addSortType(   CtrlSortFilter::TTIMEREGISTERED);
 	ctrl->addSortType(   CtrlSortFilter::TNAME);
@@ -198,6 +201,7 @@ void ListRenders::contextMenuEvent( QContextMenuEvent *event)
 
 	QMenu menu(this);
 	QAction *action;
+	QMenu * submenu;
 
 	if( selectedItemsCount <= 1 )
 	{
@@ -218,6 +222,46 @@ void ListRenders::contextMenuEvent( QContextMenuEvent *event)
 	action = new QAction( "Show Info", this);
 	connect( action, SIGNAL( triggered() ), this, SLOT( actRequestInfo() ));
 	menu.addAction( action);
+	
+	std::list<const af::TaskExec*> l = render->getTasks();
+	submenu = new QMenu( l.size() > 1 ? "Running Tasks" : "Running Task", this);
+	submenu->setEnabled( render->hasTasks());
+
+	std::list<const af::TaskExec*>::const_iterator it;
+	for (it = l.begin() ; it != l.end() ; ++it)
+	{
+		const af::TaskExec *task = *it;
+		QString title = QString("%1[%2][%3]")
+			.arg( QString::fromStdString(task->getJobName()))
+			.arg( QString::fromStdString(task->getBlockName()))
+			.arg( QString::fromStdString(task->getName()));
+		QMenu *taskmenu = l.size() > 1 ? new QMenu(title, this) : submenu;
+		ItemJobTask *itemTask = new ItemJobTask(
+			task->getJobId(),
+			task->getBlockNum(),
+			task->getTaskNum(),
+			title,
+			this);
+		itemTask->generateMenu( *taskmenu);
+		
+		taskmenu->addSeparator();
+		action = new ActionIdIdId(
+			task->getJobId(),
+			task->getBlockNum(),
+			task->getTaskNum(),
+			"Open Task",
+			this);
+		connect( action, SIGNAL( triggeredId(int,int,int) ),
+				 this, SLOT( actRequestTaskInfo(int,int,int) ));
+		taskmenu->addAction( action);
+		
+		if( l.size() > 1)
+		{
+			submenu->addMenu( taskmenu);
+		}
+	}
+	
+	menu.addMenu( submenu);
 
 	if( me || af::Environment::VISOR())
 	{
@@ -266,7 +310,7 @@ void ListRenders::contextMenuEvent( QContextMenuEvent *event)
 
 		menu.addSeparator();
 
-		QMenu * submenu = new QMenu( "Eject", this);
+		submenu = new QMenu( "Eject", this);
 
 		action = new QAction( "All Tasks", this);
 		if( selectedItemsCount == 1) action->setEnabled( render->hasTasks());
@@ -323,18 +367,18 @@ void ListRenders::contextMenuEvent( QContextMenuEvent *event)
 
 	menu.addSeparator();
 
-	QMenu * submenu = new QMenu("Administrate", this);
+	submenu = new QMenu("Administrate", this);
 	menu.addMenu( submenu);
-/*
-	action = new QAction("Set Hidden", this);
-	connect( action, SIGNAL( triggered() ), this, SLOT( actSetHidden() ));
+
+	action = new QAction("Set Paused", this);
+	connect( action, SIGNAL( triggered() ), this, SLOT( actSetPaused() ));
 	submenu->addAction( action);
-	action = new QAction("Unset Hidden", this);
-	connect( action, SIGNAL( triggered() ), this, SLOT( actUnsetHidden() ));
+	action = new QAction("Unset Paused", this);
+	connect( action, SIGNAL( triggered() ), this, SLOT( actUnsetPaused() ));
 	submenu->addAction( action);
 
 	submenu->addSeparator();
-*/
+
 	action = new QAction("Launch Command", this);
 	connect( action, SIGNAL( triggered() ), this, SLOT( actLaunchCmd() ));
 	if( selectedItemsCount == 1) action->setEnabled( render->isOnline());
@@ -482,8 +526,8 @@ void ListRenders::actMaxTasks()
 void ListRenders::actNIMBY()       { setParameter("NIMBY",  "true",  false); }
 void ListRenders::actNimby()       { setParameter("nimby",  "true",  false); }
 void ListRenders::actFree()        { setParameter("nimby",  "false", false); }
-void ListRenders::actSetHidden()   { setParameter("hidden", "true",  false); }
-void ListRenders::actUnsetHidden() { setParameter("hidden", "false", false); }
+void ListRenders::actSetPaused()   { setParameter("paused", "true",  false); }
+void ListRenders::actUnsetPaused() { setParameter("paused", "false", false); }
 
 void ListRenders::actUser()
 {
@@ -507,8 +551,13 @@ void ListRenders::actWOLWake()         { operation("wol_wake"); }
 void ListRenders::actRestoreDefaults() { operation("restore_defaults"); }
 
 void ListRenders::actRequestLog()      { getItemInfo("log"); }
-void ListRenders::actRequestTasksLog( ){ getItemInfo("tasks_log"); }
+void ListRenders::actRequestTasksLog() { getItemInfo("tasks_log"); }
 void ListRenders::actRequestInfo()     { getItemInfo("full"); }
+
+void ListRenders::actRequestTaskInfo(int jid, int bnum, int tnum)
+{
+	ItemJobTask(jid, bnum, tnum).getTaskInfo("info");
+}
 
 void ListRenders::actEnableService()  { setService( true );}
 void ListRenders::actDisableService() { setService( false);}
@@ -520,12 +569,19 @@ void ListRenders::setService( bool enable)
 	if( enable ) caption = "Enable " + caption; else caption = "Disable " + caption;
 
 	bool ok;
-	QString service = QInputDialog::getText(this, caption, "Enter Service Name", QLineEdit::Normal, QString(), &ok);
+	QString service_mask = QInputDialog::getText(this, caption, "Enter Service Name", QLineEdit::Normal, QString(), &ok);
 	if( !ok) return;
-
+	
+	QRegExp rx( service_mask, Qt::CaseInsensitive);
+	if( rx.isValid() == false )
+	{
+		displayError( rx.errorString());
+		return;
+	}
+	
 	std::ostringstream str;
 	af::jsonActionOperationStart( str, "renders", "service", "", getSelectedIds());
-	str << ",\n\"name\":\"" << afqt::qtos( service) << "\"";
+	str << ",\n\"name\":\"" << afqt::qtos( service_mask) << "\"";
 	str << ",\n\"enable\":" << ( enable ? "true": "false" );
 	af::jsonActionOperationFinish( str);
 	Watch::sendMsg( af::jsonMsg( str));

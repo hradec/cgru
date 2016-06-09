@@ -30,9 +30,10 @@ public:
 	void setRegistered();
 
 /// Awake offline render
-	bool online( RenderAf * render, MonitorContainer * monitoring);
+	void online( RenderAf * render, JobContainer * i_jobs, MonitorContainer * monitoring);
 
 /// Add task \c taskexec to render, \c start or only capture it
+/// Takes over the taskexec ownership
 	void setTask( af::TaskExec *taskexec, MonitorContainer * monitoring, bool start = true);
 
 /// Start tast \c taskexec on remote render host, task must be set before and exists on render.
@@ -41,15 +42,16 @@ public:
 /// Make Render to stop task.
 	void stopTask( int jobid, int blocknum, int tasknum, int number);
 
-/// Make Render to stop task.
+	/// Make Render to stop task.
 	inline void stopTask( const af::TaskExec * taskexec)
-		{ stopTask(taskexec->getJobId(), taskexec->getBlockNum(), taskexec->getTaskNum(), taskexec->getNumber());}
+		{ stopTask(taskexec->getJobId(), taskexec->getBlockNum(), taskexec->getTaskNum(), taskexec->getNumber()); }
 
 /// Make Render to stop task.
 	inline void stopTask( const af::MCTaskUp &taskup)
 		{ stopTask(taskup.getNumJob(), taskup.getNumBlock(), taskup.getNumTask(), taskup.getNumber());}
 
 /// Make Render to finish task.
+/// Releases the ownership of taskexec (Render will not own it any more)
 	void taskFinished( const af::TaskExec * taskexec, MonitorContainer * monitoring);
 
 /// Refresh parameters.
@@ -99,7 +101,11 @@ public:
 private:
 	void initDefaultValues();
 
+	/// Add the task exec to this render and take over its ownership (meaning
+	/// one should not free taskexec after having provided it to this method).
 	void addTask( af::TaskExec * taskexec);
+	/// Remove the task exec from this render and give back its ownership to the
+	/// caller.
 	void removeTask( const af::TaskExec * taskexec);
 
 	void addService( const std::string & type);

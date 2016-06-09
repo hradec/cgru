@@ -48,13 +48,14 @@ public:
 	QString description;
 	QString thumb_path;
 	QString report;
+	QString project;
 	QMap<QString,QString> folders;
 
 	const QString getFirstFolder();
 
 	inline int getBlocksNum() const { return m_blocks_num;}
 	inline int getBlockPercent( int block ) const
-		{ if( block < m_blocks_num ) return m_blockinfo[block].getPercentage(); else return 0;}
+		{ if( block < m_blocks_num ) return m_blockinfo[block].p_percentage; else return 0;}
 
 	bool setSortType(   int type );
 	bool setFilterType( int type );

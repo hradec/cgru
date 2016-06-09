@@ -16,6 +16,7 @@
 #define AFOUTPUT
 #undef AFOUTPUT
 #include "../include/macrooutput.h"
+#include "../libafanasy/logger.h"
 
 JobContainer::JobContainer():
     AfContainer( "Jobs", AFJOB::MAXQUANTITY)
@@ -50,13 +51,29 @@ void JobContainer::updateTaskState( af::MCTaskUp &taskup, RenderContainer * rend
 
     // Job does not exist!
     AFERRAR("JobContainer::updateTaskState: Job with id=%d does not exists.", taskup.getNumJob())
-    if( taskup.getStatus() == af::TaskExec::UPPercent) RenderAf::closeLostTask( taskup);
+            if( taskup.getStatus() == af::TaskExec::UPPercent) RenderAf::closeLostTask( taskup);
+}
+
+void JobContainer::reconnectTask( af::TaskExec * i_taskexec, RenderAf & i_render, MonitorContainer * i_monitoring)
+{
+	#ifdef AFOUTPUT
+	AF_DEBUG << "Reconnecting task " << i_taskexec << " with " << i_render;
+	#endif
+
+	JobContainerIt jobsIt( this);
+	JobAf* job = jobsIt.getJob( i_taskexec->getJobId());
+	if( NULL == job )
+	{
+		AF_ERR << "Job with id=" << i_taskexec->getJobId() << " does not exists.";
+		delete i_taskexec;
+		return;
+	}
+
+	return job->reconnectTask( i_taskexec, i_render, i_monitoring);
 }
 
 int JobContainer::job_register( JobAf *job, UserContainer *users, MonitorContainer * monitoring)
 {
-//printf("Registering new job:\n");
-
 	if( users == NULL )
 	{
 		AFERROR("JobContainer::job_register: Users container is not set.")

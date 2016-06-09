@@ -189,15 +189,13 @@ void TaskExec::v_readwrite( Msg * msg)
 	switch( msg->type())
 	{
 	case Msg::TRenderEvents:
+	case Msg::TRenderRegister:
 	case Msg::TTask:
-		rw_int32_t ( m_job_id,            msg);
-		rw_int32_t ( m_block_num,         msg);
 		rw_int64_t ( m_flags,             msg);
 		rw_int64_t ( m_block_flags,       msg);
 		rw_int64_t ( m_job_flags,         msg);
 		rw_int64_t ( m_user_flags,        msg);
 		rw_int64_t ( m_render_flags,      msg);
-		rw_int32_t ( m_task_num,          msg);
 		rw_int64_t ( m_frames_num,        msg);
 		rw_int64_t ( m_frame_start,       msg);
 		rw_int64_t ( m_frame_finish,      msg);
@@ -230,6 +228,10 @@ void TaskExec::v_readwrite( Msg * msg)
 		rw_int32_t ( m_capacity,          msg);
 		rw_int32_t ( m_capacity_coeff,    msg);
 		rw_int64_t ( m_time_start,        msg);
+		
+		rw_int32_t ( m_job_id,            msg);
+		rw_int32_t ( m_block_num,         msg);
+		rw_int32_t ( m_task_num,          msg);
 
 	break;
 
@@ -238,8 +240,6 @@ void TaskExec::v_readwrite( Msg * msg)
 		msg->v_stdOut( false);
 		return;
 	}
-
-	m_listen_addresses.v_readwrite( msg);
 }
 
 void TaskExec::listenOutput( bool i_subscribe)
@@ -255,14 +255,12 @@ void TaskExec::listenOutput( bool i_subscribe)
 
 void TaskExec::v_generateInfoStream( std::ostringstream & stream, bool full) const
 {
-	stream << "[" << m_service << ":" << m_capacity << "] " << m_user_name << ": ";
+	stream << "[" << m_service << ":" << getCapResult() << "] " << m_user_name << ": ";
 	stream << m_job_name;
 	stream << "[" << m_block_name << "]";
 	stream << "[" << m_name << "]";
 	if( m_number != 0 ) stream << "(" << m_number << ")";
 	if( m_capacity_coeff) stream << "x" << m_capacity_coeff << " ";
-	if( m_listen_addresses.getAddressesNum())
-		m_listen_addresses.v_generateInfoStream( stream, false);
 
 	if(full)
 	{
@@ -300,7 +298,6 @@ int TaskExec::calcWeight() const
 	weight += weigh( m_parser);
 	weight += weigh( m_custom_data_block);
 	weight += weigh( m_custom_data_task);
-	weight += m_listen_addresses.calcWeight();
 	return weight;
 }
 

@@ -20,6 +20,7 @@
 #define AFOUTPUT
 #undef AFOUTPUT
 #include "../include/macrooutput.h"
+#include "../libafanasy/logger.h"
 
 Task::Task( Block * taskBlock, af::TaskProgress * taskProgress, int taskNumber):
    m_block( taskBlock),
@@ -118,6 +119,22 @@ void Task::v_start( af::TaskExec * taskexec, int * runningtaskscounter, RenderAf
    m_run = new TaskRun( this, taskexec, m_progress, m_block, render, monitoring, runningtaskscounter);
 }
 
+void Task::reconnect( af::TaskExec * i_taskexec, int * o_runningtaskscounter, RenderAf * i_render, MonitorContainer * i_monitoring)
+{
+	if( m_progress->state & AFJOB::STATE_WAITRECONNECT_MASK )
+	{
+		v_appendLog("Reconnecting previously run...");
+		AF_LOG << "Reconnecting task: \"" << *i_taskexec << "\" with\nRender: " << *i_render;
+		v_start( i_taskexec, o_runningtaskscounter, i_render, i_monitoring);
+	}
+	else
+	{
+		v_appendLog("Reconnection failed: task was not waiting it.");
+		i_render->stopTask( i_taskexec);
+		delete i_taskexec;
+	}
+}
+
 void Task::v_updateState( const af::MCTaskUp & taskup, RenderContainer * renders, MonitorContainer * monitoring, bool & errorHost)
 {
    if( m_run == NULL)
@@ -192,6 +209,19 @@ void Task::v_refresh( time_t currentTime, RenderContainer * renders, MonitorCont
 //printf("Task::refresh:\n");
    bool changed = false;
 
+
+	// Check reconnect timeout:
+	if( m_progress->state & AFJOB::STATE_WAITRECONNECT_MASK )
+	{
+		if( currentTime - m_progress->time_done > af::Environment::getTaskUpdateTimeout())
+		{
+			v_appendLog("Reconnect timeout reached. Setting state to READY.");
+			m_progress->state = AFJOB::STATE_READY_MASK;
+            if( false == changed ) changed = true;
+		}
+	}
+
+
    // forgive error hosts
    if(( false == m_errorHosts.empty() ) && ( m_block->getErrorsForgiveTime() > 0 ))
    {
@@ -214,6 +244,7 @@ void Task::v_refresh( time_t currentTime, RenderContainer * renders, MonitorCont
          }
     }
 
+
    if( renders != NULL )
    {
       if( m_run ) changed = m_run->refresh( currentTime, renders, monitoring, errorHostId);
@@ -231,11 +262,14 @@ void Task::v_refresh( time_t currentTime, RenderContainer * renders, MonitorCont
       }
    }
 
+
    if( changed)
    {
       v_monitor( monitoring);
       v_store();
    }
+
+   
    deleteRunningZombie();
 }
 
@@ -504,32 +538,32 @@ const std::string Task::getOutputFileName( int i_starts_count) const
 	return m_store_dir_output + AFGENERAL::PATH_SEPARATOR + af::itos( i_starts_count) + ".txt";
 }
 
-int Task::getOutput( int i_startcount, std::string & o_filename, std::string & o_error) const
+void Task::getOutput( af::MCTaskOutput & io_mcto, std::string & o_error) const
 {
 	if( m_progress->starts_count < 1 )
 	{
 		o_error = "Task is not started.";
-		return 0;
+		return;
 	}
-	if( i_startcount > m_progress->starts_count )
+	if( io_mcto.m_start_num > m_progress->starts_count )
 	{
-		o_error += "Task was started "+af::itos(m_progress->starts_count)+" times ( less than "+af::itos(i_startcount)+" times ).";
-		return 0;
+		o_error += "Task was started "+af::itos(m_progress->starts_count)+" times ( less than "+af::itos(io_mcto.m_start_num)+" times ).";
+		return;
 	}
-	if( i_startcount == 0 )
+	if( io_mcto.m_start_num == 0 )
 	{
 		if( m_run && m_run->notZombie())
 		{
-			return m_run->v_getRunningRenderID( o_error);
+			io_mcto.m_render_id = m_run->v_getRunningRenderID( o_error);
+			return;
 		}
 		else
 		{
-			i_startcount = m_progress->starts_count;
+			io_mcto.m_start_num = m_progress->starts_count;
 		}
 	}
 
-	o_filename = getOutputFileName( i_startcount);
-	return 0;
+	io_mcto.m_filename = getOutputFileName( io_mcto.m_start_num);
 }
 
 const std::string Task::v_getInfo( bool full) const

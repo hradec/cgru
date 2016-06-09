@@ -13,15 +13,15 @@ public:
    RenderContainer();
    ~RenderContainer();
 
-/// Add new Render to container, new id returned on success, else return 0.
-   af::Msg * addRender( RenderAf *newRender, MonitorContainer * monitoring = NULL);
+	/// Add new Render to container, new id returned on success, else return 0.
+	af::Msg * addRender( RenderAf *newRender, JobContainer * i_jobs, MonitorContainer * monitoring);
 };
 
 /// Renders iterator.
 class RenderContainerIt : public AfContainerIt
 {
 public:
-   RenderContainerIt( RenderContainer* container, bool skipZombies = true);
+   RenderContainerIt( RenderContainer* m_container, bool skipZombies = true);
    ~RenderContainerIt();
 
 	inline RenderAf * render() { return (RenderAf*)(getNode()); }

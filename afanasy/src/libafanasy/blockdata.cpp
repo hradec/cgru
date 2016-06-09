@@ -8,7 +8,6 @@
 #include "environment.h"
 #include "job.h"
 #include "jobprogress.h"
-#include "logger.h"
 #include "msg.h"
 #include "taskdata.h"
 #include "taskexec.h"
@@ -16,6 +15,7 @@
 #define AFOUTPUT
 #undef AFOUTPUT
 #include "../include/macrooutput.h"
+#include "logger.h"
 
 using namespace af;
 
@@ -70,6 +70,7 @@ void BlockData::initDefaults()
 	m_errors_avoid_host = -1;
 	m_errors_task_same_host = -1;
 	m_errors_forgive_time = -1;
+	m_task_progress_change_timeout = af::Environment::getTaskProgressChangeTimeout();
 	m_file_size_min = -1;
 	m_file_size_max = -1;
 	m_capacity_coeff_min = 0;
@@ -88,6 +89,7 @@ void BlockData::initDefaults()
 	p_tasks_error    = 0;
 	p_tasks_skipped  = 0;
 	p_tasks_warning  = 0;
+	p_tasks_waitrec  = 0;
 	p_tasks_run_time = 0;
 
 	memset( p_progressbar, AFJOB::ASCII_PROGRESS_STATES[0], AFJOB::ASCII_PROGRESS_LENGTH);
@@ -139,24 +141,25 @@ BlockData::BlockData( const JSON & i_object, int i_num)
 
 void BlockData::jsonRead( const JSON & i_object, std::string * io_changes)
 {
-	jr_int32 ("capacity",              m_capacity,              i_object, io_changes);
-	jr_int32 ("need_memory",           m_need_memory,           i_object, io_changes);
-	jr_int32 ("need_power",            m_need_power,            i_object, io_changes);
-	jr_int32 ("need_hdd",              m_need_hdd,              i_object, io_changes);
-	jr_regexp("depend_mask",           m_depend_mask,           i_object, io_changes);
-	jr_regexp("tasks_depend_mask",     m_tasks_depend_mask,     i_object, io_changes);
-	jr_regexp("hosts_mask",            m_hosts_mask,            i_object, io_changes);
-	jr_regexp("hosts_mask_exclude",    m_hosts_mask_exclude,    i_object, io_changes);
-	jr_regexp("need_properties",       m_need_properties,       i_object, io_changes);
-	jr_string("name",                  m_name,                  i_object, io_changes);
-	jr_string("service",               m_service,               i_object, io_changes);
-	jr_int8  ("errors_retries",        m_errors_retries,        i_object, io_changes);
-	jr_int8  ("errors_avoid_host",     m_errors_avoid_host,     i_object, io_changes);
-	jr_int8  ("errors_task_same_host", m_errors_task_same_host, i_object, io_changes);
-	jr_int32 ("errors_forgive_time",   m_errors_forgive_time,   i_object, io_changes);
-	jr_uint32("tasks_max_run_time",    m_tasks_max_run_time,    i_object, io_changes);
-	jr_string("tasks_name",            m_tasks_name,            i_object, io_changes);
-	jr_string("parser",                m_parser,                i_object, io_changes);
+	jr_int32 ("capacity",                     m_capacity,                     i_object, io_changes);
+	jr_int32 ("need_memory",                  m_need_memory,                  i_object, io_changes);
+	jr_int32 ("need_power",                   m_need_power,                   i_object, io_changes);
+	jr_int32 ("need_hdd",                     m_need_hdd,                     i_object, io_changes);
+	jr_regexp("depend_mask",                  m_depend_mask,                  i_object, io_changes);
+	jr_regexp("tasks_depend_mask",            m_tasks_depend_mask,            i_object, io_changes);
+	jr_regexp("hosts_mask",                   m_hosts_mask,                   i_object, io_changes);
+	jr_regexp("hosts_mask_exclude",           m_hosts_mask_exclude,           i_object, io_changes);
+	jr_regexp("need_properties",              m_need_properties,              i_object, io_changes);
+	jr_string("name",                         m_name,                         i_object, io_changes);
+	jr_string("service",                      m_service,                      i_object, io_changes);
+	jr_int8  ("errors_retries",               m_errors_retries,               i_object, io_changes);
+	jr_int8  ("errors_avoid_host",            m_errors_avoid_host,            i_object, io_changes);
+	jr_int8  ("errors_task_same_host",        m_errors_task_same_host,        i_object, io_changes);
+	jr_int32 ("errors_forgive_time",          m_errors_forgive_time,          i_object, io_changes);
+	jr_int32 ("task_progress_change_timeout", m_task_progress_change_timeout, i_object, io_changes);
+	jr_uint32("tasks_max_run_time",           m_tasks_max_run_time,           i_object, io_changes);
+	jr_string("tasks_name",                   m_tasks_name,                   i_object, io_changes);
+	jr_string("parser",                       m_parser,                       i_object, io_changes);
 	if( af::Environment::notDemoMode() )
 	{
 		jr_string("working_directory",     m_working_directory,     i_object, io_changes);
@@ -378,41 +381,43 @@ void BlockData::jsonWrite( std::ostringstream & o_str, int i_type) const
 //                o_str << ",\n\"multihost_master_on_slave\":true";
 		}
 		if( m_file_size_min > 0 )
-	        o_str << ",\n\"file_size_min\":" << m_file_size_min;
+			o_str << ",\n\"file_size_min\":" << m_file_size_min;
 		if( m_file_size_max > 0 )
-	        o_str << ",\n\"file_size_max\":" << m_file_size_max;
+			o_str << ",\n\"file_size_max\":" << m_file_size_max;
 		if( m_max_running_tasks != -1 )
-            o_str << ",\n\"max_running_tasks\":"          << m_max_running_tasks;
+			o_str << ",\n\"max_running_tasks\":"          << m_max_running_tasks;
 		if( m_max_running_tasks_per_host != -1 )
-            o_str << ",\n\"max_running_tasks_per_host\":" << m_max_running_tasks_per_host;
+			o_str << ",\n\"max_running_tasks_per_host\":" << m_max_running_tasks_per_host;
 		if( m_need_memory > 0 )
-            o_str << ",\n\"need_memory\":"           << m_need_memory;
+			o_str << ",\n\"need_memory\":"           << m_need_memory;
 		if( m_need_power > 0 )
-            o_str << ",\n\"need_power\":"            << m_need_power;
+			o_str << ",\n\"need_power\":"            << m_need_power;
 		if( m_need_hdd > 0 )
-            o_str << ",\n\"need_hdd\":"              << m_need_hdd;
+			o_str << ",\n\"need_hdd\":"              << m_need_hdd;
 		if( m_errors_retries != -1 )
-            o_str << ",\n\"errors_retries\":"        << int(m_errors_retries);
+			o_str << ",\n\"errors_retries\":"        << int(m_errors_retries);
 		if( m_errors_avoid_host != -1 )
-            o_str << ",\n\"errors_avoid_host\":"     << int(m_errors_avoid_host);
+			o_str << ",\n\"errors_avoid_host\":"     << int(m_errors_avoid_host);
 		if( m_errors_task_same_host != -1 )
-            o_str << ",\n\"errors_task_same_host\":" << int(m_errors_task_same_host);
+			o_str << ",\n\"errors_task_same_host\":" << int(m_errors_task_same_host);
 		if( m_errors_forgive_time != -1 )
-            o_str << ",\n\"errors_forgive_time\":"   << int(m_errors_forgive_time);
+			o_str << ",\n\"errors_forgive_time\":"   << int(m_errors_forgive_time);
+		if( m_task_progress_change_timeout != -1 )
+			o_str << ",\n\"task_progress_change_timeout\":"   << int(m_task_progress_change_timeout);
 		if( m_tasks_max_run_time > 0 )
-            o_str << ",\n\"tasks_max_run_time\":"    << int(m_tasks_max_run_time);
+			o_str << ",\n\"tasks_max_run_time\":"    << int(m_tasks_max_run_time);
 
 		if( hasDependMask())
-            o_str << ",\n\"depend_mask\":\""        << m_depend_mask.getPattern() << "\"";
+			o_str << ",\n\"depend_mask\":\""        << m_depend_mask.getPattern() << "\"";
 		if( hasTasksDependMask())
-            o_str << ",\n\"tasks_depend_mask\":\""  << m_tasks_depend_mask.getPattern() << "\"";
+			o_str << ",\n\"tasks_depend_mask\":\""  << m_tasks_depend_mask.getPattern() << "\"";
 		if( hasHostsMask())
-            o_str << ",\n\"hosts_mask\":\""         << m_hosts_mask.getPattern() << "\"";
+			o_str << ",\n\"hosts_mask\":\""         << m_hosts_mask.getPattern() << "\"";
 		if( hasHostsMaskExclude())
-            o_str << ",\n\"hosts_mask_exclude\":\"" << m_hosts_mask_exclude.getPattern() << "\"";
+			o_str << ",\n\"hosts_mask_exclude\":\"" << m_hosts_mask_exclude.getPattern() << "\"";
 		if( hasNeedProperties())
-            o_str << ",\n\"need_properties\":\""    << m_need_properties.getPattern() << "\"";
-        o_str << ',';
+			o_str << ",\n\"need_properties\":\""    << m_need_properties.getPattern() << "\"";
+		o_str << ',';
 
 	case Msg::TBlocksProgress:
 
@@ -448,6 +453,8 @@ void BlockData::jsonWrite( std::ostringstream & o_str, int i_type) const
             o_str << ",\n\"p_tasks_skipped\":"  << p_tasks_skipped;
 		if( p_tasks_warning > 0 )
             o_str << ",\n\"p_tasks_warning\":"  << p_tasks_warning;
+		if( p_tasks_waitrec > 0 )
+            o_str << ",\n\"p_tasks_waitrec\":"  << p_tasks_waitrec;
 		if( p_tasks_run_time > 0 )
             o_str << ",\n\"p_tasks_run_time\":" << p_tasks_run_time;
 
@@ -542,50 +549,54 @@ void BlockData::v_readwrite( Msg * msg)
 		rw_StringVect ( m_files,              msg);
 
 	case Msg::TJobsList:
-		rw_int64_t ( m_flags,                 msg);
-		rw_int64_t ( m_frame_first,           msg);
-		rw_int64_t ( m_frame_last,            msg);
-		rw_int64_t ( m_frames_per_task,       msg);
-		rw_int64_t ( m_frames_inc,            msg);
-		rw_int64_t ( m_sequential,            msg);
-		rw_int64_t ( m_file_size_min,         msg);
-		rw_int64_t ( m_file_size_max,         msg);
-		rw_int32_t ( m_capacity_coeff_min,    msg);
-		rw_int32_t ( m_capacity_coeff_max,    msg);
-		rw_uint8_t ( m_multihost_min,         msg);
-		rw_uint8_t ( m_multihost_max,         msg);
-		rw_uint16_t( m_multihost_service_wait,msg);
-		rw_uint16_t( m_multihost_max_wait,    msg);
-		rw_int32_t ( m_capacity,              msg);
-		rw_int32_t ( m_max_running_tasks,     msg);
-		rw_int32_t ( m_max_running_tasks_per_host,    msg);
-		rw_int32_t ( m_need_memory,           msg);
-		rw_int32_t ( m_need_power,            msg);
-		rw_int32_t ( m_need_hdd,              msg);
-		rw_RegExp  ( m_depend_mask,           msg);
-		rw_RegExp  ( m_tasks_depend_mask,     msg);
-		rw_RegExp  ( m_hosts_mask,            msg);
-		rw_RegExp  ( m_hosts_mask_exclude,    msg);
-		rw_RegExp  ( m_need_properties,       msg);
-		rw_String  ( m_name,                  msg);
-		rw_String  ( m_service,               msg);
-		rw_int32_t ( m_tasks_num,             msg);
-		rw_int8_t  ( m_errors_retries,        msg);
-		rw_int8_t  ( m_errors_avoid_host,     msg);
-		rw_int8_t  ( m_errors_task_same_host, msg);
-		rw_int32_t ( m_errors_forgive_time,   msg);
-		rw_uint32_t( m_tasks_max_run_time,    msg);
+		rw_int64_t ( m_flags,                        msg);
+		rw_int64_t ( m_frame_first,                  msg);
+		rw_int64_t ( m_frame_last,                   msg);
+		rw_int64_t ( m_frames_per_task,              msg);
+		rw_int64_t ( m_frames_inc,                   msg);
+		rw_int64_t ( m_sequential,                   msg);
+		rw_int64_t ( m_file_size_min,                msg);
+		rw_int64_t ( m_file_size_max,                msg);
+		rw_int32_t ( m_capacity_coeff_min,           msg);
+		rw_int32_t ( m_capacity_coeff_max,           msg);
+		rw_uint8_t ( m_multihost_min,                msg);
+		rw_uint8_t ( m_multihost_max,                msg);
+		rw_uint16_t( m_multihost_service_wait,       msg);
+		rw_uint16_t( m_multihost_max_wait,           msg);
+		rw_int32_t ( m_capacity,                     msg);
+		rw_int32_t ( m_max_running_tasks,            msg);
+		rw_int32_t ( m_max_running_tasks_per_host,   msg);
+		rw_int32_t ( m_need_memory,                  msg);
+		rw_int32_t ( m_need_power,                   msg);
+		rw_int32_t ( m_need_hdd,                     msg);
+		rw_RegExp  ( m_depend_mask,                  msg);
+		rw_RegExp  ( m_tasks_depend_mask,            msg);
+		rw_RegExp  ( m_hosts_mask,                   msg);
+		rw_RegExp  ( m_hosts_mask_exclude,           msg);
+		rw_RegExp  ( m_need_properties,              msg);
+		rw_String  ( m_name,                         msg);
+		rw_String  ( m_service,                      msg);
+		rw_int32_t ( m_tasks_num,                    msg);
+		rw_int8_t  ( m_errors_retries,               msg);
+		rw_int8_t  ( m_errors_avoid_host,            msg);
+		rw_int8_t  ( m_errors_task_same_host,        msg);
+		rw_int32_t ( m_errors_forgive_time,          msg);
+		rw_int32_t ( m_task_progress_change_timeout, msg);
+		rw_uint32_t( m_tasks_max_run_time,           msg);
 
 	case Msg::TBlocksProgress:
 
 		rw_int32_t ( m_running_tasks_counter, msg);
 		rw_uint8_t ( p_percentage,            msg);
-		rw_int32_t ( p_error_hosts,         msg);
-		rw_int32_t ( p_avoid_hosts,         msg);
-		rw_int32_t ( p_tasks_ready,            msg);
-		rw_int32_t ( p_tasks_done,             msg);
-		rw_int32_t ( p_tasks_error,            msg);
-		rw_int64_t ( p_tasks_run_time,       msg);
+		rw_int32_t ( p_error_hosts,           msg);
+		rw_int32_t ( p_avoid_hosts,           msg);
+		rw_int32_t ( p_tasks_ready,           msg);
+		rw_int32_t ( p_tasks_done,            msg);
+		rw_int32_t ( p_tasks_error,           msg);
+		rw_int32_t ( p_tasks_skipped,         msg);
+		rw_int32_t ( p_tasks_warning,         msg);
+		rw_int32_t ( p_tasks_waitrec,         msg);
+		rw_int64_t ( p_tasks_run_time,        msg);
 
 		rw_int64_t ( m_state,                 msg);
 		rw_int32_t ( m_job_id,                msg);
@@ -1344,6 +1355,8 @@ void BlockData::generateInfoStreamTyped( std::ostringstream & o_str, int type, b
       if( full && ( m_errors_retries      == -1 )) o_str << " (user settings used)";
       if( full || ( m_errors_forgive_time  != -1 )) o_str << "\n Errors forgive time = " << m_errors_forgive_time << " seconds";
       if( full && ( m_errors_forgive_time  == -1 )) o_str << " (infinite)";
+      if( full || ( m_task_progress_change_timeout != -1 )) o_str << "\n Task progress change timeout = " << m_task_progress_change_timeout << " seconds";
+      if( full && ( m_task_progress_change_timeout == -1 )) o_str << " (infinite)";
 
       break;
 
@@ -1357,6 +1370,9 @@ void BlockData::generateInfoStreamTyped( std::ostringstream & o_str, int type, b
       if( full ) o_str << "\n Tasks Ready = " << p_tasks_ready;
       if( full ) o_str << "\n Tasks Done = " << p_tasks_done;
       if( full ) o_str << "\n Tasks Error = " << p_tasks_error;
+      if( full ) o_str << "\n Tasks Skipped = " << p_tasks_skipped;
+      if( full ) o_str << "\n Tasks Warning = " << p_tasks_warning;
+      if( full ) o_str << "\n Tasks Wait Reconnect = " << p_tasks_waitrec;
 
       if( p_error_hosts ) o_str << "\n Error hosts count = " << p_error_hosts;
       if( p_avoid_hosts ) o_str << "\n Avoid hosts count = " << p_avoid_hosts;
@@ -1395,8 +1411,7 @@ bool BlockData::updateProgress( JobProgress * progress)
 {
    bool changed = false;
 
-   if( updateBars( progress))
-      changed = true;
+	updateBars( progress);
 
 	uint32_t  new_state          = 0;
 	int32_t   new_percentage     = 0;
@@ -1405,6 +1420,7 @@ bool BlockData::updateProgress( JobProgress * progress)
 	int32_t   new_tasks_error    = 0;
 	int       new_tasks_skipped  = 0;
 	int       new_tasks_warning  = 0;
+	int       new_tasks_waitrec  = 0;
 	long long new_tasks_run_time = 0;
 
 
@@ -1445,6 +1461,10 @@ bool BlockData::updateProgress( JobProgress * progress)
 		{
 			new_tasks_warning++;
 		}
+		if( task_state & AFJOB::STATE_WAITRECONNECT_MASK )
+		{
+			new_tasks_waitrec++;
+		}
 
       new_percentage += task_percent;
    }
@@ -1455,6 +1475,7 @@ bool BlockData::updateProgress( JobProgress * progress)
 	   ( p_tasks_error    != new_tasks_error    )||
 	   ( p_tasks_skipped  != new_tasks_skipped  )||
 	   ( p_tasks_warning  != new_tasks_warning  )||
+	   ( p_tasks_waitrec  != new_tasks_waitrec  )||
 	   ( p_percentage     != new_percentage     )||
 	   ( p_tasks_run_time != new_tasks_run_time ))
 		changed = true;
@@ -1464,6 +1485,7 @@ bool BlockData::updateProgress( JobProgress * progress)
 	p_tasks_error    = new_tasks_error;
 	p_tasks_skipped  = new_tasks_skipped;
 	p_tasks_warning  = new_tasks_warning;
+	p_tasks_waitrec  = new_tasks_waitrec;
 	p_percentage     = new_percentage;
 	p_tasks_run_time = new_tasks_run_time;
 
@@ -1506,10 +1528,8 @@ bool BlockData::updateProgress( JobProgress * progress)
    return changed;
 }
 
-bool BlockData::updateBars( JobProgress * progress)
+void BlockData::updateBars( JobProgress * progress)
 {
-   bool changed = false;
-
 	// Set to zeros:
 	for( int i = 0; i < AFJOB::ASCII_PROGRESS_LENGTH; i++)
 		p_progressbar[i] = 0;
@@ -1542,9 +1562,6 @@ bool BlockData::updateBars( JobProgress * progress)
 	// Transfer values to characters:
 	for( int i = 0; i < AFJOB::ASCII_PROGRESS_LENGTH; i++)
 		p_progressbar[i] = AFJOB::ASCII_PROGRESS_STATES[p_progressbar[i]*2];
-
-//for( int i = 0; i < AFJOB::ASCII_PROGRESS_LENGTH; i++)  printf("%c", p_progressbar[i]); printf("\n");
-   return changed;
 }
 
 void BlockData::stdOutProgress() const

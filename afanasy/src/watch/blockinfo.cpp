@@ -27,12 +27,19 @@ const int BlockInfo::HeightCompact = 14;
 
 BlockInfo::BlockInfo( Item * qItem, int BlockNumber, int JobId):
 	tasksnum(1),
-	tasksdone(0),
-	taskserror(0),
-	percentage(0),
-	taskssumruntime( 0),
 
-	runningtasksnumber(0),
+	p_percentage(0),
+	p_tasksready(0),
+	p_tasksrunning(0),
+	p_tasksdone(0),
+	p_taskserror(0),
+	p_tasksskipped(0),
+	p_taskswarning(0),
+	p_taskswaitrec(0),
+	p_errorhosts(0),
+	p_avoidhosts(0),
+	p_taskssumruntime(0),
+
 	errors_retries(-1),
 	errors_avoidhost(-1),
 	errors_tasksamehost(-1),
@@ -59,44 +66,45 @@ bool BlockInfo::update( const af::BlockData* block, int type)
 	case af::Msg::TJobsList:
 	case af::Msg::TBlocks:
 	case af::Msg::TBlocksProperties:
-		multihost            = block->isMultiHost();
-		multihost_samemaster = block->canMasterRunOnSlaveHost();
-		varcapacity          = block->canVarCapacity();
-		numeric              = block->isNumeric();
+		multihost                    = block->isMultiHost();
+		multihost_samemaster         = block->canMasterRunOnSlaveHost();
+		varcapacity                  = block->canVarCapacity();
+		numeric                      = block->isNumeric();
 
-		frame_first          = block->getFrameFirst();
-		frame_last           = block->getFrameLast();
-		frame_pertask        = block->getFramePerTask();
-		frame_inc            = block->getFrameInc();
-		sequential           = block->getSequential();
+		frame_first                  = block->getFrameFirst();
+		frame_last                   = block->getFrameLast();
+		frame_pertask                = block->getFramePerTask();
+		frame_inc                    = block->getFrameInc();
+		sequential                   = block->getSequential();
 
-		tasksnum             = block->getTasksNum();
-		tasksmaxruntime      = block->getTasksMaxRunTime();
-		errors_retries       = block->getErrorsRetries();
-		errors_avoidhost     = block->getErrorsAvoidHost();
-		errors_tasksamehost  = block->getErrorsTaskSameHost();
-		errors_forgivetime   = block->getErrorsForgiveTime();
-		maxrunningtasks      = block->getMaxRunningTasks();
-		maxruntasksperhost   = block->getMaxRunTasksPerHost();
-		need_memory          = block->getNeedMemory();
-		need_power           = block->getNeedPower();
-		need_hdd             = block->getNeedHDD();
-		need_properties      = afqt::stoq( block->getNeedProperties());
-		hostsmask            = afqt::stoq(block->getHostsMask());
-		hostsmask_exclude    = afqt::stoq(block->getHostsMaskExclude());
-		need_properties      = afqt::stoq(block->getNeedProperties());
-		dependmask           = afqt::stoq(block->getDependMask());
-		tasksdependmask      = afqt::stoq(block->getTasksDependMask());
-		capacity             = block->getCapacity();
-		filesize_min         = block->getFileSizeMin();
-		filesize_max         = block->getFileSizeMax();
-		capcoeff_min         = block->getCapCoeffMin();
-		capcoeff_max         = block->getCapCoeffMax();
-		multihost_min        = block->getMultiHostMin();
-		multihost_max        = block->getMultiHostMax();
-		multihost_waitmax    = block->getMultiHostWaitMax();
-		multihost_waitsrv    = block->getMultiHostWaitSrv();
-		service              = afqt::stoq( block->getService());
+		tasksnum                     = block->getTasksNum();
+		tasksmaxruntime              = block->getTasksMaxRunTime();
+		errors_retries               = block->getErrorsRetries();
+		errors_avoidhost             = block->getErrorsAvoidHost();
+		errors_tasksamehost          = block->getErrorsTaskSameHost();
+		errors_forgivetime           = block->getErrorsForgiveTime();
+		task_progress_change_timeout = block->getTaskProgressChangeTimeout();
+		maxrunningtasks              = block->getMaxRunningTasks();
+		maxruntasksperhost           = block->getMaxRunTasksPerHost();
+		need_memory                  = block->getNeedMemory();
+		need_power                   = block->getNeedPower();
+		need_hdd                     = block->getNeedHDD();
+		need_properties              = afqt::stoq( block->getNeedProperties());
+		hostsmask                    = afqt::stoq(block->getHostsMask());
+		hostsmask_exclude            = afqt::stoq(block->getHostsMaskExclude());
+		need_properties              = afqt::stoq(block->getNeedProperties());
+		dependmask                   = afqt::stoq(block->getDependMask());
+		tasksdependmask              = afqt::stoq(block->getTasksDependMask());
+		capacity                     = block->getCapacity();
+		filesize_min                 = block->getFileSizeMin();
+		filesize_max                 = block->getFileSizeMax();
+		capcoeff_min                 = block->getCapCoeffMin();
+		capcoeff_max                 = block->getCapCoeffMax();
+		multihost_min                = block->getMultiHostMin();
+		multihost_max                = block->getMultiHostMax();
+		multihost_waitmax            = block->getMultiHostWaitMax();
+		multihost_waitsrv            = block->getMultiHostWaitSrv();
+		service                      = afqt::stoq( block->getService());
 
 
 		depends.clear();
@@ -109,16 +117,21 @@ bool BlockInfo::update( const af::BlockData* block, int type)
 
 	case af::Msg::TBlocksProgress:
 
-		state                = block->getState();
-		avoidhostsnum        = block->getProgressAvoidHostsNum();
-		errorhostsnum        = block->getProgressErrorHostsNum();
-		runningtasksnumber   = block->getRunningTasksNumber();
-		taskssumruntime      = block->getProgressTasksSumRunTime();
-		tasksready           = block->getProgressTasksReady();
-		tasksdone            = block->getProgressTasksDone();
-		taskserror           = block->getProgressTasksError();
-		percentage           = block->getProgressPercentage();
-		memcpy( progress,      block->getProgressBar(), AFJOB::ASCII_PROGRESS_LENGTH);
+		state = block->getState();
+
+		p_percentage      = block->getProgressPercentage();
+		p_tasksready      = block->getProgressTasksReady();
+		p_tasksrunning    = block->getRunningTasksNumber();
+		p_tasksdone       = block->getProgressTasksDone();
+		p_taskserror      = block->getProgressTasksError();
+		p_tasksskipped    = block->getProgressTasksSkipped();
+		p_taskswarning    = block->getProgressTasksWarning();
+		p_taskswaitrec    = block->getProgressTasksWaitReconn();
+		p_avoidhosts      = block->getProgressAvoidHostsNum();
+		p_errorhosts      = block->getProgressErrorHostsNum();
+		p_taskssumruntime = block->getProgressTasksSumRunTime();
+
+		memcpy( progress, block->getProgressBar(), AFJOB::ASCII_PROGRESS_LENGTH);
 
 		break;
 
@@ -141,7 +154,7 @@ if( type == af::Msg::TBlocksProgress)
 }
 #endif
 
-	if( runningtasksnumber || taskserror || ((tasksdone != 0) && (tasksdone != tasksnum))) return true;
+	if( p_tasksrunning || p_taskserror || ((p_tasksdone != 0) && (p_tasksdone != tasksnum))) return true;
 
 	return false;
 }
@@ -181,9 +194,9 @@ void BlockInfo::refresh()
 	// Parameters:
 	str_params.clear();
 
-	if( tasksdone) str_params += QString(" RT: S%1/A%2")
-		.arg( af::time2strHMS( taskssumruntime, true).c_str())
-		.arg( af::time2strHMS( taskssumruntime/tasksdone, true).c_str());
+	if( p_tasksdone) str_params += QString(" RT: S%1/A%2")
+		.arg( af::time2strHMS( p_taskssumruntime, true).c_str())
+		.arg( af::time2strHMS( p_taskssumruntime/p_tasksdone, true).c_str());
 
 	if(( errors_avoidhost >= 0 ) || ( errors_tasksamehost >= 0 ) || ( errors_retries >= 0 ))
 		str_params += QString("E:%1b|%2t|%3r").arg( errors_avoidhost).arg( errors_tasksamehost).arg( errors_retries);
@@ -212,20 +225,25 @@ void BlockInfo::refresh()
 	str_params += " [";
 	if( varcapacity   ) str_params += QString("(%1-%2)*").arg( capcoeff_min).arg( capcoeff_max);
 	str_params += QString("%1]").arg( capacity);
+	
+	if( task_progress_change_timeout != -1) str_params += QString(" npf%1").arg(af::time2strHMS( task_progress_change_timeout, true).c_str());
 
 
 	// Progress:
-	str_progress = QString::number( percentage) + "%";
-	str_progress += QString(" Run:%1 Done:%2 Err:%3")
-		.arg( runningtasksnumber)
-		.arg( tasksdone)
-		.arg( taskserror);
-	if( jobid == AFJOB::SYSJOB_ID ) str_progress += QString(" Ready:%1").arg( tasksready);
+	str_progress = QString::number( p_percentage) + "%";
+	if( p_tasksrunning ) str_progress += QString(" Run:%1" ).arg( p_tasksrunning);
+	if( p_tasksdone    ) str_progress += QString(" Done:%1").arg( p_tasksdone);
+	if( p_taskserror   ) str_progress += QString(" Err:%1" ).arg( p_taskserror);
+	if( p_tasksskipped ) str_progress += QString(" Skp:%1" ).arg( p_tasksskipped);
+	if( p_taskswarning ) str_progress += QString(" Wrn:%1" ).arg( p_taskswarning);
+	if( p_taskswaitrec ) str_progress += QString(" WRC:%1" ).arg( p_taskswaitrec);
+
+	if( jobid == AFJOB::SYSJOB_ID ) str_progress += QString(" Ready:%1").arg( p_tasksready);
 
 
 	// Error Hosts:
-	if( errorhostsnum ) str_avoiderrors  = QString( "Hosts Err:%1").arg( errorhostsnum);
-	if( avoidhostsnum ) str_avoiderrors += QString("/%1:Avoid").arg( avoidhostsnum);
+	if( p_errorhosts ) str_avoiderrors  = QString( "Hosts Err:%1").arg( p_errorhosts);
+	if( p_avoidhosts ) str_avoiderrors += QString("/%1:Avoid").arg( p_avoidhosts);
 }
 
 void BlockInfo::stdOutFlags( char* data, int size) const
@@ -288,7 +306,7 @@ void BlockInfo::paint( QPainter * painter, const QStyleOptionViewItem &option,
 
 	// Setup font size and color:
 	painter->setFont( afqt::QEnvironment::f_info);
-	QPen pen( Item::clrTextInfo( runningtasksnumber, option.state & QStyle::State_Selected, item->isLocked()));
+	QPen pen( Item::clrTextInfo( p_tasksrunning, option.state & QStyle::State_Selected, item->isLocked()));
 	painter->setPen( pen);
 
 
@@ -307,9 +325,9 @@ void BlockInfo::paint( QPainter * painter, const QStyleOptionViewItem &option,
 
 	// Paint error hosts:
 	int error_hosts_text_width = 0;
-	if( errorhostsnum )
+	if( p_errorhosts )
 	{
-		if( avoidhostsnum )
+		if( p_avoidhosts )
 			painter->setPen( afqt::QEnvironment::clr_error.c);
 		else
 			painter->setPen( afqt::QEnvironment::clr_errorready.c);
@@ -330,15 +348,15 @@ void BlockInfo::paint( QPainter * painter, const QStyleOptionViewItem &option,
 	Item::drawPercent
 	(
 		painter, x+xoffset, y+y_bars, w-xoffset-2, 4,
-		jobid == AFJOB::SYSJOB_ID ? runningtasksnumber + tasksready + taskserror : tasksnum,
-		jobid == AFJOB::SYSJOB_ID ? 0 : tasksdone, taskserror, runningtasksnumber,
+		jobid == AFJOB::SYSJOB_ID ? p_tasksrunning + p_tasksready + p_taskserror : tasksnum,
+		jobid == AFJOB::SYSJOB_ID ? 0 : p_tasksdone, p_taskserror, p_tasksrunning,
 		false
 	);
 	Item::drawPercent
 	(
 		painter, x+xoffset, y+y_bars+4, w-xoffset-2, 4,
 		100,
-		percentage, 0, 0,
+		p_percentage, 0, 0,
 		false
 	);
 	drawProgress
@@ -396,6 +414,10 @@ void BlockInfo::drawProgress(
 			break;
 		case 'W': // STATE_WAITDEP_MASK
 			painter->setBrush( QBrush( afqt::QEnvironment::clr_itemjobwdep.c, Qt::SolidPattern ));
+			painter->drawRect( x, posy, w+offset, height);
+			break;
+		case 'C': // STATE_WAITRECONNECT_MASK
+			painter->setBrush( QBrush( afqt::QEnvironment::clr_taskwaitreconn.c, Qt::SolidPattern ));
 			painter->drawRect( x, posy, w+offset, height);
 			break;
 		case 'S': // STATE_SKIPPED_MASK | STATE_DONE_MASK
@@ -485,6 +507,10 @@ void BlockInfo::generateMenu( int id_block, QMenu * menu, QWidget * qwidget, QMe
 	menu->addAction( action);
 
 	action = new ActionIdString( id_block, "errors_forgive_time", "Set Errors Forgive time", qwidget);
+	QObject::connect( action, SIGNAL( triggeredId( int, QString) ), qwidget, SLOT( blockAction( int, QString) ));
+	menu->addAction( action);
+	
+	action = new ActionIdString( id_block, "task_progress_change_timeout", "Set Task Progress Change Timeout", qwidget);
 	QObject::connect( action, SIGNAL( triggeredId( int, QString) ), qwidget, SLOT( blockAction( int, QString) ));
 	menu->addAction( action);
 
@@ -630,6 +656,14 @@ bool BlockInfo::blockAction( std::ostringstream & i_str, int id_block, const QSt
 		if( id_block == blocknum ) cur = double(errors_forgivetime) / (60*60);
 		double hours = QInputDialog::getDouble( listitems, "Set Errors forgive time", "Enter number of hours (0=infinite)", cur, -1, 365*24, 3, &ok);
 		set_number = int( hours * 60*60 );
+	}
+	else if( i_action == "task_progress_change_timeout" )
+	{
+		double cur = 0;
+		if( id_block == blocknum ) cur = double(task_progress_change_timeout) / (60*60);
+		double hours = QInputDialog::getDouble( listitems, "Set Task Progress Change Timeout", "Enter number of hours (0=infinite)", cur, -1, 365*24, 3, &ok);
+		set_number = int( hours * 60*60 );
+		if( set_number <= 0) set_number = -1;
 	}
 	else if( i_action == "tasks_max_run_time" )
 	{

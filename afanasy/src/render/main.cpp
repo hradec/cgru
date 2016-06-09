@@ -6,7 +6,6 @@
 
 #include "../libafanasy/environment.h"
 #include "../libafanasy/host.h"
-#include "../libafanasy/logger.h"
 #include "../libafanasy/render.h"
 #include "../libafanasy/renderevents.h"
 
@@ -16,6 +15,7 @@
 #define AFOUTPUT
 #undef AFOUTPUT
 #include "../include/macrooutput.h"
+#include "../libafanasy/logger.h"
 
 extern bool AFRunning;
 
@@ -186,7 +186,7 @@ void msgCase( af::Msg * i_msg, RenderHost & i_render)
 		return;
 
 #ifdef AFOUTPUT
-printf(" >>> "); i_msg->v_stdOut();
+AF_LOG << " >>> " << i_msg;
 #endif
 
 	switch( i_msg->type())
@@ -197,25 +197,26 @@ printf(" >>> "); i_msg->v_stdOut();
 		// Server sends back -1 id if a render with the same hostname already exists:
 		if( new_id == -1)
 		{
-			AFERRAR("Render with this hostname '%s' already registered.", af::Environment::getHostName().c_str())
+			AF_ERR << "Render with this hostname '" << af::Environment::getHostName() << "' already registered.";
 			AFRunning = false;
 		}
 		// Render was trying to register (its id==0) and server has send id>0
 		// This is the situation when client was sucessfully registered
-		else if((new_id > 0) && (i_render.getId() == 0))
+//		else if((new_id > 0) && (i_render.getId() == 0))
+		else if((new_id > 0) && i_render.notConnected())
 		{
 			i_render.setRegistered( new_id);
 		}
 		// Server sends back zero id on any error
 		else if ( new_id == 0 )
 		{
-			printf("Zero ID recieved, no such online render, re-connecting...\n");
+			AF_ERR << "Zero ID recieved, no such online render, re-connecting...";
 			i_render.connectionLost( true);
 		}
 		// Bad case, should not ever happen, try to re-register.
 		else if ( i_render.getId() != new_id )
 		{
-			AFERRAR("IDs mistatch: this %d != %d new, re-connecting...", i_render.getId(), new_id);
+			AF_ERR << "IDs mistatch: this " << i_render.getId() << " != " << new_id << " new, re-connecting...";
 			i_render.connectionLost( true);
 		}
 		// Id, that returns from server is equals to stored on client.
@@ -228,7 +229,7 @@ printf(" >>> "); i_msg->v_stdOut();
 	}
 	case af::Msg::TVersionMismatch:
 	{
-		printf("Render exit request received.\n");
+		AF_LOG << "Render exit request received.";
 		AFRunning = false;
 		break;
 	}
@@ -241,7 +242,6 @@ printf(" >>> "); i_msg->v_stdOut();
 	default:
 	{
         AF_ERR << "Unknown message recieved: " << *i_msg;
-		i_msg->v_stdOut();
 		break;
 	}
 	}
@@ -252,7 +252,7 @@ printf(" >>> "); i_msg->v_stdOut();
 void processEvents( const af::RenderEvents & i_re, RenderHost & i_render)
 {
 #ifdef AFOUTPUT
-i_re.v_stdOut();
+AF_LOG << i_re;
 #endif
 
 	// Tasks to execute:
@@ -287,12 +287,12 @@ i_re.v_stdOut();
 	{
 		if( i_re.m_instruction == "exit")
 		{
-			printf("Render exit request received.\n");
+			AF_LOG << "Render exit request received.";
 			AFRunning = false;
 		}
 		else if( i_re.m_instruction == "sleep")
 		{
-			printf("Render sleep request received.\n");
+			AF_LOG << "Render sleep request received.";
 			i_render.wolSleep( i_re.m_command);
 		}
 		else if( i_re.m_instruction == "launch")
@@ -306,13 +306,15 @@ i_re.v_stdOut();
 		else if( i_re.m_instruction == "reboot")
 		{
 			AFRunning = false;
-			printf("Reboot request, executing command:\n%s\n", af::Environment::getRenderCmdReboot().c_str());
+			AF_LOG << "Reboot request, executing command:\n"
+			       << af::Environment::getRenderCmdReboot();
 			af::launchProgram( af::Environment::getRenderCmdReboot());
 		}
 		else if( i_re.m_instruction == "shutdown")
 		{
 			AFRunning = false;
-			printf("Shutdown request, executing command:\n%s\n", af::Environment::getRenderCmdShutdown().c_str());
+			AF_LOG << "Shutdown request, executing command:\n"
+			       << af::Environment::getRenderCmdShutdown();
 			af::launchProgram( af::Environment::getRenderCmdShutdown());
 		}
 	}
@@ -322,12 +324,14 @@ void launchAndExit( const std::string & i_cmd, bool i_exit)
 {
 	if( i_exit )
 	{
-		printf("%s\n%s\n","Launching command and exiting:", i_cmd.c_str());
+		AF_LOG << "Launching command and exiting:\n"
+		       << i_cmd;
 		AFRunning = false;
 	}
 	else
 	{
-		printf("%s\n%s\n","Launching command:", i_cmd.c_str());
+		AF_LOG << "Launching command:\n"
+		       << i_cmd;
 	}
 
 	af::launchProgram( i_cmd);

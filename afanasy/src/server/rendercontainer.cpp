@@ -22,7 +22,7 @@ RenderContainer::~RenderContainer()
 AFINFO("RenderContainer::~RenderContainer:")
 }
 
-af::Msg * RenderContainer::addRender( RenderAf *newRender, MonitorContainer * monitoring)
+af::Msg * RenderContainer::addRender( RenderAf *newRender, JobContainer * i_jobs, MonitorContainer * monitoring)
 {
    // Online render register request, from client, not from database:
    if( newRender->isOnline())
@@ -47,8 +47,9 @@ af::Msg * RenderContainer::addRender( RenderAf *newRender, MonitorContainer * mo
                return new af::Msg( af::Msg::TRenderId, -1);
             }
             // Offline render with the same hostname found:
-            else if( render->online( newRender, monitoring))
-            {
+            else
+			{
+				render->online( newRender, i_jobs, monitoring);
                int id = render->getId();
                AFCommon::QueueLog("Render: " + render->v_generateInfoString( false));
                delete newRender;
@@ -69,7 +70,9 @@ af::Msg * RenderContainer::addRender( RenderAf *newRender, MonitorContainer * mo
 			AFCommon::QueueLog("New Render registered: " + newRender->v_generateInfoString());
 		}
 		else
+		{
 			delete newRender;
+		}
 
 		// Return new render ID to render to tell that it was successfully registered:
 		return new af::Msg( af::Msg::TRenderId, id);
@@ -82,7 +85,9 @@ af::Msg * RenderContainer::addRender( RenderAf *newRender, MonitorContainer * mo
 		newRender->setRegistered();
 	}
 	else
+	{
 		delete newRender;
+	}
 
    return NULL;
 }

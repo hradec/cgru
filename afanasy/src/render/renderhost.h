@@ -24,7 +24,11 @@ public:
 	
 	/// Some getters and setters
 	inline bool noOutputRedirection() { return m_no_output_redirection; }
-	inline void connectionEstablished() { m_connection_lost_count = 0; }
+	
+	void connectionEstablished();
+
+	inline bool isConnected()  const { return          m_connected; }
+	inline bool notConnected() const { return false == m_connected; }
 
 	/**
 	* @brief Some message was failed to send.
@@ -133,7 +137,7 @@ private:
     int m_updateMsgType;
 
 	/// List of task processed being currently ran by the render
-    std::vector<TaskProcess*> m_tasks;
+    std::vector<TaskProcess*> m_taskprocesses;
 
 	/// Whether the task outputs must be redirected. Used essentially by TaskProcess
 	bool m_no_output_redirection;

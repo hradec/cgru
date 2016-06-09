@@ -4,6 +4,7 @@
 #include "../libafanasy/msg.h"
 #include "../libafanasy/msgqueue.h"
 #include "../libafanasy/farm.h"
+#include "../libafanasy/regexp.h"
 
 #include "action.h"
 #include "afcommon.h"
@@ -15,6 +16,7 @@
 #define AFOUTPUT
 #undef AFOUTPUT
 #include "../include/macrooutput.h"
+#include "../libafanasy/logger.h"
 
 RenderContainer * RenderAf::ms_renders = NULL;
 
@@ -159,12 +161,12 @@ af::Msg * RenderAf::update( const af::RenderUpdate & i_up)
 	return msg;
 }
 
-bool RenderAf::online( RenderAf * render, MonitorContainer * monitoring)
+void RenderAf::online( RenderAf * render, JobContainer * i_jobs, MonitorContainer * monitoring)
 {
 	if( isOnline())
 	{
-		AFERROR("RenderAf::online: Render is already online.")
-		return false;
+		AF_ERR << "Render is already online.";
+		return;
 	}
 
 	m_idle_time = time( NULL);
@@ -183,6 +185,19 @@ bool RenderAf::online( RenderAf * render, MonitorContainer * monitoring)
 	updateTime();
 	m_hres.copy( render->getHostRes());
 
+
+	// Reconnect tasks if any:
+	std::list<af::TaskExec*>::iterator it;
+	for( it = render->m_tasks.begin() ; it != render->m_tasks.end() ; ++it)
+	{
+		i_jobs->reconnectTask( *it, *this, monitoring);
+	}
+	// Job::reconnectTask took the ownership of the taskexecs, so we prevent
+	// them from being cleaned by render's dtor:
+	render->m_tasks.clear();
+	
+
+
 	std::string str = "Online '" + m_engine + "'.";
 	appendLog( str);
 
@@ -190,8 +205,6 @@ bool RenderAf::online( RenderAf * render, MonitorContainer * monitoring)
 		monitoring->addEvent( af::Monitor::EVT_renders_change, m_id);
 
 	store();
-
-	return true;
 }
 
 void RenderAf::deregister( JobContainer * jobs, MonitorContainer * monitoring )
@@ -209,12 +222,12 @@ void RenderAf::setTask( af::TaskExec *taskexec, MonitorContainer * monitoring, b
 {
   if( isOffline())
 	{
-		AFERROR("RenderAf::setTask: Render is offline.")
+		AF_ERR << "Render is offline.";
 		return;
 	}
 	if( taskexec == NULL)
 	{
-		AFERROR("RenderAf::setTask: taskexec == NULL.")
+		AF_ERR << "taskexec == NULL.";
 		return;
 	}
 
@@ -242,7 +255,7 @@ void RenderAf::startTask( af::TaskExec *taskexec)
 {
 	if( isOffline())
 	{
-		AFERROR("RenderAf::startTask: Render is offline.")
+		AF_ERR << "Render is offline.";
 		return;
 	}
 	for( std::list<af::TaskExec*>::const_iterator it = m_tasks.begin(); it != m_tasks.end(); it++)
@@ -258,7 +271,7 @@ void RenderAf::startTask( af::TaskExec *taskexec)
 		return;
 	}
 
-	AFERROR("RenderAf::startTask: No such task.")
+	AF_ERR << "No such task.";
 	taskexec->v_stdOut( false);
 }
 
@@ -340,10 +353,15 @@ void RenderAf::v_action( Action & i_action)
 			wolWake( i_action.monitors);
 		else if( type == "service")
 		{
-			std::string name; bool enable;
-			af::jr_string("name", name, operation);
+			af::RegExp service_mask; bool enable;
+			af::jr_regexp("name", service_mask, operation);
 			af::jr_bool("enable", enable, operation);
-			setService( name, enable);
+			for (int i = 0 ; i < m_host.getServicesNum() ; ++i)
+			{
+				std::string service = m_host.getServiceName(i);
+				if( service_mask.match( service))
+					setService( service, enable);
+			}
 		}
 		else if( type == "restore_defaults")
 		{
@@ -541,12 +559,17 @@ void RenderAf::addTask( af::TaskExec * taskexec)
 		m_task_start_finish_time = time( NULL);
 		store();
 	}
+
+	#ifdef AFOUTPUT
+	AF_DEBUG << *taskexec;
+	#endif
+
 	m_tasks.push_back( taskexec);
 
 	m_capacity_used += taskexec->getCapResult();
 
 	if( m_capacity_used > getCapacity() )
-		AFERRAR("RenderAf::addTask(): capacity_used > host.capacity (%d>%d)", m_capacity_used, m_host.m_capacity)
+		AF_ERR << "Capacity_used > host.capacity (" << m_capacity_used << " > " << m_host.m_capacity << ")";
 }
 
 void RenderAf::removeTask( const af::TaskExec * taskexec)
@@ -559,13 +582,12 @@ void RenderAf::removeTask( const af::TaskExec * taskexec)
 		if( *it == taskexec)
 		{
 			it = m_tasks.erase( it);
-			continue;
 		}
 	}
 
 	if( m_capacity_used < taskexec->getCapResult())
 	{
-		AFERRAR("RenderAf::removeTask(): capacity_used < taskdata->getCapResult() (%d<%d)", m_capacity_used, taskexec->getCapResult())
+		AF_ERR << "Capacity_used < taskdata->getCapResult() (" << m_capacity_used << " < " << taskexec->getCapResult() << ")";
 		m_capacity_used = 0;
 	}
 	else m_capacity_used -= taskexec->getCapResult();

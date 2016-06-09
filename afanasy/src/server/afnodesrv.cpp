@@ -11,6 +11,7 @@
 #define AFOUTPUT
 #undef AFOUTPUT
 #include "../include/macrooutput.h"
+#include "../libafanasy/logger.h"
 
 // Zero solve cycle variable in nodes is initial,
 // it means that node was not solved at all.
@@ -70,7 +71,7 @@ bool AfNodeSrv::createStoreDir() const
 
 	if( m_store_dir.empty())
 	{
-		AFERRAR("AfNodeSrv::createStoreDir: Store folder is not set for '%s'.", m_node->m_name.c_str())
+		AF_ERR << "Store folder is not set for '" << m_node->m_name << "'";
 		return false;
 	}
 

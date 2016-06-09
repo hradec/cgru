@@ -15,6 +15,7 @@
 #define AFOUTPUT
 #undef AFOUTPUT
 #include "../include/macrooutput.h"
+#include "../libafanasy/logger.h"
 
 const int ItemRender::ms_HeightHost = 27;
 const int ItemRender::ms_HeightHostSmall = 12;
@@ -218,9 +219,10 @@ void ItemRender::updateValues( af::Node *node, int type)
 		deleteTasks();
 	        m_tasksusers.clear();
 	    m_tasks_users_counts.clear();
-	    m_tasks = render->getTasks();
+	    m_tasks = render->takeTasks();
 		QStringList tasks_users;
 		QList<int> tasks_counts;
+		m_elder_task_time = time(NULL);
 	    for( std::list<af::TaskExec*>::const_iterator it = m_tasks.begin(); it != m_tasks.end(); it++)
 		{
 	        m_tasksicons.push_back( Watch::getServiceIconSmall( QString::fromUtf8( (*it)->getServiceType().c_str())));
@@ -232,6 +234,10 @@ void ItemRender::updateValues( af::Node *node, int type)
 				tasks_users << tusr;
 				tasks_counts << 1;
 			}
+
+			// Find elder task just for sorting:
+			if((*it)->getTimeStart() < m_elder_task_time )
+				m_elder_task_time = (*it)->getTimeStart();
 		}
 		for( int i = 0; i < tasks_users.size(); i++)
 		{
@@ -264,8 +270,13 @@ void ItemRender::updateValues( af::Node *node, int type)
 
 	    m_NIMBY = render->isNIMBY();
 	    m_nimby = render->isNimby();
+		m_paused = render->isPaused();
 
-	    if( m_NIMBY )
+		if( m_paused )
+		{
+			 m_state = "(" + m_username + ")P";
+		}
+		else if( m_NIMBY )
 		{
 	         m_state = "(" + m_username + ")N";
 		}
@@ -407,7 +418,7 @@ void ItemRender::paint( QPainter *painter, const QStyleOptionViewItem &option) c
 	// Draw back with render state specific color (if it is not selected)
 	const QColor * itemColor = &(afqt::QEnvironment::clr_itemrender.c);
 	if     ( m_online == false ) itemColor = &(afqt::QEnvironment::clr_itemrenderoff.c   );
-	else if( m_NIMBY || m_nimby  ) itemColor = &(afqt::QEnvironment::clr_itemrendernimby.c );
+	else if( m_NIMBY || m_nimby || m_paused ) itemColor = &(afqt::QEnvironment::clr_itemrendernimby.c );
 	else if( m_busy            ) itemColor = &(afqt::QEnvironment::clr_itemrenderbusy.c  );
 
 	// Draw standart backgroud
@@ -477,7 +488,11 @@ void ItemRender::paint( QPainter *painter, const QStyleOptionViewItem &option) c
 	}
 	else
 	{
-	    if( m_NIMBY )
+		if( m_paused )
+		{
+			ann_state = "Paused" + ann_state;
+		}
+	    else if( m_NIMBY )
 		{
 			ann_state = "NIMBY" + ann_state;
 		}
@@ -503,13 +518,20 @@ void ItemRender::paint( QPainter *painter, const QStyleOptionViewItem &option) c
 
 		return;
 	}
+	
+	QString users = "";
+	for (int i = 0 ; i < m_hres.logged_in_users.size() ; ++i)
+	{
+		if ( i ) users += ",";
+		users += QString::fromStdString(m_hres.logged_in_users[i]);
+	}
 
 	switch( ListRenders::getDisplaySize() )
 	{
 	case ListRenders::ESMallSize:
 		painter->setPen(   clrTextInfo( option) );
 		painter->setFont(  afqt::QEnvironment::f_info);
-	    painter->drawText( left_text_x, y+1, left_text_w, h, Qt::AlignVCenter | Qt::AlignLeft, m_name + ' ' + m_capacity_usage + ' ' + m_engine);
+	    painter->drawText( left_text_x, y+1, left_text_w, h, Qt::AlignVCenter | Qt::AlignLeft, m_name + ' ' + m_capacity_usage + ' ' + users + ' ' + m_engine);
 
 		painter->setPen(   clrTextInfo( option) );
 		painter->setFont(  afqt::QEnvironment::f_info);
@@ -527,9 +549,9 @@ void ItemRender::paint( QPainter *painter, const QStyleOptionViewItem &option) c
 
 		painter->setPen(   clrTextInfo( option) );
 		painter->setFont(  afqt::QEnvironment::f_info);
-	    painter->drawText( left_text_x,  y, left_text_w,  base_height+2, Qt::AlignBottom | Qt::AlignLeft,  m_capacity_usage);
+	    painter->drawText( left_text_x,  y, left_text_w,  base_height+2, Qt::AlignBottom | Qt::AlignLeft,  m_capacity_usage + ' ' + users);
 	}
-
+	
 	// Print Bottom|Right
 	// busy/free time for big displays or annotation+users for normal
 	switch( ListRenders::getDisplaySize() )
@@ -684,6 +706,9 @@ bool ItemRender::setSortType(   int type )
 			break;
 		case CtrlSortFilter::TCAPACITY:
 	        sort_int = m_capacity;
+			break;
+		case CtrlSortFilter::TELDERTASKTIME:
+	        sort_int = m_elder_task_time;
 			break;
 		case CtrlSortFilter::TTIMELAUNCHED:
 	        sort_int = m_time_launched;
