@@ -53,7 +53,7 @@ function n_WalkDir( i_args)
 		n_Request( i_args);
 		return;
 	}
-	
+
 	var data = n_Request({"send":request});
 	var response = c_Parse( data);
 
@@ -76,7 +76,7 @@ function n_WalkDirProcess( i_data, i_args)
 			walk.walktime = c_DT_CurSeconds();
 			w++;
 		}
-		else 
+		else
 			c_Log('Walk cached '+i_args.cache_time+'s: '+i_args.paths[i]);
 		o_walks.push( walk);
 
@@ -146,8 +146,8 @@ function n_Request( i_args)
 
 	xhr.overrideMimeType('application/json');
 //	xhr.onerror = function() { g_Error(xhr.status + ':' + xhr.statusText); }
-//	xhr.open('POST', 'server.php', true); 
-	xhr.open('POST', n_server, i_args.wait ? false : true); 
+//	xhr.open('POST', 'server.php', true);
+	xhr.open('POST', n_server, i_args.wait ? false : true);
 	xhr.send( send_str);
 //window.console.log('n_Request_oldr='+send_str);
 
@@ -248,7 +248,7 @@ function n_SendJob( job)
 	obj.port = cgru_Config.af_serverport;
 	obj.sender_id = 0;
 	obj.magick_number = 1;
-	
+
 	n_Request({"send":obj,"func":n_JobSended});
 }
 function n_JobSended( i_data)
@@ -262,7 +262,7 @@ function n_Get( i_path)
 {
 	var log = '<b><i>get:</i></b> '+ i_path;
 	var xhr = new XMLHttpRequest;
-	xhr.open('GET', i_path, false); 
+	xhr.open('GET', i_path, false);
 	xhr.setRequestHeader('Pragma','no-cache');
 	xhr.setRequestHeader('Cache-Control','no-cache');
 //	xhr.overrideMimeType('application/json');

@@ -82,7 +82,7 @@ if( $CONF['AUTH_RULES'] )
 		}
 		$Out['nonce'] = md5(rand());
 	}
-}	
+}
 else
 {
 	$Digest = http_digest_parse();
@@ -175,7 +175,7 @@ function jsf_initialize( $i_arg, &$o_out)
 	global $UserID, $Groups, $HT_AccessFileName, $HT_GroupsFileName;
 
 	$configs = array();
-	readConfig('config_default.json', $configs); 
+	readConfig('config_default.json', $configs);
 	$o_out['config'] = $configs;
 
 	if( $UserID != null )
@@ -357,7 +357,7 @@ function http_digest_validate( &$o_out)
 		error_log( $o_out['error']);
 		return false;
 	}
-	
+
 	$data = explode("\n", $data);
 	$found = false;
 	foreach( $data as $line )
@@ -457,7 +457,7 @@ function htaccessFolder( $i_folder)
 	global $UserID, $Groups;
 
 	if( $i_folder == '.' ) return true;
-//	if( $UserID == null ) return true;
+	if( $UserID == null ) return true;
 
 	$out = array();
 	readGroups( $out);
@@ -504,7 +504,7 @@ function htaccessFolder( $i_folder)
 
 function htaccessPath( $i_path)
 {
-//return true;
+return true;
 //error_log('Checking access path "'.$i_path.'"');
 	if( is_file( $i_path)) $i_path = dirname( $i_path);
 	if( false == is_dir( $i_path))
@@ -959,8 +959,8 @@ function jsf_cmdexec( $i_obj, &$o_out)
 	global $UserID;
 	if( $UserID == null )
 	{
-		$o_out['error'] = 'Guests are not allowed to run commands.';
-		return;
+		//$o_out['error'] = 'Guests are not allowed to run commands.';
+		//return;
 	}
 
 	$o_out['cmdexec'] = array();
@@ -980,8 +980,8 @@ function afanasy( $i_obj, &$o_out)
 	global $UserID;
 	if( $UserID == null )
 	{
-		$o_out['error'] = 'Guests are not allowed to send jobs.';
-		return;
+		//$o_out['error'] = 'Guests are not allowed to send jobs.';
+		//return;
 	}
 
 	$socket = fsockopen( $i_obj['address'], $i_obj['port'], $errno, $errstr);
@@ -1053,7 +1053,7 @@ function jsf_save( $i_save, &$o_out)
 		{
 			$o_out['error'] = 'Unable to create directory '.$dirname;
 			return;
-		}		
+		}
 	}
 
 	$fHandle = fopen( $filename, 'wb');
@@ -1202,7 +1202,7 @@ function makenews( $i_args, &$o_out)
 	// Process users subsriptions:
 
 	// Read users:
-	$users = array();	
+	$users = array();
 	getallusers( $users);
 	if( array_key_exists('error', $users))
 	{
@@ -2033,4 +2033,3 @@ function jsf_sendmail( $i_args, &$o_out)
 }
 
 ?>
-

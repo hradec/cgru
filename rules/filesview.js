@@ -1020,7 +1020,7 @@ FilesView.prototype.countFilesUpdate = function( i_data, i_args)
 	this.showCounts();
 
 	if( i_args.post_args && i_args.post_args.func )
-		i_args.post_args.func( i_args.post_args, data.walk);	
+		i_args.post_args.func( i_args.post_args, data.walk);
 }
 FilesView.prototype.put = function()
 {
@@ -1361,7 +1361,7 @@ function fv_PreviewOpen( i_el)
 	i_el.m_preview = true;
 
 	i_el.m_elPreviewBtn.style.display = 'none';
-	
+
 	var elPreview = document.createElement('div');
 	i_el.m_elPreview = elPreview;
 	i_el.appendChild( elPreview);
@@ -1524,4 +1524,3 @@ function fv_Goto( i_path )
 	}
 	c_Error('Item not found: ' + i_path);
 }
-

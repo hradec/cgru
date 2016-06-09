@@ -171,8 +171,8 @@ function d_ProcessGUI( i_wnd)
 
 	if( g_auth_user == null )
 	{
-		c_Error("Guests can't generate dailies.");
-		return;
+	//	c_Error("Guests can't generate dailies.");
+	//	return;
 	}
 
 	var job = {};
@@ -548,7 +548,7 @@ function d_CvtImagesFinished( i_data, i_args)
 
 	if( i_data.cmdexec[0].error ) c_Error( i_data.cmdexec[0].error );
 
-	var convert = i_data.cmdexec[0].convert;	
+	var convert = i_data.cmdexec[0].convert;
 
 	if( convert.error ) c_Error( convert.error );
 
@@ -945,5 +945,3 @@ function d_CutFinished( i_data, i_args)
 
 //	i_wnd.destroy();
 }
-
-

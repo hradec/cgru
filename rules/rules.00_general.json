@@ -65,14 +65,14 @@
 		"show_files":true
 	},
 	"scenes":{
-		"seek":["[project]/SCENES","[project]/SHOTS"],
+		"seek":["[project]/SCENES","[project]/SHOTS","[project]/shots","[project]/assets","[project]/sam/render/"],
 		"uploads":{
 			"upload":{
 				"masks":[".*"],
 				"folder":"_UPLOADS/@DATE@_@USER@"
 			}
 		},
-		"-name":"",
+		"name":"SAM Asset",
 		"filter":"sc_FilterShots",
 		"scripts":["scenes.js"]
 	},
@@ -105,7 +105,7 @@
 			}
 		},
 		"scripts":["shot.js"],
-		"subfolders_status_hide":true,
+		"subfolders_status_hide":false,
 		"subfolders_dailies_hide":true,
 		"post":"shot_Post",
 			"":"custom post function",
@@ -113,10 +113,10 @@
 			"path":["REF"]
 		},
 		"source":{
-			"path":["SRC","SOURCE"]
+			"path":["SRC","SOURCE","images"]
 		},
 		"result":{
-			"path":["RESULT/JPG","RESULT/PNG","RESULT/DPX","RESULT/TIF"]
+			"path":["RESULT/JPG","RESULT/PNG","RESULT/DPX","RESULT/TIF","RESULT/EXR","images"]
 		},
 		"dailies":{
 			"path":["RESULT/DAILIES"]
@@ -128,8 +128,8 @@
 
 "cgru_config":{
 	"pathsmap":[
-			["/cgru/rules_root/","/rules_root/"],
-			["/rules_root/","/cgru/rules_root/"]
+			["/rules_root/","/atomo/jobs/"],
+			["/atomo/jobs/","/rules_root/"]
 		]
 },
 

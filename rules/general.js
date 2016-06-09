@@ -328,7 +328,7 @@ window.console.log('Folders='+g_elCurFolder.m_dir.folders);
 */
 	if( g_elCurFolder != u_el.navig )
 		g_OpenFolder( g_elCurFolder );
-	
+			
 	var exists = false;
 	if( g_elCurFolder.m_elFolders )
 	{
@@ -345,7 +345,7 @@ window.console.log('Folders='+g_elCurFolder.m_dir.folders);
 
 	var dummy = false;
 	if( i_walk.error || i_walk.denied )
-	{		
+	{
 //		g_elCurFolder.classList.add('dummy');
 		dummy = true;
 		c_Info('Dummy folder "'+i_folder+'" pushed: "'+g_elCurFolder.m_path+'"');
@@ -813,4 +813,3 @@ function g_NavigShowInfo( i_toggle)
 		}
 	}
 }
-
