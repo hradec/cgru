@@ -575,9 +575,9 @@ function walkDir($i_recv, $i_dir, &$o_out, $i_depth)
 	if (array_key_exists('lookahead', $i_recv))
 		$lookahead = $i_recv['lookahead'];
 
-	$access = false;
-	$denied = true;
-	if (htaccessPath($i_dir))
+	$access = true;
+	$denied = false;
+	if( htaccessPath( $i_dir))
 	{
 		$access = true;
 		$denied = false;
@@ -585,7 +585,7 @@ function walkDir($i_recv, $i_dir, &$o_out, $i_depth)
 	else
 	{
 		$rufiles = array('rules');
-		$o_out['denied'] = true;
+		$o_out['denied'] = false;
 	}
 
 	if ($handle = opendir($i_dir))
@@ -658,10 +658,9 @@ function walkDir($i_recv, $i_dir, &$o_out, $i_depth)
 				continue;
 			}
 
-			if (($i_recv['showhidden'] == false) && is_file("$path/.hidden")) continue;
-			if ($denied) continue;
-			if (false === htaccessFolder($path)) continue;
-
+			#if(( $i_recv['showhidden'] == false ) && is_file("$path/.hidden")) continue;
+			#if( $denied ) continue;
+			#if( false === htaccessFolder( $path)) continue;
 			$folderObj = array();
 
 			if (is_array($walk))
