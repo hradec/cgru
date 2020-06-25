@@ -1500,16 +1500,18 @@ JobNode.createPanels = function(i_monitor) {
 	acts.stop = {"label": "STP", "tooltip": 'Double click to stop job running tasks.', "ondblclick": true};
 	acts.listen =
 		{"label": "LIS", "tooltip": 'Double click to listen job.', "ondblclick": true, "handle": 'listen'};
-	if(false == g_VISOR() || cm_IsSith())
+	if(false == g_VISOR() || cm_IsSith() || cm_IsJedy())
 	{
 	    acts.delete = {"label": "DEL", "tooltip": 'Double click to delete job(s).', "ondblclick": true};
-		acts.deldone = {
-			"label": "DDJ",
-			"tooltip": 'Double click to delete all done jobs.',
-			"ondblclick": true,
-			"always_active": true,
-			"handle": 'delDoneJobs'
-		};
+		// if(cm_IsSith()){
+		// 	acts.deldone = {
+		// 		"label": "DDJ",
+		// 		"tooltip": 'Double click to delete all done jobs.',
+		// 		"ondblclick": true,
+		// 		"always_active": true,
+		// 		"handle": 'delDoneJobs'
+		// 	};
+		// }
 	}
 	i_monitor.createCtrlBtns(acts);
 
