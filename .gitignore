@@ -68,3 +68,6 @@ ipch
 
 # Apple Crap(tm)
 .DS_Store
+
+# atomo
+rules_root
