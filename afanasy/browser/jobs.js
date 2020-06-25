@@ -1410,8 +1410,29 @@ JobNode.prototype.updatePanels = function() {
 	var rules_href = cgru_RulesLink(rules_link);
 	if (rules_href)
 	{
-		elFolders.m_elRules.style.display = 'block';
-		elFolders.m_elRules.href = cgru_RulesLink(rules_link);
+        elFolders.m_elRules.style.display = 'block';
+        elFolders.m_elRules_FULL.style.display = 'block';
+        elFolders.m_elRules_MONTAGE.style.display = 'block';
+        elFolders.m_elRules_MP4.style.display = 'block';
+
+        elFolders.m_elRules.href = cgru_RulesLink( rules_link );
+        elFolders.m_elRules_FULL.href = cgru_RulesLink( rules_link+"" ).replace('/#/','/player.html#/');
+        elFolders.m_elRules_MONTAGE.href = cgru_RulesLink( rules_link+"/.webplayer_montage/" ).replace('/#/','/player.html#/'); //this.params.folders_montage.output );
+        elFolders.m_elRules_MP4.href = cgru_RulesLink( rules_link+"/" ).replace('/#/','/convertMP4.php?f=/').replace('#','@');
+
+
+/*		elFolders.m_elRules.style.display = 'block';
+//		elFolders.m_elRules.href = cgru_RulesLink( rules_link);
+
+        elFolders.m_elRules_FULL.style.display = 'block';
+        elFolders.m_elRules_MONTAGE.style.display = 'block';
+        elFolders.m_elRules_MP4.style.display = 'block';
+
+        elFolders.m_elRules.href = cgru_RulesLink( rules_link );
+        elFolders.m_elRules_FULL.href = cgru_RulesLink( rules_link+"" ).replace('/#/','/player.html#/');
+        elFolders.m_elRules_MONTAGE.href = cgru_RulesLink( rules_link+"/.webplayer_montage/" ).replace('/#/','/player.html#/'); //this.params.folders_montage.output );
+*/
+
 	}
 };
 
@@ -1479,9 +1500,9 @@ JobNode.createPanels = function(i_monitor) {
 	acts.stop = {"label": "STP", "tooltip": 'Double click to stop job running tasks.', "ondblclick": true};
 	acts.listen =
 		{"label": "LIS", "tooltip": 'Double click to listen job.', "ondblclick": true, "handle": 'listen'};
-	acts.delete = {"label": "DEL", "tooltip": 'Double click to delete job(s).', "ondblclick": true};
 	if(false == g_VISOR())
 	{
+	    acts.delete = {"label": "DEL", "tooltip": 'Double click to delete job(s).', "ondblclick": true};
 		acts.deldone = {
 			"label": "DDJ",
 			"tooltip": 'Double click to delete all done jobs.',
@@ -1497,11 +1518,64 @@ JobNode.createPanels = function(i_monitor) {
 	var elPanelR = i_monitor.elPanelR;
 
 
+    // web player passes
+        var el = document.createElement('div');
+        elPanelR.appendChild( el);
+        el.classList.add('section');
+        el.classList.add('folders_montage');
+        elPanelR.m_elFolders = el;
+        var el = document.createElement('a');
+        elPanelR.m_elFolders.appendChild( el);
+        elPanelR.m_elFolders.m_elRules_MONTAGE = el;
+        el.classList.add('rules_link_montage');
+        el.classList.add('caption');
+        el.title = 'Open WEB PLAYER montage shot in a new window(tab).';
+        el.textContent = 'WEB PLAYER PASSES';
+        el.setAttribute('target','_blank');
+
+    var el = document.createElement('div');
+        el.classList.add('section');
+        el.classList.add('folders_player');
+        elPanelR.m_elFolders.appendChild( el);
+    var el = document.createElement('a');
+        elPanelR.m_elFolders.appendChild( el);
+        elPanelR.m_elFolders.m_elRules_FULL = el;
+        el.classList.add('rules_link_player');
+        el.classList.add('caption');
+        el.title = 'Open WEB PLAYER shot in a new window(tab).';
+        el.textContent = 'WEB PLAYER FULL FRAMES';
+        el.setAttribute('target','_blank');
+        var el = document.createElement('div');
+        elPanelR.m_elFolders.appendChild( el);
+        el.textContent = '';
+        el.classList.add('caption');
+
+
+    var el = document.createElement('div');
+        el.classList.add('section');
+        el.classList.add('folders_mp4');
+        elPanelR.m_elFolders.appendChild( el);
+    var el = document.createElement('a');
+        elPanelR.m_elFolders.appendChild( el);
+        elPanelR.m_elFolders.m_elRules_MP4 = el;
+        el.classList.add('rules_link_mp4');
+        el.classList.add('caption');
+        el.title = 'download a mp4 version of web player full frames';
+        el.textContent = 'MP4';
+        el.setAttribute('target','_blank');
+        var el = document.createElement('div');
+        elPanelR.m_elFolders.appendChild( el);
+        el.textContent = '';
+        el.classList.add('caption');
+
 	// Folders:
 	var el = document.createElement('div');
 	elPanelR.appendChild(el);
 	el.classList.add('section');
 	el.classList.add('folders');
+    el.m_elRules_FULL = elPanelR.m_elFolders.m_elRules_FULL;
+    el.m_elRules_MONTAGE = elPanelR.m_elFolders.m_elRules_MONTAGE;
+    el.m_elRules_MP4 = elPanelR.m_elFolders.m_elRules_MP4;
 	elPanelR.m_elFolders = el;
 	var el = document.createElement('a');
 	elPanelR.m_elFolders.appendChild(el);

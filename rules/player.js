@@ -14,7 +14,7 @@
 	player.js - TODO: description
 */
 
-"use strict";
+p_imgTypes = ['jpg','jpeg','png', 'exr', 'tif', 'dpx'];
 
 var p_PLAYER = true;
 
@@ -230,7 +230,7 @@ function p_PathChanged()
 	path = args[0];
 	if (path == p_path)
 		return;
-	p_path = path;
+	p_path = path.split('#')[1];
 
 	// Process arguments:
 	if (args.length > 1)
@@ -303,7 +303,8 @@ function p_WalkNavigateReceived(i_data, i_args)
 	for (var i = 0; i < i_data.length; i++)
 		c_RulesMergeDir(RULES, i_data[i]);
 
-	// console.log(JSON.stringify(i_data));
+// console.log(JSON.stringify(i_data));
+// console.log(p_path);
 
 	n_WalkDir(
 		{"paths": [p_path], "wfunc": p_WalkSequenceReceived, "info": 'walk images', "rufiles": ['player']});
@@ -338,25 +339,57 @@ function p_WalkSequenceReceived(i_data)
 
 	walk.files.sort(c_CompareFiles);
 
-	for (var i = 0; i < walk.files.length; i++)
+
+	// special case for renderman renders, using dnoise.
+	// we choose to only display the denoised filtered aov
+    var renderman=0;
+	for( var i = 0; i < walk.files.length; i++)
 	{
 		var file = walk.files[i].name;
 		p_fileObjs[file] = walk.files[i];
 		if (walk.files[i].size)
 			p_fileSizeTotal += walk.files[i].size;
 		var type = file.split('.').pop().toLowerCase();
-		if (p_imgTypes.indexOf(type) == -1)
-			continue;
-		var img = new Image();
-		img.src = RULES.root + p_path + '/' + file;
-		img.onload = function(e) { p_ImgLoaded(e); };
-		img.onerror = function(e) { p_ImgLoadError(e); };
-		img.m_file = walk.files[i];
-		p_filenames.push(file);
-		p_images.push(img);
+		if( p_imgTypes.indexOf( type ) == -1 ) continue;
+		// only play variance files
+		if( file.indexOf( 'variance' ) != -1 || file.indexOf( 'playblast' ) != -1 ){
+		 // and now use the filtered version to play!!
+		 file = file.replace('variance','filtered');
+		 var img = new Image();
+		 //img.src = RULES.root + p_path + '/' + file;
+		 img.src = '/convert.php?f=' + RULES.root + p_path + '/' + file + '.jpg';
+		 img.onload = function(e){p_ImgLoaded(e);}
+		 img.onerror = function(e){p_ImgLoadError(e);}
+		 img.m_file = walk.files[i];
+		 p_filenames.push( file);
+		 p_images.push( img);
+		 renderman=1;
+		}
 	}
 
-	if (p_filenames == null || (p_filenames.length == 0))
+	// if we don't have *variance* in the files, play all files (all AOVs)
+	if (renderman==0){
+	  for( var i = 0; i < walk.files.length; i++)
+	  {
+		var file = walk.files[i].name;
+		p_fileObjs[file] = walk.files[i];
+		if( walk.files[i].size )
+			p_fileSizeTotal += walk.files[i].size;
+		var type = file.split('.').pop().toLowerCase();
+		if( p_imgTypes.indexOf( type ) == -1 ) continue;
+		var img = new Image();
+		//img.src = RULES.root + p_path + '/' + file;
+		img.src = '/convert.php?f=' + RULES.root + p_path + '/' + file + '.jpg';
+		img.onload = function(e){p_ImgLoaded(e);}
+		img.onerror = function(e){p_ImgLoadError(e);}
+		img.m_file = walk.files[i];
+		p_filenames.push( file)
+		p_images.push( img);
+  	  }
+	}
+
+
+	if( p_filenames == null || ( p_filenames.length == 0 ))
 	{
 		if (walk.error)
 			c_Error(walk.error);
@@ -445,8 +478,8 @@ function p_ImgLoaded(e)
 		p_CreateImages();
 	}
 
-	p_ShowFrame(p_frame);
-	p_ViewHome();
+	p_ShowFrame( p_frame);
+	p_ViewFit();
 	//	setTimeout('p_ViewHome();',100);
 
 	// Just information:
@@ -569,6 +602,7 @@ function p_ViewZoomOut()
 {
 	p_ViewTransform(p_view_tx, p_view_ty, (1.0 - p_view_dz) * p_view_zoom);
 }
+function p_ViewFit()    { wa=p_el.player_content.clientWidth/p_images[0].width;ha=(p_el.player_content.clientHeight-100)/p_images[0].height; p_ViewTransform( 0, -6, (ha<wa?ha:wa)); p_el.viewHome=1; }
 
 function p_ViewTransform(i_tx, i_ty, i_zoom)
 {
@@ -636,7 +670,7 @@ function p_OnKeyDown(e)
 	{
 		cgru_ClosePopus();
 		p_ShowFrame(0);
-		p_ViewHome();
+		p_ViewFit();
 	}
 
 	else if (e.keyCode == 33)
