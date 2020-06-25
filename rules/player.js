@@ -14,14 +14,12 @@
 	player.js - TODO: description
 */
 
-p_imgTypes = ['jpg','jpeg','png', 'exr', 'tif', 'dpx'];
-
 var p_PLAYER = true;
 
 // TODO: not pollute the global scope with so much vars, should be bundled into struct objects
 var p_savepath = '.commented';
 
-var p_imgTypes = ['jpg', 'jpeg', 'png'];
+var p_imgTypes = ['jpg','jpeg','png', 'exr', 'tif', 'dpx'];
 
 var p_path = null;
 var p_args = {};
@@ -230,7 +228,8 @@ function p_PathChanged()
 	path = args[0];
 	if (path == p_path)
 		return;
-	p_path = path.split('#')[1];
+	p_path = path
+	// p_path = path.split('#')[1];
 
 	// Process arguments:
 	if (args.length > 1)
@@ -272,6 +271,7 @@ function p_PathChanged()
 	var walk = {};
 	walk.paths = [];
 	walk.folders = [];
+	walk.paths.push(path);
 	var path = '';
 	for (var i = 0; i < folders.length; i++)
 	{
@@ -282,10 +282,11 @@ function p_PathChanged()
 		else
 			path += '/' + folders[i];
 		walk.folders.push(folders[i]);
-		walk.paths.push(path);
+		// walk.paths.push(path);
 	}
 
-	walk.rufiles = ['rules', 'status'];
+	// walk.rufiles = ['rules', 'status'];
+	walk.rufiles = [];
 	walk.wfunc = p_WalkNavigateReceived;
 	walk.info = 'walk GO';
 	n_WalkDir(walk);
@@ -304,7 +305,7 @@ function p_WalkNavigateReceived(i_data, i_args)
 		c_RulesMergeDir(RULES, i_data[i]);
 
 // console.log(JSON.stringify(i_data));
-// console.log(p_path);
+// console.log("===="+p_path);
 
 	n_WalkDir(
 		{"paths": [p_path], "wfunc": p_WalkSequenceReceived, "info": 'walk images', "rufiles": ['player']});
@@ -317,7 +318,7 @@ function p_WalkSequenceReceived(i_data)
 	RULES.rufiles = walk.rufiles;
 	if (walk.files == null)
 	{
-		if (c_FileCanEdit(p_path))
+		if (p_path && c_FileCanEdit(p_path))
 		{
 			walk.files = [{"name": c_PathBase(p_path)}];
 			p_path = c_PathDir(p_path);

@@ -75,7 +75,7 @@
 		"show_files":true
 	},
 	"scenes":{
-		"seek":["[project]/SCENES","[project]/SHOTS","[project]/shots","[project]/assets"],
+		"seek":["[project]/shots","[project]/assets"],
 		"uploads":{
 			"upload":{
 				"masks":[".*"],
