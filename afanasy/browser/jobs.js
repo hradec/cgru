@@ -1477,7 +1477,7 @@ JobNode.createPanels = function(i_monitor) {
 
 
 	// Move:
-	if(false == g_VISOR())
+	if(false == g_VISOR() || cm_IsSith())
 	{
 		var acts = {};
 		acts.move_jobs_top /*****/ = {'label': 'TOP', 'tooltip': 'Move jobs top.'};
@@ -1500,7 +1500,7 @@ JobNode.createPanels = function(i_monitor) {
 	acts.stop = {"label": "STP", "tooltip": 'Double click to stop job running tasks.', "ondblclick": true};
 	acts.listen =
 		{"label": "LIS", "tooltip": 'Double click to listen job.', "ondblclick": true, "handle": 'listen'};
-	if(false == g_VISOR())
+	if(false == g_VISOR() || cm_IsSith())
 	{
 	    acts.delete = {"label": "DEL", "tooltip": 'Double click to delete job(s).', "ondblclick": true};
 		acts.deldone = {
