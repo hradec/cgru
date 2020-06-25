@@ -487,7 +487,7 @@ function p_ImgLoaded(e)
 	var info = p_images.length + ' images ' + p_images[0].width + 'x' + p_images[0].height;
 	if (p_fileSizeTotal)
 		info += ': loaded ' + c_Bytes2KMG(p_fileSizeTotal);
-	info += ' at ' + sec.toFixed(1) + ' seconds';
+	// info += ' at ' + sec.toFixed(1) + ' seconds';
 	if ((sec > 0) && p_fileSizeTotal)
 	{
 		var speed = p_fileSizeLoaded / sec;
@@ -603,7 +603,18 @@ function p_ViewZoomOut()
 {
 	p_ViewTransform(p_view_tx, p_view_ty, (1.0 - p_view_dz) * p_view_zoom);
 }
-function p_ViewFit()    { wa=p_el.player_content.clientWidth/p_images[0].width;ha=(p_el.player_content.clientHeight-100)/p_images[0].height; p_ViewTransform( 0, -6, (ha<wa?ha:wa)); p_el.viewHome=1; }
+function p_ViewFit()
+{
+	if (!p_el.viewHome){
+		p_ViewTransform(0, 0, 1);
+		p_el.viewHome=1;
+	}else{
+		wa=p_el.player_content.clientWidth/p_images[0].width;
+		ha=(p_el.player_content.clientHeight-100)/p_images[0].height;
+		p_ViewTransform( 0, -6, (ha<wa?ha:wa));
+		p_el.viewHome=0;
+	}
+}
 
 function p_ViewTransform(i_tx, i_ty, i_zoom)
 {
@@ -712,7 +723,8 @@ function p_OnKeyDown(e)
 	else if (e.keyCode == 107)
 		p_ViewZoomIn();  // + (NumPad)
 	else if (e.keyCode == 72)
-		p_ViewHome();  // H
+		// p_ViewHome();  // H
+		p_ViewFit();  // H
 	else if (e.keyCode == 70)
 		p_FullScreen();  // F
 
