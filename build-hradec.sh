@@ -26,6 +26,8 @@ else
     ln -s farm.json $CD/afanasy/config.json
     ln -s /atomo/jobs $CD/rules_root
 
+
+
     if [ "$(echo $1 | grep '\-d')" != "" ] ; then
         cd $CD/utilities/
         ./get.sh
@@ -33,6 +35,7 @@ else
     fi
     if [ "$(echo $1 | grep '\-a')" != "" ] ; then
         cd $CD/afanasy/src/project.cmake/
+        rm -rf ./CMakeCache.txt
         CMAKE_C_COMPILER=$CC  CMAKE_CXX_COMPILER=$CXX ./build.sh --nosql --nogui -j 8
     fi
 fi
