@@ -1407,6 +1407,7 @@ JobNode.prototype.updatePanels = function() {
 		elValue.textContent = path;
 	}
 
+	console.log('=====>'+rules_link);
 	var rules_href = cgru_RulesLink(rules_link);
 	if (rules_href)
 	{
@@ -1416,10 +1417,13 @@ JobNode.prototype.updatePanels = function() {
         elFolders.m_elRules_MP4.style.display = 'block';
 
         elFolders.m_elRules.href = cgru_RulesLink( rules_link );
+		console.log('+1=====>'+cgru_RulesLink( rules_link ));
+		console.log('+2=====>'+elFolders.m_elRules.href);
         elFolders.m_elRules_FULL.href = cgru_RulesLink( rules_link+"" ).replace('/#/','/player.html#/');
         elFolders.m_elRules_MONTAGE.href = cgru_RulesLink( rules_link+"/.webplayer_montage/" ).replace('/#/','/player.html#/'); //this.params.folders_montage.output );
         elFolders.m_elRules_MP4.href = cgru_RulesLink( rules_link+"/" ).replace('/#/','/convertMP4.php?f=/').replace('#','@');
 
+		console.log('+3=====>'+elFolders.m_elRules_FULL.href);
 
 /*		elFolders.m_elRules.style.display = 'block';
 //		elFolders.m_elRules.href = cgru_RulesLink( rules_link);
@@ -1500,7 +1504,7 @@ JobNode.createPanels = function(i_monitor) {
 	acts.stop = {"label": "STP", "tooltip": 'Double click to stop job running tasks.', "ondblclick": true};
 	acts.listen =
 		{"label": "LIS", "tooltip": 'Double click to listen job.', "ondblclick": true, "handle": 'listen'};
-	if(false == g_VISOR() || cm_IsSith() || cm_IsJedy())
+	if(false == g_VISOR() || cm_IsSith() || cm_IsJedi())
 	{
 	    acts.delete = {"label": "DEL", "tooltip": 'Double click to delete job(s).', "ondblclick": true};
 		// if(cm_IsSith()){
