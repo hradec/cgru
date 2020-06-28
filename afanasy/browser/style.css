@@ -150,7 +150,7 @@ overflow: hidden;
 
 .view {
 position: absolute;
-left: 50px; right: 400px;
+left: 50px; right: 200px;
 top: 0; bottom: 0;
 }
 .panel {
@@ -164,7 +164,7 @@ border-right: 2px solid #575757;
 }
 .panel.right {
 right: 0;
-width: 398px;
+width: 198px;
 border-left: 2px solid #575757;
 overflow-y: auto;
 word-wrap: break-word;
@@ -265,7 +265,7 @@ border: 1px solid #575757; border-radius: 2px; margin: 5px; padding: 2px; text-a
 .ctrl_filter.filtering { background-color: #FC6; color:#000; }
 .ctrl_sort.sorting { background-color: #FC6; color:#000; }
 .ctrl_sort .label, .ctrl_filter .label { float: left; margin: 5px 10px; width: 30px;}
-.ctrl_filter .param, .ctrl_sort .param 
+.ctrl_filter .param, .ctrl_sort .param
 {
 font: 11px monospace;
 float: left;
@@ -655,4 +655,3 @@ border-radius: 24px;
 box-shadow: 0 0 32px #000000, 0 0 8px #000000 inset;
 text-shadow: 0px 0px 2px #FFFFFF;
 }
-
