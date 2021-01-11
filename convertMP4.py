@@ -2,10 +2,16 @@
 
 import os,sys,glob
 
-
+print "<br>"
 files = []
-path='/atomo/jobs/'+sys.argv[1].split('@')[-1]
-for each in glob.glob(path+'/*'):
+if '@' in sys.argv[1]:
+	path='/atomo/jobs'+sys.argv[1].split('@')[-1]
+else:
+	path='/atomo/jobs'+sys.argv[1]
+
+
+allFiles=glob.glob(path+'/*')
+for each in allFiles:
 	if [ x for x in ['playblast','variance'] if x in each ]:
 		if 'variance' in each:
 			if os.path.exists(each.replace('variance','filtered')):
@@ -13,11 +19,17 @@ for each in glob.glob(path+'/*'):
 		files += [each]
 
 if not files:
-	for each in glob.glob('/atomo/jobs/'+path+'/*'):
+	for each in allFiles:
+		if [ x for x in ['_filtered'] if x in each ]:
+			files += [each]
+
+if not files:
+	for each in allFiles:
 		files += [each]
 
 files.sort()
-
+#print files
+#sys.exit(0)
 cmd = ''
 for file in files:
 	pad = os.path.splitext(os.path.splitext(file)[0])[-1].replace('.','')

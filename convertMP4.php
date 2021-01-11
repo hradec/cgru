@@ -17,7 +17,8 @@ $bret=basename($ret);
 header("Content-disposition: inline; filename=$bret");
 
 print( "hradec<br>".$var_value."<br>" );
-print($ret);
+print("python:".$ret."<br>");
+
 $stream = new VideoStream($ret);
 $stream->start();
 
