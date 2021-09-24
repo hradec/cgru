@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import os
 import sys
@@ -26,6 +25,7 @@ Parser.add_option('-q', '--qscale',    dest='qscale',    type  ='int',    defaul
 Parser.add_option('-s', '--timestart', dest='timestart', type  ='string', default=None,     help='Time start')
 Parser.add_option('-d', '--duration',  dest='duration',  type  ='string', default=None,     help='Duration')
 Parser.add_option('-p', '--padding',   dest='padding' ,  type  ='int',    default=7,        help='Padding')
+Parser.add_option(      '--first',     dest='first' ,    type  ='int',    default=1,        help='First frame number')
 Parser.add_option('-w', '--watermark', dest='watermark', type  ='string', default=None,     help='Add watermark')
 Parser.add_option('-u', '--suffix',    dest='suffix',    type  ='string', default=None,     help='Add suffix to ouput file name')
 Parser.add_option(      '--imgname',   dest='imgname',   type  ='string', default=None,     help='Images files name (frame)')
@@ -59,30 +59,29 @@ if Output is None:
     Output = Input
 
 Sequence = []
-StartNumber = None
+Pattern = None
 if os.path.isdir(Input):
-    InDir = Input
-    allfiles = os.listdir(InDir)
+    allfiles = os.listdir(Input)
     allfiles.sort()
     for afile in allfiles:
         if afile[0] == '.': continue
-        afile = os.path.join( InDir, afile)
-        if os.path.isdir( afile): continue
+        afile = os.path.join(Input, afile)
+        if os.path.isdir(afile): continue
 
-        Sequence.append( afile)
+        Sequence.append(afile)
 
-        if StartNumber is not None: continue
+        if Pattern is not None: continue
 
-        afile = os.path.basename( afile)
+        afile = os.path.basename(afile)
         digits = re.findall(r'\d+', afile)
         if len(digits) == 0: continue
         digits = digits[-1]
-        StartNumber = int(digits)
-        Input = afile[:afile.rfind(digits)]
-        Input += '%0' + str(len(digits)) + 'd'
-        Input += afile[afile.rfind(digits) + len(digits):]
-        Input = os.path.join(argv[0], Input)
+        Pattern = afile[:afile.rfind(digits)]
+        Pattern += '*'
+        Pattern += afile[afile.rfind(digits) + len(digits):]
+        Pattern = os.path.join(argv[0], Pattern)
         continue
+    Input = Pattern
 else:
     if not os.path.isfile(Input):
         print('ERROR: Input does not exist: ' + Input)
@@ -122,6 +121,9 @@ if Codec is None:
             resize.append('-1')
         cmd += ' -vf "%s"' % ('scale=%s:%s' % (resize[0], resize[1]))
         Output += '.r%s' % Options.resize
+
+    # Specify first frame number:
+    cmd += ' -start_number %d' % Options.first
 
     # Add images type (extension,format) to output:
     Output += '.' + Options.type
@@ -210,8 +212,8 @@ else:
         auxargs += ' -i "%s" -shortest -codec:a %s' % (Options.audio,Options.acodec)
 
     avcmd = Options.avcmd
-    if StartNumber:
-        avcmd += ' -start_number ' + str(StartNumber)
+    if Pattern:
+        avcmd += ' -pattern_type glob'
 
     cmd = cmd.replace('@AVCMD@', avcmd)
     cmd = cmd.replace('@INPUT@', Input)

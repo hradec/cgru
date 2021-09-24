@@ -2,6 +2,8 @@
 
 #include "../include/afanasy.h"
 
+#include "../include/afgui.h"
+
 #include "../libafanasy/environment.h"
 #include "../libafanasy/msgclasses/mctaskup.h"
 
@@ -30,19 +32,26 @@
 #define AFOUTPUT
 #undef AFOUTPUT
 #include "../include/macrooutput.h"
+#include "../libafanasy/logger.h"
 
-const QString Watch::BtnName[WLAST] = { "null","Jobs","Users","Renders","Monitors"};
-const QString Watch::WndName[WLAST] = { "null","Jobs","Users","Renders","Monitors"};
-WndList* Watch::opened[WLAST] = {0,0,0,0,0};
+const QString Watch::BtnName[WLAST] = {"null","Farm","Jobs","Monitors","Users","Work"};
+const QString Watch::WndName[WLAST] = {"null","Farm","Jobs","Monitors","Users","Work"};
+WndList* Watch::opened[WLAST] = {0,0,0,0,0,0};
 
-QLinkedList<Wnd*>      Watch::ms_windows;
-QLinkedList<Receiver*> Watch::ms_receivers;
-QLinkedList<int>       Watch::ms_listenjobids;
-QLinkedList<int>       Watch::ms_watchtasksjobids;
-QLinkedList<QWidget*>  Watch::ms_watchtaskswindows;
+const int Watch::Icons_Size_Large = 48;
+const int Watch::Icons_Size_Small = 16;
+const int Watch::Icons_Size_Tiny  = 10;
+
+QList<Wnd*>      Watch::ms_windows;
+QList<Receiver*> Watch::ms_receivers;
+QList<int>       Watch::ms_listenjobids;
+QList<int>       Watch::ms_watchtasksjobids;
+QList<QWidget*>  Watch::ms_watchtaskswindows;
 
 QMap<QString, QPixmap *> Watch::ms_services_icons_large;
 QMap<QString, QPixmap *> Watch::ms_services_icons_small;
+QMap<QString, QPixmap *> Watch::ms_services_icons_tiny;
+QMap<QString, QPixmap *> Watch::ms_tickets_icons;
 
 QApplication * Watch::ms_app = NULL;
 Dialog * Watch::ms_d = NULL;
@@ -52,34 +61,96 @@ Watch::Watch( Dialog * pDialog, QApplication * pApplication)
    ms_app = pApplication;
    ms_d = pDialog;
 
-// Get services icons:
-   QDir dir( afqt::stoq( af::Environment::getCGRULocation()) + "/icons/software");
-   if( false == dir.exists()) return;
-   QFileInfoList files = dir.entryInfoList();
-   if( files.size() == 0) return;
-   for( int i = 0; i < files.size(); i++)
-   {
-      if( false == files[i].isFile()) continue;
-      if( ms_services_icons_large.contains( files[i].completeBaseName()) || ms_services_icons_small.contains( files[i].completeBaseName())) continue;
-      QPixmap icon( files[i].filePath());
-      if( icon.isNull())
-      {
-         AFERRAR("Invalid service icon:\n%s", files[i].filePath().toUtf8().data())
-         continue;
-      }
-      ms_services_icons_large[ files[i].completeBaseName()] = new QPixmap( icon.scaledToHeight( BlockInfo::Height,        Qt::SmoothTransformation));
-      ms_services_icons_small[ files[i].completeBaseName()] = new QPixmap( icon.scaledToHeight( BlockInfo::HeightCompact, Qt::SmoothTransformation));
-   }
+	// Load icons:
+	QString custom_icons_path = afqt::stoq(af::Environment::getIconsPath());
+	QString icons_path = afqt::stoq(af::Environment::getCGRULocation()) + "/icons";
+
+	for (QString path : {custom_icons_path, icons_path})
+	{
+		// Load services icons:
+		loadIcons(ms_services_icons_tiny,  path + "/software", Icons_Size_Tiny );
+		loadIcons(ms_services_icons_small, path + "/software", Icons_Size_Small);
+		loadIcons(ms_services_icons_large, path + "/software", Icons_Size_Large);
+
+		// Load tickets icons:
+		loadIcons(ms_tickets_icons, path + "/tickets", Icons_Size_Small);
+	}
 }
 
 Watch::~Watch()
 {
-// Delete services icons:
-   for( QMap<QString, QPixmap *>::iterator it = ms_services_icons_large.begin(); it != ms_services_icons_large.end(); it++) delete *it;
-   for( QMap<QString, QPixmap *>::iterator it = ms_services_icons_small.begin(); it != ms_services_icons_small.end(); it++) delete *it;
+	// Delete icons:
+	deleteIcons(ms_services_icons_large);
+	deleteIcons(ms_services_icons_small);
+	deleteIcons(ms_services_icons_tiny);
+	deleteIcons(ms_tickets_icons);
 }
 
 void Watch::destroy() { ms_d = NULL; }
+
+bool Watch::isPadawan()  { return afqt::QEnvironment::level.n == AFGUI::PADAWAN; }
+bool Watch::notPadawan() { return afqt::QEnvironment::level.n != AFGUI::PADAWAN; }
+bool Watch::isJedi( )    { return afqt::QEnvironment::level.n == AFGUI::JEDI;    }
+bool Watch::isSith()     { return afqt::QEnvironment::level.n == AFGUI::SITH;    }
+bool Watch::notSith()    { return afqt::QEnvironment::level.n != AFGUI::SITH;    }
+
+void Watch::loadIcons(QMap<QString, QPixmap*> & o_map, const QString & i_path, int i_height)
+{
+	QDir dir(i_path);
+	if(false == dir.exists())
+	{
+		AF_WARN << "Icons folder '" << afqt::qtos(i_path) << "' does not exist.";
+		return;
+	}
+
+	QFileInfoList files = dir.entryInfoList();
+	if (files.size() == 0)
+	{
+		AF_WARN << "Icons folder '" << afqt::qtos(i_path) << "' is empty.";
+		return;
+	}
+
+	int icons_loaded = 0;
+	for (int i = 0; i < files.size(); i++)
+	{
+		if (false == files[i].isFile())
+			continue;
+
+		QString name = files[i].completeBaseName();
+
+		if (o_map.contains(name))
+			continue;
+
+		QPixmap icon(files[i].filePath());
+		if (icon.isNull())
+		{
+			AF_ERR << "Invalid icon: '" << afqt::qtos(files[i].filePath()) << "'.";
+			continue;
+		}
+
+		o_map[name] = new QPixmap(icon.scaledToHeight(i_height, Qt::SmoothTransformation));
+
+		icons_loaded++;
+	}
+
+	if (icons_loaded)
+		AF_LOG << "Loaded " << icons_loaded << "*" << i_height << "px icons from '" << afqt::qtos(i_path) << "'.";
+	else
+		AF_WARN << "No icons loaded from '" << afqt::qtos(i_path) << "'.";
+}
+
+void Watch::deleteIcons(QMap<QString, QPixmap*> & o_map)
+{
+	QMapIterator <QString, QPixmap*> it(o_map);
+	while (it.hasNext())
+	{
+		it.next();
+		delete it.value();
+	}
+	o_map.clear();
+}
+
+QWidget * Watch::getWidget() { return (QWidget*)(ms_d);}
 
 void Watch::sendMsg( af::Msg * msg)
 {
@@ -171,7 +242,7 @@ void Watch::caseMessage( af::Msg * msg)
 {
    bool received = false;
 
-	QLinkedList<Receiver*>::iterator rIt;
+	QList<Receiver*>::iterator rIt;
 	for( rIt = ms_receivers.begin(); rIt != ms_receivers.end(); ++rIt)
 	{
 		msg->resetWrittenSize();
@@ -239,7 +310,7 @@ void Watch::caseMessage( af::Msg * msg)
 
 void Watch::filesReceived( const af::MCTaskUp & i_taskup)
 {
-	for( QLinkedList<Receiver*>::iterator rIt = ms_receivers.begin(); rIt != ms_receivers.end(); ++rIt)
+	for (QList<Receiver*>::iterator rIt = ms_receivers.begin(); rIt != ms_receivers.end(); ++rIt)
 	{
 		if((*rIt)->v_filesReceived( i_taskup))
 			return;
@@ -266,11 +337,11 @@ void Watch::listenTask( int jobid, int block, int task, const QString & name)
    new WndListenTask( jobid, block, task, name);
 }
 
-void Watch::watchJodTasksWindowAdd( int id, const QString & name)
+void Watch::watchJobTasksWindowAdd( int id, const QString & name)
 {
 AFINFA("Watch::watchTasks: trying to open job \"%s\"[%d] tasks window.", name.toUtf8().data(), id)
-   QLinkedList<int>::const_iterator iIt = ms_watchtasksjobids.begin();
-   QLinkedList<QWidget*>::iterator wIt = ms_watchtaskswindows.begin();
+	QList<int>::const_iterator iIt = ms_watchtasksjobids.begin();
+	QList<QWidget*>::iterator wIt = ms_watchtaskswindows.begin();
    while( iIt != ms_watchtasksjobids.end())
    {
       if( *iIt == id)
@@ -291,10 +362,10 @@ AFINFA("Watch::watchTasks: trying to open job \"%s\"[%d] tasks window.", name.to
 AFINFA("Watch::watchTasks: \"%s\" window opened.", name.toUtf8().data())
 }
 
-void Watch::watchJodTasksWindowRem( int id)
+void Watch::watchJobTasksWindowRem( int id)
 {
-   QLinkedList<int>::iterator iIt = ms_watchtasksjobids.begin();
-   QLinkedList<QWidget*>::iterator wIt = ms_watchtaskswindows.begin();
+	QList<int>::iterator iIt = ms_watchtasksjobids.begin();
+	QList<QWidget*>::iterator wIt = ms_watchtaskswindows.begin();
    while( iIt != ms_watchtasksjobids.end())
    {
       if( *iIt == id)
@@ -312,13 +383,13 @@ void Watch::watchJodTasksWindowRem( int id)
 
 void Watch::connectionLost()
 {
-   for( QLinkedList<Receiver*>::iterator rIt = ms_receivers.begin(); rIt != ms_receivers.end(); ++rIt)
+	for (QList<Receiver*>::iterator rIt = ms_receivers.begin(); rIt != ms_receivers.end(); ++rIt)
       (*rIt)->v_connectionLost();
 }
 
 void Watch::connectionEstablished()
 {
-   for( QLinkedList<Receiver*>::iterator rIt = ms_receivers.begin(); rIt != ms_receivers.end(); ++rIt)
+	for (QList<Receiver*>::iterator rIt = ms_receivers.begin(); rIt != ms_receivers.end(); ++rIt)
       (*rIt)->v_connectionEstablished();
 }
 
@@ -479,10 +550,28 @@ void Watch::browseFolder( const QString & i_folder, const QString & i_wdir)
 #ifdef WINNT
 	QString cmd = "explorer";
 #else
-	QString cmd = afqt::stoq( af::Environment::getCGRULocation()) + "/utilities/browse.sh";
+	QString cmd = "openfolder";
 #endif
 	cmd += " \"" + i_folder + "\"";
 	Watch::startProcess( cmd, i_wdir);
+}
+
+void Watch::openTerminal(const QString & i_wdir)
+{
+	QDir dir(i_wdir);
+	if(false == dir.exists())
+	{
+		Watch::displayError(QString("Folder '%1' does not exist.").arg(dir.path()));
+		return;
+	}
+
+	Watch::displayInfo(QString("Terminal '%1'").arg(dir.path()));
+#ifdef WINNT
+	QString cmd = QString("start cmd.exe /K \"cd %1\"").arg(dir.path());
+#else
+	QString cmd = QString("cd \"%1\"; openterminal").arg(dir.path());
+#endif
+	Watch::startProcess(cmd);
 }
 
 void Watch::repaint()
@@ -495,7 +584,7 @@ void Watch::repaint()
 
     if( ms_d) ms_d->repaint();
     for( int i = 0; i < WLAST; i++) if( opened[i]) opened[i]->repaintItems();
-    for( QLinkedList<Wnd*>::iterator wIt = ms_windows.begin(); wIt != ms_windows.end(); wIt++) (*wIt)->update();
+	for (QList<Wnd*>::iterator wIt = ms_windows.begin(); wIt != ms_windows.end(); wIt++) (*wIt)->update();
 //printf("Watch::repaint: finish\n");
 }
 
@@ -504,6 +593,6 @@ void Watch::notify( const QString & i_title, const QString & i_msg, uint32_t i_s
 	new Popup( i_title, i_msg, i_state);
 }
 
-void Watch::showDocs() { Watch::startProcess("documentation \"afanasy/gui#watch\""); }
+void Watch::showDocs() { Watch::startProcess("documentation \"afanasy/watch.html\""); }
 void Watch::showForum() { Watch::startProcess("forum \"watch\""); }
 

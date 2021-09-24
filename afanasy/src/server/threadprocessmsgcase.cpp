@@ -5,7 +5,6 @@
 #include "../include/afanasy.h"
 
 #include "../libafanasy/environment.h"
-#include "../libafanasy/farm.h"
 #include "../libafanasy/msg.h"
 #include "../libafanasy/msgqueue.h"
 #include "../libafanasy/msgclasses/mcgeneral.h"
@@ -19,6 +18,7 @@
 #include "jobcontainer.h"
 #include "monitoraf.h"
 #include "monitorcontainer.h"
+#include "poolscontainer.h"
 #include "rendercontainer.h"
 #include "threadargs.h"
 #include "usercontainer.h"
@@ -90,7 +90,7 @@ af::Msg* threadProcessMsgCase( ThreadArgs * i_args, af::Msg * i_msg)
 	{
 	  AfContainerLock lock( i_args->monitors, AfContainerLock::READLOCK);
 		MonitorContainerIt it( i_args->monitors);
-		MonitorAf * node = it.getMonitor( i_msg->int32());
+		MonitorAf * node = it.getMonitor(i_msg->int32(), i_msg);
 
 		if( node )
 			o_msg_response = node->getEventsBin();
@@ -104,13 +104,14 @@ af::Msg* threadProcessMsgCase( ThreadArgs * i_args, af::Msg * i_msg)
 	case af::Msg::TRenderRegister:
 	{
 //printf("case af::Msg::TRenderRegister:\n");
-		AfContainerLock jLock( i_args->jobs,     AfContainerLock::WRITELOCK);
-		AfContainerLock mLock( i_args->monitors, AfContainerLock::WRITELOCK);
-		AfContainerLock rLock( i_args->renders,  AfContainerLock::WRITELOCK);
+		AfContainerLock jLock(i_args->jobs,     AfContainerLock::WRITELOCK);
+		AfContainerLock mLock(i_args->monitors, AfContainerLock::WRITELOCK);
+		AfContainerLock pLock(i_args->pools,    AfContainerLock::WRITELOCK);
+		AfContainerLock rLock(i_args->renders,  AfContainerLock::WRITELOCK);
 
-		RenderAf * newRender = new RenderAf( i_msg);
-		newRender->setAddressIP( i_msg->getAddress());
-		o_msg_response = i_args->renders->addRender( newRender, i_args->jobs, i_args->monitors);
+		RenderAf * newRender = new RenderAf(i_msg);
+		newRender->setAddressIP(i_msg->getAddress());
+		o_msg_response = i_args->renders->addRender(newRender, i_args->pools, i_args->jobs, i_args->monitors);
 		break;
 	}
 	case af::Msg::TRenderUpdate:
@@ -122,13 +123,14 @@ af::Msg* threadProcessMsgCase( ThreadArgs * i_args, af::Msg * i_msg)
 			AfContainerLock rlock( i_args->renders, AfContainerLock::WRITELOCK);
 
 			RenderContainerIt rendersIt( i_args->renders);
-			RenderAf * render = rendersIt.getRender( rup->getId());
+			RenderAf * render = rendersIt.getRender(rup->getId(), i_msg);
 
 			if( NULL == render)
 			{
 				// If there is not such online render, a zero id will be send.
 				// It is a signal for client to register again (may be server was restarted).
-				o_msg_response = new af::Msg( af::Msg::TRenderId, 0);
+				af::RenderEvents re(af::RenderEvents::RE_Status_Reconnect, "No such render.");
+				o_msg_response = new af::Msg(af::Msg::TRenderEvents, &re);
 			}
 			else if ( render->isOffline())
 			{
@@ -138,7 +140,8 @@ af::Msg* threadProcessMsgCase( ThreadArgs * i_args, af::Msg * i_msg)
 				// server have been restarted (maybe because it crashed).
 				// We ask the render to send a list of the tasks it is in charge
 				// of to reconnect it. It should then send a TRenderReconnect.
-				o_msg_response = new af::Msg( af::Msg::TRenderId, 0);
+				af::RenderEvents re(af::RenderEvents::RE_Status_Reconnect, "Render is offline.");
+				o_msg_response = new af::Msg(af::Msg::TRenderEvents, &re);
 			}
 			else
 			{

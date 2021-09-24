@@ -23,28 +23,25 @@ if [ -z "$HOUDINI_LOCATION" ]; then
 	echo "Can't find houdini in '$HOUDINI_INSTALL_DIR'"
 	exit 1
 fi
-echo "Houdni location = '$HOUDINI_LOCATION'"
+echo "Houdini location = '$HOUDINI_LOCATION'"
 
 # Source Houdini setup shell script:
 pushd $HOUDINI_LOCATION >> /dev/null
 source houdini_setup_bash
 popd $pwd >> /dev/null
 
-# Setup CGRU houdini scripts location:
+# Setup CGRU houdini plugins location:
 export HOUDINI_CGRU_PATH=$CGRU_LOCATION/plugins/houdini
+
+# Create or add to HOUDINI_PATH to include CGRU houdini plugins:
+if [ "$HOUDINI_PATH" != "" ]; then
+	export HOUDINI_PATH="${HOUDINI_CGRU_PATH}:${HOUDINI_PATH}:&"
+else
+	export HOUDINI_PATH="${HOUDINI_CGRU_PATH}:&"
+fi
 
 # Set Python path to afanasy submission script:
 export PYTHONPATH=$HOUDINI_CGRU_PATH:$PYTHONPATH
-
-# Define OTL scan path:
-HOUDINI_CGRU_OTLSCAN_PATH=$HIH/otls:$HOUDINI_CGRU_PATH:$HH/otls
-
-# Create or add to exist OTL scan path:
-if [ "$HOUDINI_OTLSCAN_PATH" != "" ]; then
-	export HOUDINI_OTLSCAN_PATH="${HOUDINI_CGRU_OTLSCAN_PATH}:${HOUDINI_OTLSCAN_PATH}"
-else
-	export HOUDINI_OTLSCAN_PATH=$HOUDINI_CGRU_OTLSCAN_PATH
-fi
 
 export APP_DIR="$HOUDINI_LOCATION"
 export APP_EXE="houdini"

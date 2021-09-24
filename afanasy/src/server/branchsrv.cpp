@@ -15,8 +15,6 @@
 */
 #include "branchsrv.h"
 
-#include <math.h>
-
 #include "../include/afanasy.h"
 
 #include "../libafanasy/environment.h"
@@ -70,18 +68,18 @@ BranchSrv::BranchSrv(const std::string & i_store_dir):
 	delete [] data;
 }
 
-bool BranchSrv::setParent(BranchSrv * i_parent)
+void BranchSrv::setParent(BranchSrv * i_parent)
 {
 	if (NULL != m_parent)
 	{
 		AF_ERR << "BranchSrv::setParent: Branch['" << m_name << "'] already has a parent.";
-		return false;
+		return;
 	}
 
-	if (m_name == "/")
+	if (isRoot())
 	{
 		AF_ERR << "BranchSrv::setParent: Root branch should not have any parent.";
-		return false;
+		return;
 	}
 
 	m_parent = i_parent;
@@ -90,7 +88,7 @@ bool BranchSrv::setParent(BranchSrv * i_parent)
 bool BranchSrv::initialize()
 {
 	// Non root branch should have a parent
-	if ((m_name != "/") && (NULL == m_parent))
+	if (isNotRoot() && (NULL == m_parent))
 	{
 		AF_ERR << "BranchSrv::initialize: Branch['" << m_name << "'] has NULL parent.";
 		return false;
@@ -119,6 +117,22 @@ bool BranchSrv::initialize()
 			setCreateChilds(true);
 			setSolveJobs(true);
 			m_max_tasks_per_second = AFBRANCH::TASKSPERSECOND_ROOT;
+			AF_LOG << "Root branch constructed.";
+		}
+		else
+		{
+			// This is a new non-root branch.
+			// We should inherit some parameters from parent branch.
+			if (m_parent->isSolveCapacity()) setSolveCapacity();
+			if (m_parent->isSolveTasksNum()) setSolveTasksNum();
+
+			if (m_parent->isSolvePriority()) setSolvePriority();
+			if (m_parent->isSolveOrder())    setSolveOrder();
+
+			if (m_parent->isNotRoot())
+			{
+				setSolveJobs(m_parent->isSolveJobs());
+			}
 		}
 
 		m_time_creation = time(NULL);
@@ -157,6 +171,7 @@ void BranchSrv::v_action(Action & i_action)
 	if (i_action.log.size())
 	{
 		store();
+		i_action.answerLog("Branch(es) parameter(s) changed.");
 		i_action.monitors->addEvent(af::Monitor::EVT_branches_change, m_id);
 	}
 }
@@ -171,17 +186,15 @@ void BranchSrv::logAction(const Action & i_action, const std::string & i_node_na
 
 void BranchSrv::deleteBranch(Action & o_action, MonitorContainer * i_monitoring)
 {
-	if (NULL == m_parent)
+	if (isRoot())
 	{
-		o_action.answer_kind = "error";
-		o_action.answer = "Can`t delete ROOT branch.";
+		o_action.answerError("Can`t delete ROOT branch.");
 		return;
 	}
 
 	if (m_branches_num || m_jobs_num)
 	{
-		o_action.answer_kind = "error";
-		o_action.answer = "Branch['" + m_name + "'] has child branches/jobs.";
+		o_action.answerError("Branch['" + m_name + "'] has child branches/jobs.");
 		return;
 	}
 

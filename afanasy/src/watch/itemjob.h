@@ -2,30 +2,21 @@
 
 #include "../libafanasy/job.h"
 
-#include "itemnode.h"
+#include "itemwork.h"
 #include "blockinfo.h"
 
+class ItemButton;
 class ListJobs;
 
-class ItemJob : public ItemNode
+class ItemJob : public ItemWork
 {
 public:
-	ItemJob( ListJobs * i_list, af::Job *job, bool i_subscibed, const CtrlSortFilter * i_ctrl_sf);
+	ItemJob(ListNodes * i_listnodes, bool i_inworklist, af::Job *job, const CtrlSortFilter * i_ctrl_sf, bool i_notify);
 	~ItemJob();
 
-	void updateValues( af::Node *node, int type);
+	void v_updateValues(af::Node * i_afnode, int i_msgType);
 
-	inline int getErrorRetries(         int block = 0 ) const
-		{if(block<m_blocks_num )return m_blockinfo[ block].getErrorsRetries();       else return 0; }
-	inline int getErrorsAvoidHost(      int block = 0 ) const
-		{if(block<m_blocks_num )return m_blockinfo[ block].getErrorsAvoidHost();     else return 0; }
-	inline int getErrorsTaskSameHost(   int block = 0 ) const
-		{if(block<m_blocks_num )return m_blockinfo[ block].getErrorsTaskSameHost();  else return 0; }
-
-	inline uint32_t getTaskMaxRunTime(int block = 0) const
-		{if(block<m_blocks_num )return m_blockinfo[block].getTaskMaxRunTime(); else return 0; }
-	inline uint32_t getTaskMinRunTime(int block = 0) const
-		{if(block<m_blocks_num )return m_blockinfo[block].getTaskMinRunTime(); else return 0; }
+	void v_toBeDeleted();
 
 	int maxrunningtasks;
 	int maxruntasksperhost;
@@ -42,6 +33,9 @@ public:
 	bool ignorenimby;
 	bool ignorepaused;
 
+	bool has_tasks_trying_next;
+
+	QString pools;
 	QString service;
 	QString hostname;
 	QString username;
@@ -50,8 +44,6 @@ public:
 	QString hostsmask_exclude;
 	QString dependmask;
 	QString dependmask_global;
-	QString need_os;
-	QString need_properties;
 	QString cmd_pre;
 	QString cmd_post;
 	QString description;
@@ -63,27 +55,35 @@ public:
 
 	const QString getRulesFolder();
 
-	inline int getBlocksNum() const { return m_blocks_num;}
-	inline int getBlockPercent( int block ) const
-		{ if( block < m_blocks_num ) return m_blockinfo[block].p_percentage; else return 0;}
+	inline int getBlocksNum() const {return m_blocks.size();}
 
-	void setSortType(   int type1, int i_type2 );
-	void setFilterType( int type );
+	inline const BlockInfo * getBlockInfo(int i_bnum) const {
+		if (i_bnum < 0) return m_blocks[0];
+		if (i_bnum < m_blocks.size()) return m_blocks[i_bnum];
+		return NULL;}
 
-	void generateMenu( int id_block, QMenu * menu, QWidget * qwidget);
+	inline int getBlockPercent(int i_bnum) const
+		{if (i_bnum < m_blocks.size()) return m_blocks[i_bnum]->p_percentage; else return 0;}
 
-	bool blockAction( std::ostringstream & i_str, int id_block, const QString & i_action, ListItems * listitems) const;
+	void v_setSortType(int type1, int i_type2);
+	void v_setFilterType(int type);
 
-	inline const QString & getBlockName( int num) const { return m_blockinfo[num].getName();}
+	inline const QString & getBlockName(int i_bnum) const {return m_blocks[i_bnum]->getName();}
 
 	bool calcHeight();
 
-	virtual void v_filesReceived( const af::MCTaskUp & i_taskup);
+	virtual void v_filesReceived(const af::MCTaskUp & i_taskup);
 
 	void getThumbnail() const;
 
+	void resizeThumbnails();
+
+	void v_buttonClicked(ItemButton * i_b);
+
+	void setItemCollapsed(bool i_collapse);
+
 protected:
-	void paint( QPainter *painter, const QStyleOptionViewItem &option) const;
+	virtual void v_paint(QPainter * i_painter, const QRect & i_rect, const QStyleOptionViewItem & i_option) const;
 
 private:
 	static const int Height;
@@ -91,26 +91,44 @@ private:
 	static const int HeightAnnotation;
 
 private:
-	ListJobs * m_list;
+	void updateInfo(const af::Job * i_job);
 
-	int m_blocks_num;
-	bool compact_display;
+	int drawButtons(QPainter * i_painter, const QRect & i_rect, const QStyleOptionViewItem & i_option, const QColor * i_clrItem) const;
 
-	QString properties;
+	inline int getThumbsHeight() const
+		{return m_inworklist ? afqt::QEnvironment::thumb_work_height.n : afqt::QEnvironment::thumb_jobs_height.n;}
 
-	QStringList blocksinfo;
-	QString user_eta;
+private:
+	int64_t m_serial;
 
-	QString runningTime;
+	bool m_inworklist;
 
-	int     num_runningtasks;
-	QString num_runningtasks_str;
+	int m_buttons_width;
 
+	bool m_item_collapsed;
+	ItemButton * m_btn_item_collapse;
+	ItemButton * m_btn_item_expand;
+
+	bool m_compact_display;
+
+	int m_tasks_total;
 	int m_tasks_done;
+	int m_tasks_running;
+	int m_tasks_error;
+	int m_tasks_percent;
 
+	QString m_str_props;
+	QString m_str_user;
+	QString m_str_runningTime;
+
+	int m_num_runningtasks;
+
+	QList<QImage*> m_thumbs_orig;
 	QList<QImage*> m_thumbs;
 	QList<QString> m_thumbs_paths;
+	mutable int m_thumbs_visible;
 
-	int block_height;
-	BlockInfo * m_blockinfo;
+	int m_block_height;
+
+	QVector<BlockInfo*> m_blocks;
 };

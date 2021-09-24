@@ -44,6 +44,7 @@ TaskRun::TaskRun( Task * runningTask,
    m_progress->percentframe = -1;
    m_progress->hostname.clear();
 	m_progress->activity.clear();
+	m_progress->resources.clear();
 
 	// Skip starting task if executable is not set (multihost task)
 	if( m_exec == NULL) return;
@@ -104,6 +105,8 @@ void TaskRun::update(const af::MCTaskUp& taskup, RenderContainer * renders, Moni
 	}
 	
 	m_progress->time_done = time( NULL);
+	if (taskup.hasActivity() ) m_progress->activity  = taskup.getActivity();
+	if (taskup.hasResources()) m_progress->resources = taskup.getResources();
 	
 	std::string message;
 	
@@ -124,7 +127,6 @@ void TaskRun::update(const af::MCTaskUp& taskup, RenderContainer * renders, Moni
 		m_progress->percent      = new_percent;
 		m_progress->frame        = taskup.getFrame();
 		m_progress->percentframe = taskup.getPercentFrame();
-		if( taskup.getActivity().size() > 0 ) m_progress->activity = taskup.getActivity();
 		m_task->v_monitor( monitoring );
 	}
 	case af::TaskExec::UPStarted:
@@ -267,14 +269,6 @@ bool TaskRun::refresh( time_t currentTime, RenderContainer * renders, MonitorCon
 	//printf("TaskRun::refresh: %s[%d][%d]\n", block->job->getName().toUtf8().data(), block->data->getBlockNum(), tasknum);
 	bool changed = false;
 
-	// Tasks stop timeout check:
-	if( m_stopTime && ( currentTime - m_stopTime > af::Environment::getTaskStopTimeout()))
-	{
-		finish("Task stop timeout.", renders, monitoring);
-		if( changed == false) changed = true;
-		errorHostId = m_hostId;
-	}
-
 	// Next checks not needed it the task is stopping:
 	if (m_stopTime)
 		return changed;
@@ -289,19 +283,12 @@ bool TaskRun::refresh( time_t currentTime, RenderContainer * renders, MonitorCon
 		errorHostId = m_hostId;
 	}
 
-	// Tasks update timeout check:
-	if (currentTime > (m_progress->time_done + af::Environment::getTaskUpdateTimeout()))
-	{
-		//printf("Task update timeout: %d > %d+%d\n", currentTime, m_progress->time_done, af::Environment::getTaskUpdateTimeout());
-		stop("Task update timeout.", renders, monitoring);
-		errorHostId = m_hostId;
-	}
-
 	// Tasks progress change timeout:
 	int timeout = m_block->m_data->getTaskProgressChangeTimeout();
 	int no_progress_for = currentTime - m_progress->last_percent_change;
 	if ((timeout > 0 ) && (no_progress_for > timeout))
 	{
+		m_progress->state = m_progress->state | AFJOB::STATE_ERROR_MASK;
 		m_progress->errors_count++;
 		stop("Task run time without progress reached (no progress for " + af::itos(no_progress_for) + "s).", renders, monitoring);
 		errorHostId = m_hostId;
@@ -346,7 +333,7 @@ void TaskRun::finish( const std::string & message, RenderContainer * renders, Mo
 		RenderAf * render = rendersIt.getRender( m_hostId);
 		if( render )
 		{
-			render->taskFinished( m_exec, monitoring);
+			render->taskFinished(m_exec, m_progress->state, monitoring);
 			m_block->remSolveCounts(monitoring, m_exec, render);
 		}
 
@@ -365,18 +352,17 @@ void TaskRun::finish( const std::string & message, RenderContainer * renders, Mo
    m_zombie = true;
 }
 
-void TaskRun::restart( const std::string & message, RenderContainer * renders, MonitorContainer * monitoring)
+void TaskRun::restart(const std::string & i_message, RenderContainer * i_renders, MonitorContainer * i_monitoring)
 {
-   if( m_zombie ) return;
-   stop( message+" Is running.", renders, monitoring);
+	if (m_zombie) return;
+	stop(i_message + " Is running.", i_renders, i_monitoring);
 }
 
-void TaskRun::skip( const std::string & message, RenderContainer * renders, MonitorContainer * monitoring)
+void TaskRun::skip(const std::string & i_message, RenderContainer * i_renders, MonitorContainer * i_monitoring, uint32_t i_state)
 {
-   if( m_zombie ) return;
-   m_progress->state = m_progress->state | AFJOB::STATE_SKIPPED_MASK;
-   m_progress->state = m_progress->state | AFJOB::STATE_DONE_MASK;
-   stop( message+" Is running.", renders, monitoring);
+   if (m_zombie) return;
+   m_progress->state |= i_state;
+   stop(i_message + " Is running.", i_renders, i_monitoring);
 }
 
 int TaskRun::v_getRunningRenderID( std::string & o_error) const

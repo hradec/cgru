@@ -22,9 +22,6 @@ var fv_thumbnails_tomake_files = [];
 var fv_cur_item = null;
 var fv_first_created = false;
 
-if (localStorage.filesview == null)
-	localStorage.filesview = '0';
-
 function fv_Finish()
 {
 	fv_views = [];
@@ -59,6 +56,9 @@ function FilesView(i_args)
 	this.walk = i_args.walk;
 	this.masks = i_args.masks;
 	this.count_images = i_args.count_images;
+	this.name = i_args.name;
+	if (this.name == null)
+		this.name = 'files';
 
 	this.can_refresh = !(i_args.can_refresh === false);
 	this.can_count = i_args.can_count;
@@ -80,7 +80,7 @@ function FilesView(i_args)
 	else if (localStorage.background && localStorage.background.length)
 		this.elRoot.style.background = localStorage.background;
 	else
-		this.elRoot.style.backgroundColor = u_backgroundColor;
+		this.elRoot.style.background = u_background;
 
 	this.elPanel = document.createElement('div');
 	this.elRoot.appendChild(this.elPanel);
@@ -300,8 +300,18 @@ FilesView.prototype.destroy = function() {
 	this.elParent.removeChild(this.elRoot);
 };
 
+FilesView.prototype.getLocalStorageName = function(i_attr_name) {
+	return 'filesview_' + this.name + '_' + i_attr_name;
+};
+FilesView.prototype.getLocalStorageAttr = function(i_attr_name) {
+	return localStorage[this.getLocalStorageName(i_attr_name)];
+};
+FilesView.prototype.setLocalStorageAttr = function(i_attr_name, i_attr_value) {
+	localStorage[this.getLocalStorageName(i_attr_name)] = '' + i_attr_value;
+};
+
 FilesView.prototype.limitsAdd = function() {
-	var limits = [3, 10, 30, 0];
+	var limits = [1, 3, 10, 30, 0];
 
 	this.elLimits = [];
 
@@ -326,8 +336,9 @@ FilesView.prototype.limitsAdd = function() {
 		elLimit.m_limit = limits[i];
 		elLimit.m_view = this;
 		elLimit.onclick = function(e) {
-			localStorage.filesview = '' + e.currentTarget.m_limit;
-			e.currentTarget.m_view.limitApply();
+			var fv = e.currentTarget.m_view;
+			fv.setLocalStorageAttr('limit', e.currentTarget.m_limit);
+			fv.limitApply();
 		}
 	}
 };
@@ -340,7 +351,7 @@ FilesView.prototype.limitApply = function() {
 	for (var j = 0; j < this.elLimits.length; j++)
 	{
 		var el = this.elLimits[j];
-		if (parseInt(localStorage.filesview) == el.m_limit)
+		if (parseInt(this.getLocalStorageAttr('limit')) === el.m_limit)
 		{
 			limit = el.m_limit;
 			if (limit)
@@ -493,7 +504,9 @@ FilesView.prototype.showAttrs = function(i_el, i_obj) {
 	if (i_obj)
 		i_el.m_obj = i_obj;
 
-	if (this.masks && this.masks.length)
+	// Highlight valid/error objects by given masks.
+	// Skip aux folders that starting with '_'.
+	if ((c_PathBase(i_el.m_path).charAt(0) != '_') && this.masks && this.masks.length)
 		for (var i = 0; i < this.masks.length; i++)
 			if (this.masks[i].re.test(c_PathBase(i_el.m_path)))
 			{
@@ -577,7 +590,9 @@ FilesView.prototype.showAttrs = function(i_el, i_obj) {
 			title += '\nFiles: ' + i_el.m_obj.num_files_total;
 		}
 
-		if (RULES.status && (RULES.status.frames_num != null))
+		// Highlight correct/error files number if it defined in status.
+		// Skip aux folders that starting with '_'.
+		if ((c_PathBase(i_el.m_path).charAt(0) != '_') && RULES.status && (RULES.status.frames_num != null))
 		{
 			i_el.m_el_num_files.classList.add('correct');
 			if (f_count != RULES.status.frames_num)
@@ -729,27 +744,21 @@ FilesView.prototype.showItem = function(i_obj, i_isFolder) {
 	}
 	elItem.classList.add(type);
 
-	// Anchor Icon:
-	var elAnchor = null;
+	// Draw item icon
+	let elIcon = document.createElement('a');
+	elItem.appendChild(elIcon);
+	elIcon.classList.add('icon');
+	elIcon.style.backgroundImage = 'url(rules/icons/' + fv_GetFileIcon(path, i_isFolder) + ')';
+	elIcon.title = 'Icon: Click to select an item.';
+
+	// Create open folder button when item is folder and has filesystem
 	if (i_isFolder)
 	{
-		elAnchor = c_CreateOpenButton({"parent": elItem, "path": path, "type": 'a'});
-		if (elAnchor)
-			elAnchor.style.cssFloat = 'left';
+		let elOpenFoolder = c_CreateOpenButton({"parent": elItem, "path": path, "type": 'a'});
+		if (elOpenFoolder)
+			elOpenFoolder.style.cssFloat = 'left';
 	}
-	if (elAnchor == null)
-	{
-		elAnchor = document.createElement('a');
-		elItem.appendChild(elAnchor);
-		elAnchor.classList.add('anchor');
 
-		var icon = fv_GetFileIcon(path, i_isFolder);
-		if (icon)
-			elAnchor.style.backgroundImage = 'url(rules/icons/' + icon + ')';
-		else
-			elAnchor.textContent = '@';
-	}
-	elAnchor.href = g_GetLocationArgs({"fv_Goto": path});
 
 	// Thumbnail:
 	if (this.has_thumbs)
@@ -796,6 +805,21 @@ FilesView.prototype.showItem = function(i_obj, i_isFolder) {
 	elItem.m_elMenu.style.display = 'none';
 	elItem.m_elMenu.classList.add('menu');
 
+	// Copy link to the item:
+	{
+		let el = document.createElement('div');
+		elBody.appendChild(el);
+		el.classList.add('anchor');
+		el.title = 'Click to copy link to the item.';
+		el.m_path = g_GetLocationArgs({"fv_Goto": elItem.m_path});
+		el.onclick = function(e) {
+			e.stopPropagation();
+			let text = e.currentTarget.m_path;
+			navigator.clipboard.writeText(text);
+			c_Info('Link copied: "' + text + '"')
+		};
+	}
+
 	// Button to add a comment with a link to this item:
 	{
 		var el = document.createElement('div');
@@ -830,6 +854,13 @@ FilesView.prototype.showItem = function(i_obj, i_isFolder) {
 			e.currentTarget.m_view.countFiles(e.currentTarget.m_path);
 		};
 	}
+
+	// Anchor link to the item:
+	var elAnchor = document.createElement('a');
+	elItem.m_elMenu.appendChild(elAnchor);
+	elAnchor.classList.add('anchor');
+	elAnchor.href = g_GetLocationArgs({"fv_Goto": path});
+	elAnchor.title = 'Anchor: Click to get link to the item.';
 
 	// Generate location (asset-shot) thumbnail from a folder or a movie:
 	if (elItem.m_isFolder || (c_FileIsMovie(elItem.m_path)))
@@ -924,13 +955,10 @@ FilesView.prototype.showItem = function(i_obj, i_isFolder) {
 	}
 
 	// Folder dailies button:
-	if (i_isFolder && (RULES.afanasy_enabled !== false) && ASSET && ASSET.subfolders_dailies_hide &&
-		(ASSET.path == g_CurPath()))
+	if (i_isFolder && (RULES.afanasy_enabled !== false) && ASSET &&
+		((ASSET.subfolders_dailies_hide && (ASSET.path == g_CurPath())) ||
+		 (ASSET.subfolders_dailies_hide == false)))
 	{
-		var out_path = c_PathDir(path);
-		if (ASSET && (ASSET.dailies))
-			out_path = ASSET.path + '/' + ASSET.dailies.path[0];
-
 		var el = document.createElement('div');
 		elBody.appendChild(el);
 		el.classList.add('button');
@@ -939,7 +967,7 @@ FilesView.prototype.showItem = function(i_obj, i_isFolder) {
 		el.m_path = path;
 		el.onclick = function(e) {
 			e.stopPropagation();
-			d_Make(e.currentTarget.m_path, out_path)
+			d_Make(e.currentTarget.m_path);
 		};
 	}
 
@@ -1100,7 +1128,7 @@ FilesView.prototype.getSelected = function() {
 
 FilesView.prototype.countFiles = function(i_path, i_args) {
 	c_LoadingElSet(this.elRoot);
-	var cmd = 'rules/bin/walk.sh -m "' + RULES.root + i_path + '"';
+	var cmd = 'rules/bin/walk.sh --mediainfo --upparents 1 "' + RULES.root + i_path + '"';
 	n_Request({
 		"send": {"cmdexec": {"cmds": [cmd]}},
 		"func": this.countFilesFinished,

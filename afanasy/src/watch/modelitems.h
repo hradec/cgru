@@ -5,16 +5,19 @@
 #include <QtCore/QAbstractItemModel>
 
 class Item;
+class ListItems;
 
 class ModelItems : public QAbstractListModel
 {
 public:
-	ModelItems( QObject * parent);
+	ModelItems(ListItems * i_list_items);
 	virtual ~ModelItems();
 
 	int rowCount(  const QModelIndex & ) const;
 	inline int count() const { return items.size();}
 	QVariant data( const QModelIndex &index, int role) const;
+
+	virtual Qt::ItemFlags flags(const QModelIndex &index) const override;
 
 	void addItem( Item * item, int row = -1);
 
@@ -38,4 +41,7 @@ public:
 
 protected:
 	QList<Item*> items;
+
+private:
+	ListItems * m_list_items;
 };

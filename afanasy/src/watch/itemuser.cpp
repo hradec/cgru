@@ -5,6 +5,7 @@
 #include "../libafqt/qenvironment.h"
 
 #include "ctrlsortfilter.h"
+#include "monitorhost.h"
 #include "watch.h"
 
 #include <QtCore/QEvent>
@@ -15,33 +16,34 @@
 #include "../include/macrooutput.h"
 #include "../libafanasy/logger.h"
 
-const int ItemUser::HeightUser = 32;
-const int ItemUser::HeightAnnotation = 14;
+const int ItemUser::HeightUser = 34;
 
-ItemUser::ItemUser( af::User * i_user, const CtrlSortFilter * i_ctrl_sf):
-	ItemNode( (af::Node*)i_user, i_ctrl_sf)
+ItemUser::ItemUser(ListNodes * i_list_nodes, af::User * i_user, const CtrlSortFilter * i_ctrl_sf):
+	ItemWork(i_list_nodes, i_user, TUser, i_ctrl_sf)
 {
-	updateValues( i_user, 0);
+	updateValues(i_user, 0);
 }
 
 ItemUser::~ItemUser()
 {
 }
 
-void ItemUser::updateValues( af::Node * i_node, int i_type)
+void ItemUser::v_updateValues(af::Node * i_afnode, int i_msgType)
 {
-	af::User * user = (af::User*)i_node;
+	af::User * user = static_cast<af::User*>(i_afnode);
 
-	updateNodeValues( i_node);
+	updateNodeValues(user);
+
+	updateWorkValues(user);
+
+	m_params["errors_avoid_host"]          = user->getErrorsAvoidHost();
+	m_params["errors_task_same_host"]      = user->getErrorsTaskSameHost();
+	m_params["errors_retries"]             = user->getErrorsRetries();
+	m_params["errors_forgive_time"]        = user->getErrorsForgiveTime();
+	m_params["jobs_life_time"]             = user->getJobsLifeTime();
 
 	hostname                   = afqt::stoq(user->getHostName());
 	jobs_num                   = user->getNumJobs();
-	running_tasks_num          = user->getRunningTasksNum();
-	running_capacity_total     = user->getRunningCapacityTotal();
-	max_running_tasks          = user->getMaxRunningTasks();
-	max_running_tasks_per_host = user->getMaxRunTasksPerHost();
-	hostsmask                  = afqt::stoq(user->getHostsMask());
-	hostsmask_exclude          = afqt::stoq(user->getHostsMaskExclude());
 	errors_avoidhost           = user->getErrorsAvoidHost();
 	errors_tasksamehost        = user->getErrorsTaskSameHost();
 	errors_retries             = user->getErrorsRetries();
@@ -55,14 +57,13 @@ void ItemUser::updateValues( af::Node * i_node, int i_type)
 	else
 		setNotRunning();
 
+	strLeftTop = m_name;
+
 	if( Watch::isPadawan())
 	{
-		strLeftTop = m_name;
-
 		strLeftBottom = QString("Jobs Count: %1 / %2 Running").arg(jobs_num).arg(user->getNumRunningJobs());
 
 		strHCenterTop.clear();
-		strHCenterTop = QString("Priority:%1").arg(m_priority);
 		if (max_running_tasks != -1) strHCenterTop += QString(" MaxRuningTasks:%1").arg(max_running_tasks);
 		if (max_running_tasks_per_host != -1) strHCenterTop += QString(" MaxRunTasksPerHost:%1").arg(max_running_tasks_per_host);
 		if( false == hostsmask.isEmpty()) strHCenterTop += QString(" HostsMask(%1)").arg( hostsmask);
@@ -87,12 +88,9 @@ void ItemUser::updateValues( af::Node * i_node, int i_type)
 	}
 	else if( Watch::isJedi())
 	{
-		strLeftTop = m_name;
-
 		strLeftBottom = QString("Jobs: %1 / %2 Run").arg(jobs_num).arg(user->getNumRunningJobs());
 
 		strHCenterTop.clear();
-		strHCenterTop = QString("Pri:%1").arg(m_priority);
 		if (max_running_tasks != -1) strHCenterTop += QString(" MaxTasks:%1").arg(max_running_tasks);
 		if (max_running_tasks_per_host != -1) strHCenterTop += QString(" MaxPerHost:%1").arg(max_running_tasks_per_host);
 		if( false == hostsmask.isEmpty()) strHCenterTop += QString(" Hosts(%1)").arg( hostsmask);
@@ -117,8 +115,6 @@ void ItemUser::updateValues( af::Node * i_node, int i_type)
 	}
 	else
 	{
-		strLeftTop = QString("%1-%2").arg(m_name).arg( m_priority);
-
 		strLeftBottom  = 'j' + QString::number(jobs_num) + '/' + QString::number(user->getNumRunningJobs());
 
 		strHCenterTop.clear();
@@ -144,11 +140,33 @@ void ItemUser::updateValues( af::Node * i_node, int i_type)
 			strRightBottom += " mt";
 	}
 
+	ItemNode::updateStrParameters(strHCenterTop);
+
 	if( isLocked()) strLeftTop = "(LOCK) " + strLeftTop;
 
 	m_tooltip = user->v_generateInfoString( true).c_str();
 
+	updateInfo(user);
+
 	calcHeight();
+}
+
+void ItemUser::updateInfo(af::User * i_user)
+{
+	m_info_text.clear();
+
+	m_info_text = QString("Jobs total: <b>%1</b>").arg(i_user->getNumJobs());
+	m_info_text += QString(", running: <b>%1</b>").arg(i_user->getNumRunningJobs());
+	if (i_user->getHostName().size())
+		m_info_text += QString("<br>Activity host: <b>%1</b>").arg(afqt::stoq(i_user->getHostName()));
+	m_info_text += "<br>";
+	ItemWork::updateInfo(i_user);
+
+    m_info_text += "<br>";
+	m_info_text += QString("<br>Registered: <b>%1</b>").arg(afqt::time2Qstr(i_user->getTimeRegister()));
+	m_info_text += QString("<br>Last activity: <b>%1</b>").arg(afqt::time2Qstr(i_user->getTimeActivity()));
+
+	ItemNode::updateInfo();
 }
 
 bool ItemUser::calcHeight()
@@ -159,73 +177,45 @@ bool ItemUser::calcHeight()
 	return old_height == m_height;
 }
 
-void ItemUser::paint( QPainter *painter, const QStyleOptionViewItem &option) const
+bool ItemUser::v_isSelectable() const
 {
-	drawBack( painter, option);
-	int x = option.rect.x() + 5;
-	int y = option.rect.y() + 2;
-	int w = option.rect.width() - 10;
-	int h = option.rect.height() - 4;
-	int height_user = HeightUser-4;
+	if (af::Environment::VISOR())
+		return true;
 
-	painter->setPen( clrTextMain( option) );
-	painter->setFont( afqt::QEnvironment::f_name);
-	painter->drawText( x, y, w, h, Qt::AlignLeft | Qt::AlignTop,     strLeftTop);
+	if (getId() == MonitorHost::getUid())
+		return true;
 
-	painter->setPen( clrTextInfo( option) );
-	painter->setFont( afqt::QEnvironment::f_info);
-	painter->drawText( x, y, w, height_user, Qt::AlignLeft    | Qt::AlignBottom,  strLeftBottom  );
-	painter->drawText( x, y, w, height_user, Qt::AlignHCenter | Qt::AlignTop,     strHCenterTop  );
-	painter->drawText( x, y, w, height_user, Qt::AlignRight   | Qt::AlignBottom,  strRightBottom );
-	painter->setPen( afqt::QEnvironment::qclr_black );
-	painter->drawText( x, y, w, height_user, Qt::AlignRight   | Qt::AlignTop,     strRightTop    );
-
-	if( false == m_annotation.isEmpty())
-		painter->drawText( x, y, w, h, Qt::AlignBottom | Qt::AlignHCenter, m_annotation );
-
-	//
-	// Draw stars:
-	//
-	int numstars = running_tasks_num;
-	if( numstars <= 0 )
-		return;
-
-	static const int stars_size = 8;
-	static const int stars_border = 150;
-	static const int stars_height = 21;
-	static const int stars_maxdelta = stars_size * 2 + 5;
-
-	int stars_left = stars_border;
-	int stars_right = w - stars_border;
-	int stars_delta = (stars_right - stars_left) / numstars;
-
-	if( stars_delta < 1 )
-	{
-		stars_delta = 1;
-		numstars = stars_right - stars_left;
-	}
-	else if( stars_delta > stars_maxdelta )
-		stars_delta = stars_maxdelta;
-
-	const int stars_width = numstars * stars_delta;
-	stars_left = w/2 - stars_width/2;
-
-	int sx = x + stars_left;
-	for( int i = 0; i < numstars; i++)
-	{
-		drawStar( stars_size, sx, y + stars_height, painter);
-		sx += stars_delta;
-	}
-
-	QString running_str = QString("T:%1").arg(running_tasks_num);
-	running_str += QString(" / C:%1").arg(af::toKMG(running_capacity_total).c_str());
-
-	painter->setFont( afqt::QEnvironment::f_name);
-	painter->setPen( afqt::QEnvironment::clr_textstars.c);
-	painter->drawText( x, y, w, HeightUser, Qt::AlignHCenter | Qt::AlignBottom, running_str);
+	return false;
 }
 
-void ItemUser::setSortType( int i_type1, int i_type2 )
+void ItemUser::v_paint(QPainter * i_painter, const QRect & i_rect, const QStyleOptionViewItem & i_option) const
+{
+	drawBack(i_painter, i_rect, i_option);
+	int x = i_rect.x() + 5;
+	int y = i_rect.y() + 2;
+	int w = i_rect.width() - 10;
+	int h = i_rect.height() - 4;
+	int height_user = HeightUser-4;
+
+	i_painter->setPen(clrTextMain(i_option));
+	i_painter->setFont(afqt::QEnvironment::f_name);
+	i_painter->drawText(x, y, w, h, Qt::AlignLeft | Qt::AlignTop, strLeftTop);
+
+	i_painter->setPen(clrTextInfo(i_option));
+	i_painter->setFont(afqt::QEnvironment::f_info);
+	i_painter->drawText(x, y, w, height_user, Qt::AlignLeft    | Qt::AlignBottom, strLeftBottom);
+	i_painter->drawText(x, y, w, height_user, Qt::AlignHCenter | Qt::AlignTop,    strHCenterTop);
+	i_painter->drawText(x, y, w, height_user, Qt::AlignRight   | Qt::AlignBottom, strRightBottom);
+	i_painter->setPen(afqt::QEnvironment::qclr_black );
+	i_painter->drawText(x, y, w, height_user, Qt::AlignRight   | Qt::AlignTop,    strRightTop);
+
+	if (false == m_annotation.isEmpty())
+		i_painter->drawText(x, y, w, h, Qt::AlignBottom | Qt::AlignHCenter, m_annotation);
+
+	drawRunningServices(i_painter, x+w/6, y+14, w-w/3, 16);
+}
+
+void ItemUser::v_setSortType( int i_type1, int i_type2 )
 {
 	resetSorting();
 
@@ -288,7 +278,7 @@ void ItemUser::setSortType( int i_type1, int i_type2 )
 	}
 }
 
-void ItemUser::setFilterType( int i_type )
+void ItemUser::v_setFilterType( int i_type )
 {
 	resetFiltering();
 

@@ -4,15 +4,18 @@
 
 #include "../msg.h"
 
-#include "../job.h"
 #include "../blockdata.h"
-#include "../user.h"
-#include "../render.h"
+#include "../branch.h"
+#include "../job.h"
 #include "../monitor.h"
+#include "../pool.h"
+#include "../render.h"
+#include "../user.h"
 
 #define AFOUTPUT
 #undef AFOUTPUT
 #include "../../include/macrooutput.h"
+#include "../logger.h"
 
 using namespace af;
 
@@ -51,7 +54,7 @@ void MCAfNodes::v_readwrite( Msg * msg)
       for( unsigned i = 0; i < count; i++)
       {
          Af * node = newNode( msg);
-         if( node ) list.push_back( node);
+		 if( node ) list.push_back( node);
          else
          {
             list.clear();
@@ -65,6 +68,12 @@ Af* MCAfNodes::newNode( Msg * msg )
 {
    switch( msg->type())
    {
+	   case Msg::TBranchesList:
+		   return new Branch(msg);
+
+	   case Msg::TPoolsList:
+		   return new Pool(msg);
+
       case Msg::TMonitorsList:
          return new Monitor( msg);
 

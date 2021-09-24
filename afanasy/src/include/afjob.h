@@ -18,10 +18,9 @@ namespace AFJOB
 	const char TASK_DEFAULT_NAME[]      = "task";
 
 	const int TASK_DEFAULT_CAPACITY        = 1000;
-	const int TASK_UPDATE_TIMEOUT          = 30;   ///< Seconds for task to have no update to produce error.
-	const int TASK_STOP_TIMEOUT            = 30;   ///< Time after running task was asked to stop, it become not running itself.
 	const int TASK_LOG_LINESMAX            = 100;  ///< Maximum number of lines in task log.
 	const int TASK_PROGRESS_CHANGE_TIMEOUT = -1;   ///< If task progress did not change within this time, consider that it is erroneous
+	const int TASK_RECONNECT_TIMEOUT       = 30;
 
 	const int TASK_MULTIHOSTMAXHOSTS = 100;
 
@@ -86,6 +85,9 @@ namespace AFJOB
 	const int64_t STATE_WAITRECONNECT_MASK         = 1ULL<<18;
 	const   char  STATE_WAITRECONNECT_NAME[]       = "Waiting reconnect";
 	const   char  STATE_WAITRECONNECT_NAME_S[]     = "WRC";
+	const int64_t STATE_TRYTHISTASKNEXT_MASK       = 1ULL<<19;
+	const   char  STATE_TRYTHISTASKNEXT_NAME[]     = "Trying this task next";
+	const   char  STATE_TRYTHISTASKNEXT_NAME_S[]   = "TRY";
 
 	const int64_t STATE_SOLVED_MASK                = 1ULL<<62;
 
@@ -109,20 +111,31 @@ namespace AFJOB
 
 	// Tasks progess some states for GUI in ASCII
 	// Order is priority, as only one, most important state displayed in a job block progress bar
-	const int ASCII_PROGRESS_COUNT = 11;
+	const int ASCII_PROGRESS_COUNT = 14;
 	const int64_t ASCII_PROGRESS_STATES[ASCII_PROGRESS_COUNT*2] = {
 		' ', 0,
 		'D', STATE_DONE_MASK,
 		'S', STATE_SKIPPED_MASK | STATE_DONE_MASK,
 		'G', STATE_DONE_MASK | STATE_WARNING_MASK,
 		'r', STATE_READY_MASK,
+		'T', STATE_TRYTHISTASKNEXT_MASK | STATE_READY_MASK,
 		'W', STATE_WAITDEP_MASK,
 		'R', STATE_RUNNING_MASK,
 		'N', STATE_RUNNING_MASK | STATE_WARNING_MASK,
 		'Y', STATE_ERROR_READY_MASK | STATE_READY_MASK,
+		'Y', STATE_ERROR_READY_MASK | STATE_READY_MASK | STATE_WARNING_MASK,
 		'E', STATE_ERROR_MASK,
+		'E', STATE_ERROR_MASK | STATE_WARNING_MASK,
 		'C', STATE_WAITRECONNECT_MASK};
-	const int64_t ASCII_PROGRESS_MASK = STATE_READY_MASK | STATE_DONE_MASK | STATE_SKIPPED_MASK | STATE_WAITRECONNECT_MASK |
-		STATE_DONE_MASK | STATE_WARNING_MASK | STATE_RUNNING_MASK | STATE_ERROR_READY_MASK | STATE_ERROR_MASK;
+	const int64_t ASCII_PROGRESS_MASK =
+		STATE_DONE_MASK |
+		STATE_SKIPPED_MASK |
+		STATE_WARNING_MASK |
+		STATE_READY_MASK |
+		STATE_TRYTHISTASKNEXT_MASK |
+		STATE_RUNNING_MASK |
+		STATE_ERROR_READY_MASK |
+		STATE_ERROR_MASK |
+		STATE_WAITRECONNECT_MASK;
 	const int ASCII_PROGRESS_LENGTH = 128;
 }

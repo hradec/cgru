@@ -82,9 +82,9 @@ void BlockData::initDefaults()
 	m_task_max_run_time /******/ = 0;
 	m_task_min_run_time /******/ = 0;
 	m_capacity = AFJOB::TASK_DEFAULT_CAPACITY;
-	m_need_memory /************/ = 0;
-	m_need_power /*************/ = 0;
-	m_need_hdd /***************/ = 0;
+	m_need_memory /************/ = -1;
+	m_need_power /*************/ = -1;
+	m_need_hdd /***************/ = -1;
 	m_errors_retries /*********/ = -1;
 	m_errors_avoid_host /******/ = -1;
 	m_errors_task_same_host /**/ = -1;
@@ -193,12 +193,14 @@ void BlockData::jsonRead(const JSON &i_object, std::string *io_changes)
 	}
 	jr_int32("max_running_tasks" /******/, m_max_running_tasks /******/, i_object, io_changes);
 	jr_int32("max_running_tasks_per_host", m_max_running_tasks_per_host, i_object, io_changes);
+	jr_string("srv_info" /**************/, m_srv_info /***************/, i_object, io_changes);
 	jr_string("custom_data" /***********/, m_custom_data /************/, i_object, io_changes);
 	jr_int32("parser_coeff" /***********/, m_parser_coeff /***********/, i_object, io_changes);
 	jr_int64("sequential" /*************/, m_sequential /*************/, i_object, io_changes);
 	jr_int64("time_started" /***********/, m_time_started /***********/, i_object, io_changes);
 	jr_int64("time_done" /**************/, m_time_done /**************/, i_object, io_changes);
 	jr_stringmap("environment" /********/, m_environment /************/, i_object, io_changes);
+	jr_intmap("tickets",                   m_tickets,                    i_object, io_changes);
 
 	if (m_capacity < 1) m_capacity = 1;
 
@@ -302,6 +304,43 @@ void BlockData::jsonReadTasks(const JSON &i_object)
 			}
 		}
 	}
+}
+
+void BlockData::jsonReadAndAppendTasks(const JSON &i_object)
+{
+	// This function is similar to jsonReadTasks but adds new tasks to the block
+	// instead of overriding the previous ones.
+
+	const JSON &tasks = i_object["tasks"];
+
+	if (!tasks.IsArray() || tasks.Size() == 0)
+		return;
+
+	TaskData **old_tasks_data = m_tasks_data;
+	int old_tasks_num = m_tasks_num;
+
+	m_tasks_num += tasks.Size();
+	m_tasks_data = new TaskData *[m_tasks_num];
+	for (int t = 0; t < m_tasks_num; t++)
+	{
+		if (t < old_tasks_num)
+		{
+			m_tasks_data[t] = old_tasks_data[t];
+			continue;
+		}
+
+		m_tasks_data[t] = createTask(tasks[t - old_tasks_num]);
+		if (m_tasks_data[t] == NULL)
+		{
+			AFERROR("BlockData::BlockData: Can not allocate memory for new task.")
+			break;
+		}
+	}
+
+	if (NULL != old_tasks_data)
+		delete [] old_tasks_data;
+
+	setHasAppendedTasks();
 }
 
 void BlockData::jsonWrite(std::ostringstream &o_str, const std::string &i_datamode) const
@@ -422,6 +461,8 @@ void BlockData::jsonWrite(std::ostringstream &o_str, int i_type) const
 				o_str << ",\n\"hosts_mask_exclude\":\"" << m_hosts_mask_exclude.getPattern() << "\"";
 			if (hasNeedProperties())
 				o_str << ",\n\"need_properties\":\"" << m_need_properties.getPattern() << "\"";
+			if (m_tickets.size()) af::jw_intmap("tickets", m_tickets, o_str);
+
 			o_str << ',';
 
 		case Msg::TBlocksProgress:
@@ -435,7 +476,7 @@ void BlockData::jsonWrite(std::ostringstream &o_str, int i_type) const
 			if (m_state != 0)
 			{
 				o_str << ",\n";
-				jw_state(m_state, o_str);
+				jw_stateJob(m_state, o_str);
 			}
 			if (m_job_id != 0) o_str << ",\n\"job_id\":" << m_job_id;
 
@@ -454,6 +495,9 @@ void BlockData::jsonWrite(std::ostringstream &o_str, int i_type) const
 			if (p_tasks_warning > 0) o_str << ",\n\"p_tasks_warning\":" << p_tasks_warning;
 			if (p_tasks_waitrec > 0) o_str << ",\n\"p_tasks_waitrec\":" << p_tasks_waitrec;
 			if (p_tasks_run_time > 0) o_str << ",\n\"p_tasks_run_time\":" << p_tasks_run_time;
+
+			if (m_srv_info.size())
+				o_str << ",\n\"srv_info\":\"" << m_srv_info << "\"";
 
 			//		if(( p_tasks_done < m_tasks_num ) ||
 			//		     p_tasks_error || m_running_tasks_counter )
@@ -581,6 +625,7 @@ void BlockData::v_readwrite(Msg *msg)
 			rw_int32_t(m_task_progress_change_timeout, msg);
 			rw_int32_t(m_task_max_run_time, msg);
 			rw_int32_t(m_task_min_run_time, msg);
+			rw_IntMap(m_tickets, msg);
 
 		case Msg::TBlocksProgress:
 
@@ -603,6 +648,8 @@ void BlockData::v_readwrite(Msg *msg)
 			rw_int32_t(m_block_num, msg);
 			rw_int64_t(m_time_started, msg);
 			rw_int64_t(m_time_done, msg);
+
+			rw_String(m_srv_info, msg);
 
 			rw_data(p_progressbar, msg, AFJOB::ASCII_PROGRESS_LENGTH);
 
@@ -769,14 +816,16 @@ bool BlockData::genNumbers(long long &start, long long &end, int num, long long 
 		{
 			start = num * m_frames_per_task;
 			end = start + m_frames_per_task - 1;
-			if (frames_num) *frames_num = m_frames_per_task;
 		}
 		else
 		{
 			start = num / (-m_frames_per_task);
 			end = start; //( num + 1 ) / (-frame_pertask);
-			if (frames_num) *frames_num = -m_frames_per_task;
 		}
+
+		if (frames_num)
+			*frames_num = m_frames_per_task;
+
 		return true;
 	}
 
@@ -1037,12 +1086,15 @@ TaskExec *BlockData::genTask(int num) const
 			m_job_id, m_block_num, m_flags, num);
 
 	taskExec->m_custom_data_block = m_custom_data;
+	taskExec->m_tickets = m_tickets;
 
 	if (isNotNumeric())
 	{
 		taskExec->setTaskCommand(m_tasks_data[num]->getCommand());
 		taskExec->setTaskFiles(m_tasks_data[num]->getFiles());
 		taskExec->m_custom_data_task = m_tasks_data[num]->getCustomData();
+		if (m_tasks_data[num]->hasEnvironment())
+			taskExec->joinEnvironment(m_tasks_data[num]->getEnvironment());
 	}
 
 	return taskExec;
@@ -1294,13 +1346,15 @@ void BlockData::v_generateInfoStream(std::ostringstream &o_str, bool full) const
 	generateInfoStreamTyped(o_str, Msg::TBlocksProperties, full);
 }
 
-void BlockData::addSolveCounts(TaskExec *i_exec)
+void BlockData::addSolveCounts(TaskExec *i_exec, Render * i_render)
 {
 	m_running_tasks_counter++;
 	m_running_capacity_counter += i_exec->getCapResult();
+
+	m_srv_info = i_render->getName();
 }
 
-void BlockData::remSolveCounts(TaskExec *i_exec)
+void BlockData::remSolveCounts(TaskExec *i_exec, Render * i_render)
 {
 	if (m_running_tasks_counter <= 0)
 		AF_ERR << "Tasks counter is zero or negative: " << m_running_tasks_counter;
@@ -1311,6 +1365,9 @@ void BlockData::remSolveCounts(TaskExec *i_exec)
 		AF_ERR << "Tasks capacity counter is zero or negative: " << m_running_capacity_counter;
 	else
 		m_running_capacity_counter -= i_exec->getCapResult();
+
+	if (m_running_tasks_counter == 0)
+		m_srv_info = i_render->getName();
 }
 
 // Functions to update tasks progress and block progress bar:
@@ -1479,4 +1536,12 @@ void BlockData::setTimeStarted(long long value, bool reset)
 void BlockData::setTimeDone(long long value)
 {
 	m_time_done = value;
+}
+
+void BlockData::editTicket(std::string & i_name, int32_t & i_count)
+{
+	if (i_count == -1)
+		m_tickets.erase(i_name);
+	else
+		m_tickets[i_name] = i_count;
 }

@@ -44,17 +44,17 @@ public:
 
 	inline const std::string & getWDir()    const { return m_wdir;    }
 	inline const std::string & getCommand() const { return m_command; }
+	const std::map<std::string, std::string> & getEnvironment() const {return m_environment;}
 	const std::vector<std::string> getFiles() const;
 	const std::vector<std::string> getParsedFiles() const;
 
 	bool hasParser() const;
 
-	void parse( const std::string & i_mode,
-				std::string & data,
-				int pid,
-				int & percent, int & frame, int & percentframe,
-				std::string & activity, std::string & report,
-				bool & warning, bool & error, bool & badresult, bool & finishedsuccess) const;
+	void parse (const std::string & i_mode, int i_pid,
+				std::string & io_data, std::string & io_resources,
+				int & o_percent, int & o_frame, int & o_percentframe,
+				std::string & o_activity, std::string & o_report,
+				bool & o_warning, bool & o_error, bool & o_badresult, bool & o_finishedsuccess) const;
 
 	const std::string toHTML( const std::string & i_data) const;
 
@@ -75,6 +75,7 @@ private:
 
 	PyObject * m_PyObj_FuncGetWDir;
 	PyObject * m_PyObj_FuncGetCommand;
+	PyObject * m_PyObj_FuncGetEnvironment;
 	PyObject * m_PyObj_FuncGetFiles;
 	PyObject * m_PyObj_FuncGetParsedFiles;
 	PyObject * m_PyObj_FuncHasParser;
@@ -89,5 +90,6 @@ private:
 
 	std::string m_wdir;
 	std::string m_command;
+	std::map<std::string, std::string> m_environment;
 };
 }

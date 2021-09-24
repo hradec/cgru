@@ -1,11 +1,14 @@
 #include "modelitems.h"
 
+#include "listitems.h"
+
 #define AFOUTPUT
 #undef AFOUTPUT
 #include "../include/macrooutput.h"
 
-ModelItems::ModelItems( QObject * parent):
-   QAbstractListModel( parent)
+ModelItems::ModelItems(ListItems * i_list_items):
+	QAbstractListModel(i_list_items),
+	m_list_items(i_list_items)
 {
 }
 
@@ -35,10 +38,24 @@ QVariant ModelItems::data( const QModelIndex &index, int role) const
    case Qt::DisplayRole:
       return qVariantFromValue( items[index.row()]);
    case Qt::ToolTipRole:
-      return items[index.row()]->getToolTip();
+		return items[index.row()]->v_getToolTip();
    default:
       return QVariant();
    }
+}
+
+Qt::ItemFlags ModelItems::flags(const QModelIndex &index) const
+{
+	Qt::ItemFlags flags = Qt::NoItemFlags;
+
+	if (Item::isItemP(index.data()))
+		if (Item::toItemP(index.data())->v_isSelectable())
+		{
+			flags |= Qt::ItemIsEnabled;
+			flags |= Qt::ItemIsSelectable;
+		}
+
+	return flags;
 }
 
 void ModelItems::addItem( Item * item, int row)
@@ -65,6 +82,10 @@ void ModelItems::delItem( int row)
    beginRemoveRows( QModelIndex(), row, row);
    Item * item = items.takeAt( row);
    endRemoveRows();
+
+	m_list_items->v_itemToBeDeleted(item);
+	item->v_toBeDeleted();
+
    delete item;
 }
 

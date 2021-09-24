@@ -1,13 +1,14 @@
 #pragma once
 
 #include "name_af.h"
-#include "host.h"
+#include "affarm.h"
+#include "hostres.h"
 #include "client.h"
 
 namespace af
 {
-/// Afanasy render slave.
-class Render : public Client
+/// Afanasy renderer client.
+class Render : public Client, public Farm
 {
 public:
 
@@ -29,6 +30,11 @@ public:
 	inline bool isOffline() const { return false == (m_state & SOnline );}///< Whether Render is offline.
 	inline bool isDirty()   const { return m_state & SDirty;}  ///< Whether Render is dirty.
 
+	inline bool isSick()    const {return m_state & SSick;  }
+	inline bool isNotSick() const {return false == isSick();}
+	inline void setSick()   {m_state |=  SSick;}
+	inline void unsetSick() {m_state &= ~SSick;}
+
 	inline bool isWOLFalling()     const { return m_state & SWOLFalling;  }
 	inline bool isWOLSleeping()    const { return m_state & SWOLSleeping; }
 	inline bool isWOLWaking()      const { return m_state & SWOLWaking;   }
@@ -39,31 +45,9 @@ public:
 	inline void setWOLSleeping( bool value) { if( value ) m_state = m_state | SWOLSleeping; else m_state = m_state & (~SWOLSleeping);}
 	inline void setWOLWaking(   bool value) { if( value ) m_state = m_state | SWOLWaking;   else m_state = m_state & (~SWOLWaking);  }
 
-	inline int getMaxTasks()     const { return (m_max_tasks == -1 ? m_host.m_max_tasks : m_max_tasks);}
-	inline int getCapacity()     const { return (m_capacity == -1 ? m_host.m_capacity : m_capacity);}
+	inline const std::string & getPool() const { return m_pool;}
 	inline int getCapacityUsed() const { return m_capacity_used;}
-	inline int getCapacityFree() const { return (m_capacity == -1 ? m_host.m_capacity : m_capacity) - m_capacity_used;}
-	inline bool hasCapacity( int value) const { return m_capacity_used + value <= (m_capacity == -1 ? m_host.m_capacity : m_capacity );}
 
-/// Whether Render is ready to render tasks.
-   inline bool isReady() const { return (
-			( m_state & SOnline ) &&
-			( m_priority > 0 ) &&
-			( m_capacity_used < getCapacity() ) &&
-			( (int)m_tasks.size() < getMaxTasks() ) &&
-            ( false == isWOLFalling())
-         );}
-
-	inline bool isWOLWakeAble() const { return (
-			isOffline() &&
-			isWOLSleeping() &&
-			( false == isWOLWaking()) &&
-			( getCapacity() > 0 ) &&
-			( getMaxTasks() > 0 ) &&
-			( m_priority > 0 )
-		);}
-
-   inline const Host    & getHost()    const { return m_host;}
    inline const HostRes & getHostRes() const { return m_hres;}
 
 	/// Set free (unset nimby and NIMBY).
@@ -79,9 +63,6 @@ public:
    inline void setOffline() { m_state = m_state & (~SOnline); m_wol_operation_time = time(NULL);}
 
    inline void setPriority( int value) { m_priority = value; }///< Set priority.
-
-   void setCapacity( int value) { m_capacity = value; checkDirty();}
-   void setMaxTasks( int value) { m_max_tasks = value; checkDirty();}
 
    virtual int v_calcWeight() const; ///< Calculate and return memory size.
 
@@ -109,7 +90,8 @@ public:
 		SWOLFalling  = 1ULL << 5,
 		SWOLSleeping = 1ULL << 6,
 		SWOLWaking   = 1ULL << 7,
-		SPaused  = 1ULL << 8, ///< Paused mode is a kind of "super nimby" mode that cannot be left automatically
+		SPaused      = 1ULL << 8, ///< Paused mode is a kind of "super nimby" mode that cannot be left automatically
+		SSick        = 1ULL << 9, ///< When render produces errors only
 	};
 
 protected:
@@ -118,13 +100,10 @@ protected:
 
 protected:
 
-	int32_t m_capacity;
+	std::string m_pool;
+
 	int32_t m_capacity_used;
-	int32_t m_max_tasks;
 
-	std::vector<std::string> m_services_disabled;
-
-	Host     m_host;
 	HostRes  m_hres;
 
 	std::list<TaskExec*> m_tasks;

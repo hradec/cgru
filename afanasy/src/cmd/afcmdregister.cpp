@@ -14,11 +14,11 @@
 #include "cmd_numeric.h"
 #include "cmd_passwd.h"
 #include "cmd_config.h"
-#include "cmd_farm.h"
 #include "cmd_statistics.h"
 
 #include "cmd_database.h"
 
+#include "cmd_pool.h"
 #include "cmd_render.h"
 #include "cmd_user.h"
 #include "cmd_monitor.h"
@@ -48,6 +48,14 @@ void AfCmd::RegisterCommands()
 	addCmd(new CmdMonitorList);
 	addCmd(new CmdMonitorLog);
 	addCmd(new CmdMonitorMsg);
+
+	addCmd(new CmdPoolList);
+	addCmd(new CmdPoolLog);
+	addCmd(new CmdPoolPriority);
+	addCmd(new CmdPoolPause);
+	addCmd(new CmdPoolUnpause);
+	addCmd(new CmdPoolServiceAdd);
+	addCmd(new CmdPoolServiceDel);
 
 	addCmd(new CmdRenderList);
 	addCmd(new CmdRenderPriority);
@@ -108,10 +116,6 @@ void AfCmd::RegisterCommands()
 	addCmd(new CmdDBUpdateTables);
 
 	addCmd(new CmdConfigLoad);
-
-	addCmd(new CmdFarm);
-	addCmd(new CmdFarmLoad);
-	addCmd(new CmdFarmCheck);
 
 	addCmd(new CmdStatistics);
 

@@ -201,13 +201,13 @@ void Task::v_refresh( time_t currentTime, RenderContainer * renders, MonitorCont
 
 
 	// Check reconnect timeout:
-	if( m_progress->state & AFJOB::STATE_WAITRECONNECT_MASK )
+	if (m_progress->state & AFJOB::STATE_WAITRECONNECT_MASK)
 	{
-		if( currentTime - m_progress->time_done > af::Environment::getTaskUpdateTimeout())
+		if (currentTime - m_progress->time_done > af::Environment::getTaskReconnectTimeout())
 		{
 			v_appendLog("Reconnect timeout reached. Setting state to READY.");
 			m_progress->state = AFJOB::STATE_READY_MASK;
-            if( false == changed ) changed = true;
+            if (false == changed) changed = true;
 		}
 	}
 
@@ -289,18 +289,44 @@ void Task::restart( const std::string & i_message, RenderContainer * i_renders, 
 	v_appendLog( i_message);
 }
 
-void Task::skip( const std::string & message, RenderContainer * renders, MonitorContainer * monitoring)
+void Task::skip(const std::string & i_message, RenderContainer * i_renders, MonitorContainer * i_monitoring, uint32_t i_state)
 {
-   if( m_progress->state & AFJOB::STATE_DONE_MASK) return;
-   if( m_run ) m_run->skip( message, renders, monitoring);
-   else
-   {
-      m_progress->state = AFJOB::STATE_DONE_MASK | AFJOB::STATE_SKIPPED_MASK;
-      m_progress->errors_count = 0;
-      v_store();
-      v_monitor( monitoring);
-      v_appendLog( message);
-   }
+	if (m_progress->state & AFJOB::STATE_DONE_MASK)
+		return;
+
+	if (m_run)
+		m_run->skip(i_message, i_renders, i_monitoring, i_state);
+	else
+	{
+		m_progress->state = i_state;
+		m_progress->errors_count = 0;
+		v_store();
+		v_monitor(i_monitoring);
+		v_appendLog(i_message);
+	}
+}
+
+bool Task::tryNext(bool i_enable, MonitorContainer * i_monitoring)
+{
+	if (i_enable)
+	{
+		if (m_progress->state & AFJOB::STATE_TRYTHISTASKNEXT_MASK)
+			return false;
+
+		m_progress->state |= AFJOB::STATE_TRYTHISTASKNEXT_MASK;
+	}
+	else
+	{
+		if (m_progress->state & AFJOB::STATE_TRYTHISTASKNEXT_MASK)
+			m_progress->state &= (~AFJOB::STATE_TRYTHISTASKNEXT_MASK);
+		else
+			return false;
+	}
+
+	v_monitor(i_monitoring);
+	v_store();
+
+	return true;
 }
 
 void Task::errorHostsAppend( const std::string & hostname)
@@ -308,13 +334,22 @@ void Task::errorHostsAppend( const std::string & hostname)
    std::list<std::string>::iterator hIt = m_errorHosts.begin();
    std::list<int>::iterator cIt = m_errorHostsCounts.begin();
    std::list<time_t>::iterator tIt = m_errorHostsTime.begin();
+
+   std::string blockName = m_block->m_data->getName();
+   std::string jobLog = "B[\"" + blockName + "\"]"
+                      + " Task[" + std::to_string(m_number) + "]: "
+                      + hostname + " - AVOIDING HOST!";
+
    for( ; hIt != m_errorHosts.end(); hIt++, tIt++, cIt++ )
       if( *hIt == hostname )
       {
          (*cIt)++;
          *tIt = time(NULL);
          if( *cIt >= m_block->getErrorsTaskSameHost() )
+         {
             v_appendLog( hostname + " - AVOIDING HOST !");
+            m_block->m_job->appendLog(jobLog);
+         }
          return;
       }
 

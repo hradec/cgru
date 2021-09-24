@@ -32,11 +32,6 @@ WndCustomizeGUI::WndCustomizeGUI():
 	colorsWidget->setBackgroundRole( QPalette::Mid);
 	colorsWidget->setAutoFillBackground( true);
 
-	QWidget * thumbsWidget = new QWidget( this);
-	tabWidet->addTab( thumbsWidget, "Thumbnails");
-	thumbsWidget->setBackgroundRole( QPalette::Mid);
-	thumbsWidget->setAutoFillBackground( true);
-
 	QWidget * starsWidget = new QWidget( this);
 	tabWidet->addTab( starsWidget, "Stars Shape");
 	starsWidget->setBackgroundRole( QPalette::Mid);
@@ -133,6 +128,8 @@ WndCustomizeGUI::WndCustomizeGUI():
 	vlayout->addWidget( new ColorWidget( this, &afqt::QEnvironment::clr_itemrenderoff    ));
 	vlayout->addWidget( new ColorWidget( this, &afqt::QEnvironment::clr_itemrenderbusy   ));
 	vlayout->addWidget( new ColorWidget( this, &afqt::QEnvironment::clr_itemrendernimby  ));
+	vlayout->addWidget( new ColorWidget( this, &afqt::QEnvironment::clr_itemrenderNIMBY  ));
+	vlayout->addWidget( new ColorWidget( this, &afqt::QEnvironment::clr_itemrendersick   ));
 	vlayout->addWidget( new ColorWidget( this, &afqt::QEnvironment::clr_itemrenderpaused ));
 	vlayout->addWidget( new ColorWidget( this, &afqt::QEnvironment::clr_itemrenderpltclr ));
 
@@ -144,15 +141,6 @@ WndCustomizeGUI::WndCustomizeGUI():
 	vlayout->addWidget( new ColorWidget( this, &afqt::QEnvironment::clr_textmuted  ));
 	vlayout->addWidget( new ColorWidget( this, &afqt::QEnvironment::clr_textdone   ));
 	vlayout->addWidget( new ColorWidget( this, &afqt::QEnvironment::clr_textstars  ));
-
-
-	// Thumbnails:
-	vlayout = new QVBoxLayout( thumbsWidget);
-	label = new QLabel("Jobs List:", this);
-	label->setAlignment( Qt::AlignHCenter | Qt::AlignVCenter);
-	vlayout->addWidget( label);
-	vlayout->addWidget( new NumberWidget( this, &afqt::QEnvironment::thumb_jobs_num    ));
-	vlayout->addWidget( new NumberWidget( this, &afqt::QEnvironment::thumb_jobs_height ));
 
 
 	// Stars:

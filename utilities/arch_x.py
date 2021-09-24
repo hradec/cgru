@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 import os
@@ -80,7 +79,7 @@ while True:
 	if data is None: break
 	if len(data) < 1: break
 
-	sys.stdout.write(data)
+	sys.stdout.write(cgruutils.toStr(data))
 	sys.stdout.flush()
 
 	if Ext == 'zip':
@@ -126,7 +125,7 @@ while True:
 	if data is None: break
 	if len(data) < 1: break
 
-	sys.stdout.write(data)
+	sys.stdout.write(cgruutils.toStr(data))
 
 	if data.find(Key) != -1 and FilesTotal:
 		if data not in Files:

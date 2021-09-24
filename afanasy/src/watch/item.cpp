@@ -7,6 +7,7 @@
 
 #include "../libafqt/qenvironment.h"
 
+#include "itembutton.h"
 #include "watch.h"
 
 #include <QtCore/QEvent>
@@ -16,25 +17,51 @@
 #define AFOUTPUT
 #undef AFOUTPUT
 #include "../include/macrooutput.h"
+#include "../libafanasy/logger.h"
 
 QPolygonF Item::ms_star_pointsInit;
 QPolygonF Item::ms_star_pointsDraw;
 
-const int Item::Height = 14;
+const int Item::HeightAnnotation = 14;
+const int Item::HeightTickets = 24;
+
+const int Item::Height = 16;
 const int Item::Width  = 100;
 
-Item::Item( const QString &itemname, int itemid):
-	m_name( itemname),
+Item::Item(const QString &i_name, int i_id, EType i_type):
+	m_name(i_name),
 	m_height( Height),
+	m_margin_left(0),
 	m_locked( false),
 	m_running( false),
-	m_id(itemid),
-	m_hidden(false)
+	m_id(i_id),
+	m_type(i_type),
+	m_hidden(false),
+	m_depth(0)
 {
 }
 
 Item::~Item()
 {
+	for (int b = 0; b < m_buttons.size(); b++)
+		delete m_buttons[b];
+}
+
+void Item::v_toBeDeleted() {}
+
+void Item::setDepth(int i_depth)
+{
+	m_depth = i_depth;
+	m_margin_left = DepthOffset * m_depth;
+}
+
+const QVariant & Item::getParamVar(const QString & i_name) const
+{
+	static const QVariant var;
+	QMap<QString, QVariant>::const_iterator it = m_params.find(i_name);
+	if (it == m_params.end())
+		return var;
+	return it.value();
 }
 
 QSize Item::sizeHint( const QStyleOptionViewItem &option) const
@@ -44,7 +71,13 @@ QSize Item::sizeHint( const QStyleOptionViewItem &option) const
 
 bool Item::calcHeight()
 {
+	//AF_DEV << afqt::qtos(m_name) << ": " << m_height;
     return true;
+}
+
+bool Item::v_isSelectable() const
+{
+	return true;
 }
 
 const QColor & Item::clrTextMain( const QStyleOptionViewItem &option) const
@@ -84,40 +117,77 @@ const QColor & Item::clrTextState( const QStyleOptionViewItem &option, bool on )
 	else   return (option.state & QStyle::State_Selected) ? afqt::QEnvironment::clr_textbright.c : afqt::QEnvironment::clr_textmuted.c;
 }
 
-void Item::drawBack( QPainter *painter, const QStyleOptionViewItem &option, const QColor * i_clrItem, const QColor * i_clrBorder) const
+void Item::drawBack(QPainter * i_painter, const QRect & i_rect, const QStyleOptionViewItem & i_option,
+		const QColor * i_clrItem, const QColor * i_clrBorder) const
 {
-	painter->setOpacity( 1.0);
-	painter->setRenderHint(QPainter::Antialiasing);
-	painter->setRenderHint(QPainter::TextAntialiasing);
+	i_painter->setOpacity(1.0);
+	i_painter->setRenderHint(QPainter::Antialiasing);
+	i_painter->setRenderHint(QPainter::TextAntialiasing);
 
-	if( option.state & QStyle::State_Selected )
+	if (i_option.state & QStyle::State_Selected)
 		i_clrItem = &afqt::QEnvironment::clr_selected.c;
-	else if( i_clrItem == NULL )
+	else if(i_clrItem == NULL)
 		i_clrItem = &afqt::QEnvironment::clr_item.c;
 
-	painter->setPen( i_clrBorder ? (*i_clrBorder) : (afqt::QEnvironment::clr_outline.c));
-	painter->setBrush( *i_clrItem);
-	painter->drawRoundedRect( option.rect, 2, 2);
+	i_painter->setPen(i_clrBorder ? (*i_clrBorder) : (afqt::QEnvironment::clr_outline.c));
+	i_painter->setBrush(*i_clrItem);
+	i_painter->drawRoundedRect(i_rect, 2, 2);
 }
 
-void Item::paint( QPainter *painter, const QStyleOptionViewItem &option) const
+void Item::paint(QPainter * i_painter, const QStyleOptionViewItem & i_option) const
 {
-	drawBack( painter, option);
+	QRect rect(i_option.rect);
+	rect.setLeft(rect.left() + m_margin_left);
 
-	painter->setPen( afqt::QEnvironment::qclr_black );
+	v_paint(i_painter, rect, i_option);
 
-	painter->setFont( afqt::QEnvironment::f_name);
-	painter->drawText( option.rect, Qt::AlignTop | Qt::AlignLeft, m_name);
-
-	painter->setFont( afqt::QEnvironment::f_info);
-	painter->drawText( option.rect, Qt::AlignBottom | Qt::AlignRight, QString(" ( virtual Item painting ) "));
+	for (int b = 0; b < m_buttons.size(); b++)
+		m_buttons[b]->paint(i_painter, rect);
 }
+
+void Item::v_paint(QPainter * i_painter, const QRect & i_rect, const QStyleOptionViewItem & i_option) const
+{
+	drawBack(i_painter, i_rect, i_option);
+
+	i_painter->setPen(afqt::QEnvironment::qclr_black);
+
+	i_painter->setFont(afqt::QEnvironment::f_name);
+	i_painter->drawText(i_rect, Qt::AlignTop | Qt::AlignLeft, m_name);
+
+	i_painter->setFont(afqt::QEnvironment::f_info);
+	i_painter->drawText(i_rect, Qt::AlignBottom | Qt::AlignRight, QString(" ( virtual Item painting ) "));
+}
+
+bool Item::mousePressed(const QPoint & i_point, const QRect & i_rect, const Qt::MouseButtons & i_buttons)
+{
+	int x = i_point.x() - i_rect.x() - m_margin_left;
+	int y = i_point.y() - i_rect.y();
+
+	int w = i_rect.width() - m_margin_left;
+	int h = i_rect.height();
+
+	for (int b = 0; b < m_buttons.size(); b++)
+		if (m_buttons[b]->isClicked(x, y))
+		{
+			v_buttonClicked(m_buttons[b]);
+			return true;
+		}
+
+	return v_mousePressed(x, y, w, h, i_buttons);
+}
+
+bool Item::v_mousePressed(int i_x, int i_y, int i_w, int i_h, const Qt::MouseButtons & i_buttons)
+{
+	return false;
+}
+
+void Item::v_buttonClicked(ItemButton * i_b) {}
 
 void Item::v_filesReceived( const af::MCTaskUp & i_taskup) {}
 
 void Item::printfState( const uint32_t state, int posx, int posy, QPainter * painter, const QStyleOptionViewItem &option) const
 {
-	static const int posx_d = 18;
+	static const int posx_d = 20;
 
 	painter->setFont( afqt::QEnvironment::f_min);
 
@@ -293,3 +363,97 @@ void Item::drawStar( int size, int posx, int posy, QPainter * painter)
 	painter->setBrush( QBrush( afqt::QEnvironment::clr_star.c, Qt::SolidPattern ));
 	painter->drawPolygon( ms_star_pointsDraw);//, Qt::WindingFill);
 }
+
+int Item::drawTicket(QPainter * i_painter, const QPen & i_text_pen,
+		int i_x, int i_y, int i_w, int i_h,
+		int i_opts,
+		const QString & i_name,
+		int i_count, int i_usage, int i_hosts, int i_max_hosts)
+{
+	i_painter->setPen(i_text_pen);
+	i_painter->setFont(afqt::QEnvironment::f_info);
+
+	QPen border_pen;
+	if (i_opts & TKD_BORDER)
+	{
+		i_x += 2;
+		i_y += 2;
+
+		if (i_opts & TKD_DUMMY)
+		{
+			i_painter->setFont(afqt::QEnvironment::f_muted);
+			border_pen.setStyle(Qt::DashDotDotLine);
+		}
+
+		if ((i_count != -1) && (i_usage >= i_count))
+			border_pen.setColor(afqt::QEnvironment::clr_error.c);
+		else if ((i_max_hosts != -1) && (i_hosts >= i_max_hosts))
+			border_pen.setColor(afqt::QEnvironment::clr_error.c);
+		else if (i_usage > 0)
+			border_pen.setColor(afqt::QEnvironment::clr_running.c);
+		else
+			border_pen.setColor(afqt::QEnvironment::clr_done.c);
+	}
+
+	const QPixmap * icon = Watch::getTicketIcon(i_name);
+	QString text;
+
+	if (i_count >= 0) text += QString("x%1").arg(i_count);
+	if (i_usage >  0) text += QString(":%1").arg(i_usage);
+	if (i_hosts >  0) text += QString("/%1").arg(i_hosts);
+	if (i_max_hosts >= 0) text += QString("/%1").arg(i_max_hosts);
+
+	QRect tk_rect;
+	int tk_width = 0;
+	if (i_opts & TKD_LEFT)
+	{
+		if (icon)
+		{
+			i_painter->drawPixmap(i_x + tk_width, i_y-1, *icon);
+			tk_width += icon->width();
+		}
+		else
+		{
+			i_painter->drawText(i_x + tk_width, i_y, i_w, 15, Qt::AlignLeft | Qt::AlignTop, i_name, &tk_rect);
+			tk_width += tk_rect.width();
+		}
+
+		i_painter->drawText(i_x + tk_width, i_y, i_w, 15, Qt::AlignLeft | Qt::AlignTop, text, &tk_rect);
+		tk_width += tk_rect.width() + 1;
+
+		if (i_opts & TKD_BORDER)
+		{
+			i_painter->setPen(border_pen);
+			i_painter->setBrush(Qt::NoBrush);
+			i_painter->drawRect(i_x - 2, i_y - 2, tk_width + 4, i_h);
+			tk_width += 4;
+		}
+	}
+	else
+	{
+		i_painter->drawText(i_x, i_y, i_w - tk_width, 15, Qt::AlignRight | Qt::AlignTop, text, &tk_rect);
+		tk_width += tk_rect.width() + 1;
+
+		if (icon)
+		{
+			i_painter->drawPixmap(i_x + i_w - tk_width - icon->width(), i_y-1, *icon);
+			tk_width += icon->width();
+		}
+		else
+		{
+			i_painter->drawText(i_x, i_y, i_w - tk_width, 15, Qt::AlignRight | Qt::AlignTop, i_name, &tk_rect);
+			tk_width += tk_rect.width();
+		}
+
+		if (i_opts & TKD_BORDER)
+		{
+			i_painter->setPen(border_pen);
+			i_painter->setBrush(Qt::NoBrush);
+			i_painter->drawRect(i_x + i_w - 2 - tk_width, i_y - 2, tk_width + 4, i_h);
+			tk_width += 4;
+		}
+	}
+
+	return tk_width;
+}
+

@@ -67,8 +67,9 @@ function g_Init()
 	g_monitor_buttons = header.getElementsByClassName('mbutton');
 	for (var i = 0; i < g_monitor_buttons.length; i++)
 	{
+		g_monitor_buttons[i].mtype = g_monitor_buttons[i].getAttribute('mtype');
 		g_monitor_buttons[i].onclick = function(e) {
-			return g_MButtonClicked(e.currentTarget.textContent, e);
+			return g_MButtonClicked(e.currentTarget.mtype, e);
 		};
 	}
 	g_GetConfig();
@@ -102,7 +103,7 @@ function g_ConfigReceived(i_obj)
 		}
 
 		if (cgru_Config.docs_url)
-			$('docs_link').href = cgru_Config.docs_url + '/afanasy/gui#web';
+			$('docs_link').href = cgru_Config.docs_url + '/en/latest/afanasy/watch.html';
 		if (cgru_Config.forum_url)
 			$('forum_link').href = cgru_Config.forum_url + '/viewforum.php?f=17';
 
@@ -140,6 +141,7 @@ function g_ConfigReceived(i_obj)
 	cm_ApplyStyles();
 
 	nw_GetSoftwareIcons();
+	nw_GetTicketsIcons();
 	g_RegisterSend();
 	g_Refresh();
 }
@@ -381,7 +383,7 @@ function g_ConnectionLost()
 function g_MButtonClicked(i_type, i_evt)
 {
 	for (var i = 0; i < g_monitor_buttons.length; i++)
-		if (g_monitor_buttons[i].textContent == i_type)
+		if (g_monitor_buttons[i].mtype == i_type)
 			if (g_monitor_buttons[i].classList.contains('pushed'))
 				return;
 			else
@@ -394,13 +396,12 @@ function g_MButtonClicked(i_type, i_evt)
 function g_MonitorClosed(i_monitor)
 {
 	for (var i = 0; i < g_monitor_buttons.length; i++)
-		if (g_monitor_buttons[i].textContent == i_monitor.name)
+		if (g_monitor_buttons[i].mtype == i_monitor.name)
 			g_monitor_buttons[i].classList.remove('pushed');
 	if (g_main_monitor == i_monitor)
 		g_main_monitor = null;
 }
 
-// function g_OpenMonitor( i_type, i_evt, i_id, i_name)
 function g_OpenMonitor(i_args)
 {
 	if (i_args.name == null)

@@ -6,9 +6,7 @@ re_frame = re.compile(
     r'SCEN.*(progr: begin scene preprocessing for frame )([0-9]+)'
 )
 re_number = re.compile(r'[0-9]+')
-re_percent = re.compile(
-    r'Rendering image...:([ ]{,})([0-9]{1,2}.*)(%[ ]{,}).*'
-)
+re_percent = re.compile('Rendering image.*:  ()([0-9]{1,2}\.[0-9]{1,2})()')
 IMAGE = r'Successfully written image file '
 
 
@@ -21,16 +19,8 @@ class vray(parser.parser):
         self.buffer = ""
         self.numinseq = 0
 
-    def do(self, data, mode):
-        """Missing DocString
-
-        :param data:
-        :param mode:
-        :return:
-        """
-        # self.buffer += data
-        # needcalc = False
-        # frame = False
+    def do(self, i_args):
+        data = i_args['data']
 
         if len(data) < 1:
             return

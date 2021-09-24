@@ -4,6 +4,7 @@
 #include "ctrlsortfilter.h"
 #include "modelnodes.h"
 #include "monitorhost.h"
+#include "paramspanel.h"
 #include "viewitems.h"
 #include "watch.h"
 #include "wndcustomdata.h"
@@ -18,39 +19,17 @@
 #include "../include/macrooutput.h"
 #include "../libafanasy/logger.h"
 
-uint32_t ListNodes::ms_flagsHideShow = e_HideHidden;
-
 ListNodes::ListNodes( QWidget * i_parent, const std::string & i_type):
 	ListItems( i_parent, i_type),
-	m_ctrl_sf( NULL),
+	m_hide_flags(e_HideHidden),
 	m_subscribed( false)
 {
-AFINFO("ListNodes::ListNodes.\n");
+	m_node_types.push_back(i_type);
 }
 
 ListNodes::~ListNodes()
 {
-AFINFO("ListNodes::~ListNodes.\n");
-
 	unSubscribe();
-}
-
-bool ListNodes::init( bool createModelView)
-{
-	if( createModelView)
-	{
-		m_model = new ModelNodes(this);
-		m_view = new ViewItems( this);
-		m_view->setModel( m_model);
-
-		if( m_ctrl_sf ) m_vlayout->addWidget( m_ctrl_sf);
-		m_vlayout->addWidget( m_view);
-		m_vlayout->addWidget( m_infoline);
-	}
-
-	if( ListItems::init( false) == false) return false;
-
-	return true;
 }
 
 void ListNodes::initSortFilterCtrl()
@@ -64,40 +43,61 @@ void ListNodes::initSortFilterCtrl()
 	connect( m_ctrl_sf, SIGNAL( filterSettingsChanged()  ), this, SLOT( filterSettingsChanged() ));
 }
 
-void ListNodes::get() const
+void ListNodes::initListNodes()
 {
-	std::string str = "\"type\":\"";
-	str += getType() + "\"";
-	Watch::get( str);
+	m_model = new ModelNodes(this);
+	initListItems();
 }
 
-void ListNodes::get( const std::vector<int32_t> & i_ids) const
+void ListNodes::get() const
 {
-	if( i_ids.size() == 0 )
+	if (m_node_types.empty())
 	{
-		AFERROR("ListNodes::get: Zero length ids.")
+		AF_ERR << "ListNodes::get: '" << getType() << "' has an empty m_node_types list.";
+		return;
+	}
+
+	get(m_node_types[0]);
+}
+
+void ListNodes::get(const std::string & i_type) const
+{
+	std::string str = "\"type\":\"";
+	str += i_type + "\"";
+	Watch::get(str);
+}
+
+void ListNodes::get(const std::vector<int32_t> & i_ids) const
+{
+	get(i_ids, getType());
+}
+
+void ListNodes::get(const std::vector<int32_t> & i_ids, const std::string & i_type)
+{
+	if (i_ids.size() == 0)
+	{
+		AF_ERR << "ListNodes::get: Zero length ids (type = '" << i_type << "')";
 		return;
 	}
 
 	std::string str = "\"type\":\"";
-	str += getType() + "\",\"ids\":[";
-	for( int i = 0; i < i_ids.size(); i++)
+	str += i_type + "\",\"ids\":[";
+	for (int i = 0; i < i_ids.size(); i++)
 	{
-		if( i ) str += ',';
-		str += af::itos( i_ids[i]);
+		if (i) str += ',';
+		str += af::itos(i_ids[i]);
 	}
 	str += "]";
 
-	Watch::get( str);
+	Watch::get(str);
 }
 
-void ListNodes::subscribe( bool i_subscribe)
+void ListNodes::subscribe(bool i_subscribe)
 {
-//{"action":{"user_name":"timurhai","host_name":"pc","type":"monitors","ids":[3],"operation":{"type":"watch","class":"monitors","status":"subscribe"}}}
-//{"action":{"user_name":"timurhai","host_name":"pc","type":"monitors","ids":[1],"operation":{"type":"watch","class":"monitors","status":"unsubscribe"}}}
-	if( m_subscribed == i_subscribe ) return;
+	if(m_subscribed == i_subscribe) return;
 
-	MonitorHost::subscribe( getType(), i_subscribe);
+	for (int i = 0; i < m_node_types.size(); i++)
+		MonitorHost::subscribe(m_node_types[i], i_subscribe);
 
 	m_subscribed = i_subscribe;
 }
@@ -121,20 +121,21 @@ void ListNodes::v_showFunc()
 		get();
 }
 
-bool ListNodes::updateItems( af::Msg * msg)
+bool compareNodeName(const af::Node * n1, const af::Node * n2){return n1->getName() < n2->getName();}
+bool ListNodes::updateItems(af::Msg * msg, Item::EType i_type)
 {
 	QMutexLocker lock( &m_mutex);
 
 	af::MCAfNodes mcNodes( msg);
-	std::vector<af::Af*> * list = mcNodes.getList();
+	std::vector<af::Af*> * afNodesList = mcNodes.getList();
+	if (afNodesList->size() == 0)
+		return false;
 
-	int quantity = int( list->size());
-	if( quantity == 0) return false;
+	//
+	// updating exists items and setting non-existing ids to zero
 
-//printf("ListNodes::updateItems: message list->size() = %d:\n", quantity);
-
-//
-// updating exists items and setting non-existing ids to zero
+	// Store nodes that was not created (not founded)
+	QList<af::Node*> newAfNodes;
 
 	// store changed rows to emit signal to update view
 	int firstChangedRow = -1;
@@ -143,14 +144,18 @@ bool ListNodes::updateItems( af::Msg * msg)
 	// store items need to be resorted
 	QList<ItemNode*> itemsToSort;
 
-	for( int i = 0; i < m_model->count(); i++)
+	for (int a = 0; a < afNodesList->size(); a++)
 	{
-		ItemNode * itemnode = (ItemNode*)(m_model->item(i));
-//printf("ListNodes::updateItems: loonking for '%s':\n", itemnode->getName().toUtf8().data());
-		for( int j = 0; j < quantity; j++)
+		af::Node * node = (af::Node*)((*afNodesList)[a]);
+
+		bool found = false;
+
+		for( int i = 0; i < m_model->count(); i++)
 		{
-			af::Node * node = (af::Node*)((*list)[j]);
-			if( node->getId() == itemnode->getId())
+			ItemNode * itemnode = (ItemNode*)(m_model->item(i));
+
+//printf("ListNodes::updateItems: loonking for '%s':\n", itemnode->getName().toUtf8().data());
+			if((node->getId() == itemnode->getId()) && (i_type == itemnode->getType()))
 			{
 //printf("ListNodes::updateItems: updating '%s':\n", itemnode->getName().toUtf8().data());
 				// update lock state
@@ -160,12 +165,14 @@ bool ListNodes::updateItems( af::Msg * msg)
 				int oldheight = itemnode->getHeight();
 
 				// strore sorting parameters
+				QString sort_force_val;
 				int     sort_int_val1 = 0;
 				int     sort_int_val2 = 0;
 				QString sort_str_val1;
 				QString sort_str_val2;
 				if( m_ctrl_sf->isSortEnabled())
 				{
+					sort_force_val= itemnode->getSortForce();
 					sort_int_val1 = itemnode->getSortInt1();
 					sort_int_val2 = itemnode->getSortInt2();
 					sort_str_val1 = itemnode->getSortStr1();
@@ -173,7 +180,11 @@ bool ListNodes::updateItems( af::Msg * msg)
 				}
 
 				// update node values
-				itemnode->updateValues(  node, msg->type());
+				itemnode->updateValues(node, msg->type());
+
+				// update panels if this item is current:
+				if (itemnode == m_current_item)
+					m_paramspanel->v_updatePanel(itemnode);
 
 				// check for item new geometry height
 				if( oldheight != itemnode->getHeight()) m_view->emitSizeHintChanged( m_model->index(i));
@@ -185,76 +196,83 @@ bool ListNodes::updateItems( af::Msg * msg)
 				// sort node if sorting parameters changed
 				if( m_ctrl_sf->isSortEnabled())
 				{
-					itemnode->setSortType( m_ctrl_sf->getSortType1(), m_ctrl_sf->getSortType2());
+					itemnode->v_setSortType(m_ctrl_sf->getSortType1(), m_ctrl_sf->getSortType2());
+					if(sort_force_val != itemnode->getSortForce())itemsToSort << itemnode;
 					if( sort_int_val1 != itemnode->getSortInt1()) itemsToSort << itemnode;
 					if( sort_int_val2 != itemnode->getSortInt2()) itemsToSort << itemnode;
 					if( sort_str_val1 != itemnode->getSortStr1()) itemsToSort << itemnode;
 					if( sort_str_val2 != itemnode->getSortStr2()) itemsToSort << itemnode;
 				}
 
+				found = true;
 				break;
 			}
 		}
+
+		if (found == false)
+			newAfNodes.push_back(node);
 	}
 
 	// sort needed items, or simple emit data changed signal
 	if( itemsToSort.size() > 0 )
 	{
-		QList<Item*> selectedItems = getSelectedItems();
+		storeSelection();
 		((ModelNodes*)m_model)->sortnodes( itemsToSort);
-		setSelectedItems( selectedItems);
+		reStoreSelection();
 	}
 	else if( firstChangedRow != -1 )
 		m_model->emit_dataChanged( firstChangedRow, lastChangedRow);
 
-//
-// close widgets with zero (non-existing) ids
+	//
+	// close widgets with zero (non-existing) ids
 	m_model->deleteZeroItems();
 
-//
-// adding new items
+	//
+	// adding new items
 	bool newitemscreated = false;
-	for( int j = 0; j < quantity; j++)
+	// We need to add new items sorted by name for hierarchy:
+	qSort(newAfNodes.begin(), newAfNodes.end(), compareNodeName);
+	for (int i = 0; i < newAfNodes.size(); i++)
 	{
-		af::Node * node = (af::Node*)((*list)[j]);
-		bool exists = false;
-		for( int i = 0; i < m_model->count(); i++)
-		{
-			Item * item = m_model->item(i);
-			int cur_id = item->getId();
-			if( node->getId() == cur_id)
-			{
-				exists = true;
-				break;
-			}
-		}
-		if( exists) continue;
-		ItemNode* new_item = v_createNewItem( node, isSubscribed());
+		af::Node * node = newAfNodes[i];
+
+		ItemNode* new_item = v_createNewItemNode(node, i_type, isSubscribed());
 		if( new_item == NULL) continue;
 
 		int row;
 		if ( m_ctrl_sf->isSortEnabled())
 		{
-			new_item->setSortType( m_ctrl_sf->getSortType1(), m_ctrl_sf->getSortType2());
+			new_item->v_setSortType( m_ctrl_sf->getSortType1(), m_ctrl_sf->getSortType2());
 			row = ((ModelNodes*)m_model)->addNodeSorted( new_item);
 		}
 		else row = ((ModelNodes*)m_model)->addNode( new_item);
 
 		if( m_ctrl_sf->isFilterEnabled())
-			new_item->setFilterType( m_ctrl_sf->getFilterType() );
+			new_item->v_setFilterType(m_ctrl_sf->getFilterType() );
 
 		if( newitemscreated == false ) newitemscreated = true;
-
-AFINFA( "adding item \"%s\", id=%d\n", new_item->getName().toUtf8().data(), new_item->getId());
 	}
 
 	processHidden();
 
-//   model->revert();
-//   model->reset();
-//printf("ListNodes::updateItems: END:\n");
-
 	return newitemscreated;
+}
+
+void ListNodes::hrStoreParent(ItemNode * i_item)
+{
+	m_hr_parents_map[i_item->getName()] = i_item;
+}
+
+void ListNodes::hrParentChanged(ItemNode * i_item)
+{
+	QMap<QString, ItemNode*>::iterator it = m_hr_parents_map.find(i_item->getParentPath());
+
+	if (it == m_hr_parents_map.end())
+	{
+		return;
+	}
+
+	(*it)->addChild(i_item);
 }
 
 void ListNodes::sort()
@@ -263,9 +281,9 @@ void ListNodes::sort()
 	if( false == m_ctrl_sf->isSortEnabled())
 	   return;
 
-	QList<Item*> selectedItems( getSelectedItems());
+	storeSelection();
 	((ModelNodes*)m_model)->sortnodes();
-	setSelectedItems( selectedItems);
+	reStoreSelection();
 
 	if( m_ctrl_sf->isFilterEnabled()) processHidden();
 }
@@ -274,14 +292,25 @@ void ListNodes::processHidden()
 {
 	for (int i = 0; i < m_model->count(); i++)
 	{
-		ItemNode * item = (ItemNode*)(m_model->item(i));
+		ItemNode * item = static_cast<ItemNode*>(m_model->item(i));
 
+		// Node can be filtered by name
 		bool hidden = item->filter();
 
 		if (false == hidden)
-			hidden = item->getHiddenFlags(ms_flagsHideShow);
+		{
+			// Node can be hidden by View Options.
+			// For example user can hide offline jobs.
+			hidden = item->getHideFlags(m_hide_flags);
+		}
 
-		item->setHidded(hidden);
+		if (false == hidden)
+		{
+			// Parent node can hide childs
+			hidden = item->isHiddenByParents();
+		}
+
+		item->setHidden(hidden);
 
 		if (hidden != m_view->isRowHidden(i))
 			m_view->setRowHidden(i, hidden);
@@ -291,7 +320,7 @@ void ListNodes::processHidden()
 void ListNodes::sortTypeChanged()
 {
 	for( int i = 0; i < m_model->count(); i++)
-		((ItemNode*)(m_model->item(i)))->setSortType( m_ctrl_sf->getSortType1(), m_ctrl_sf->getSortType2());
+		((ItemNode*)(m_model->item(i)))->v_setSortType(m_ctrl_sf->getSortType1(), m_ctrl_sf->getSortType2());
 
 	if( m_ctrl_sf->isSortEnabled())
 		sort();
@@ -316,7 +345,7 @@ void ListNodes::filterChanged()
 void ListNodes::filterTypeChanged()
 {
 	for( int i = 0; i < m_model->count(); i++)
-		((ItemNode*)(m_model->item(i)))->setFilterType( m_ctrl_sf->getFilterType());
+		((ItemNode*)(m_model->item(i)))->v_setFilterType(m_ctrl_sf->getFilterType());
 
 	processHidden();
 }
@@ -329,15 +358,18 @@ void ListNodes::filterSettingsChanged()
 
 void ListNodes::actHideShow( int i_type )
 {
-	ms_flagsHideShow ^= i_type;
+	m_hide_flags ^= i_type;
+	v_hideChanged();
 	processHidden();
 }
+void ListNodes::v_hideChanged() {}
 
 void ListNodes::sortMatch( const std::vector<int32_t> & i_list)
 {
-	QList<Item*> selectedItems( getSelectedItems());
+	storeSelection();
 	((ModelNodes*)m_model)->sortMatch( i_list);
-	setSelectedItems( selectedItems);
+	processHidden();
+	reStoreSelection();
 }
 
 void ListNodes::actPriority()
@@ -354,7 +386,7 @@ void ListNodes::actPriority()
 	int priority = QInputDialog::getInt( this, "Change Priority", "Enter New Priority", current, 0, maximum, 1, &ok);
 	if( !ok) return;
 
-	setParameter("priority", priority);
+	setParameter(Item::TAny, "priority", af::itos(priority));
 }
 
 void ListNodes::actAnnotate()
@@ -367,12 +399,12 @@ void ListNodes::actAnnotate()
 	QString text = QInputDialog::getText( this, "Annotate", "Enter Annotation", QLineEdit::Normal, current, &ok);
 	if( !ok) return;
 
-	setParameter("annotation", afqt::qtos( text));
+	actAnnotate(text);
 }
 
 void ListNodes::actAnnotate(QString text)
 {
-	setParameter("annotation", afqt::qtos( text));
+	setParameter(Item::TAny, "annotation", "\"" + af::strEscape(afqt::qtos(text)) + "\"");
 }
 
 void ListNodes::actCustomData()
@@ -387,5 +419,5 @@ void ListNodes::actCustomData()
 
 void ListNodes::customDataSet( const QString & text)
 {
-	setParameter("custom_data", af::strEscape(afqt::qtos( text)));
+	setParameter(Item::TAny, "custom_data", "\"" + af::strEscape(afqt::qtos(text)) + "\"");
 }

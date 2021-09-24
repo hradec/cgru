@@ -46,10 +46,20 @@ Node::~Node()
 
 void Node::v_readwrite(Msg *msg)
 {
-	rw_int32_t(m_id, msg);
+	rw_int32_t(m_id,       msg);
 	rw_uint8_t(m_priority, msg);
+
+	rw_String(m_name,        msg);
+	rw_String(m_annotation,  msg);
+	rw_String(m_custom_data, msg);
+	rw_String(m_srv_info,    msg);
+
+	rw_int64_t(m_state, msg);
+	rw_int64_t(m_flags, msg);
+
+	rw_IntMap(m_running_services, msg);
+
 	rw_bool(m_locked, msg);
-	rw_String(m_name, msg);
 }
 
 void Node::v_priorityChanged(MonitorContainer *i_monitoring)
@@ -58,8 +68,9 @@ void Node::v_priorityChanged(MonitorContainer *i_monitoring)
 
 void Node::jsonRead(const JSON &i_object, std::string *io_changes, MonitorContainer *i_monitoring)
 {
-	jr_string("annotation", m_annotation, i_object, io_changes);
+	jr_string("annotation",  m_annotation,  i_object, io_changes);
 	jr_string("custom_data", m_custom_data, i_object, io_changes);
+	jr_string("srv_info",    m_srv_info,    i_object, io_changes);
 
 	int32_t priority = -1;
 	jr_int32("priority", priority, i_object, io_changes);
@@ -78,7 +89,7 @@ void Node::jsonRead(const JSON &i_object, std::string *io_changes, MonitorContai
 		return;
 	}
 
-	// Paramers below are not editable and read only on creation
+	// Parameters below are not editable and read only on creation
 	// When use edit parameters, log provided to store changes
 
 	jr_string("name", m_name, i_object);
@@ -93,17 +104,46 @@ void Node::v_jsonWrite(std::ostringstream &o_str, int i_type) const
 	o_str << ",\n\"priority\":" << int(m_priority);
 	if (m_locked) o_str << ",\n\"locked\":true";
 	if (isHidden()) o_str << ",\n\"hidden\":true";
-	if (m_annotation.size()) o_str << ",\n\"annotation\":\"" << af::strEscape(m_annotation) << "\"";
+	if (m_annotation.size())  o_str << ",\n\"annotation\":\""  << af::strEscape(m_annotation)  << "\"";
 	if (m_custom_data.size()) o_str << ",\n\"custom_data\":\"" << af::strEscape(m_custom_data) << "\"";
+	if (m_srv_info.size())    o_str << ",\n\"m_srv_info\":\""  << af::strEscape(m_srv_info)    << "\"";
+
+	if (m_running_services.size())
+		jw_intmap("running_services", m_running_services, o_str);
 }
 
-Msg *Node::jsonWrite(const std::string &i_type, const std::string &i_name) const
+void Node::incrementService(const std::string & i_name)
 {
-	std::ostringstream str;
-	str << "{\"" << i_name << "\":\n";
-	v_jsonWrite(str, 0);
-	str << "\n}";
-	return jsonMsg(str);
+	std::map<std::string, int32_t>::iterator it = m_running_services.begin();
+	while (it != m_running_services.end())
+	{
+		if (it->first == i_name)
+		{
+			it->second++;
+			return;
+		}
+
+		it++;
+	}
+
+	m_running_services[i_name] = 1;
+}
+
+void Node::decrementService(const std::string & i_name)
+{
+	std::map<std::string, int32_t>::iterator it = m_running_services.begin();
+	while (it != m_running_services.end())
+	{
+		if (it->first == i_name)
+		{
+			it->second--;
+			if (it->second <= 0)
+				m_running_services.erase(it);
+			return;
+		}
+
+		it++;
+	}
 }
 
 int Node::v_calcWeight() const

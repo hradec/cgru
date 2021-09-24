@@ -52,6 +52,32 @@ function c_Init()
 	u_ApplyStyles();
 }
 
+function cgru_CmdExecFilter(i_cmd)
+{
+	let cmd = i_cmd;
+
+	cmd = activity_ChangeCmd(cmd);
+
+	// '@arg@' will be replaced with '--arg [arg value]'
+	// Value will be the first defined in action, ASSET, RULES
+	// For example: '@fps@' will be replaces with '--fps 24'
+	let matches = cmd.match(/@\w*@/g);
+	if (matches && matches.length)
+		for (let i = 0; i < matches.length; i++)
+		{
+			let match = matches[i];
+			let arg = match.replace(/@/g,'');
+			let val = action[arg];
+			if (null == val) val = ASSET[arg];
+			if (null == val) val = RULES[arg];
+			if (val) val = '--' + arg + ' ' + val;
+			else val = '';
+			cmd = cmd.replace(match, val);
+		}
+
+	return cmd;
+}
+
 function c_GetHash()
 {
 	var path = decodeURI(document.location.hash);
@@ -541,7 +567,8 @@ function c_CanExecuteSoft(i_user)
 function c_GetRolesArtists(i_users)
 {
 	var roles_obj = {};
-	for (var uid in g_users)
+	// Collect users by roles:
+	for (let uid in g_users)
 	{
 		// console.log(g_users[uid].states);
 		if ((i_users == null) || (i_users[uid] == null))
@@ -552,19 +579,52 @@ function c_GetRolesArtists(i_users)
 				continue;
 		}
 
-		var role = g_users[uid].role;
+		let role = g_users[uid].role;
 
 		if (roles_obj[role] == null)
-			roles_obj[role] = [];
+			roles_obj[role] = {'users':[]};
 
-		roles_obj[role].push(g_users[uid]);
+		roles_obj[role].users.push(g_users[uid]);
+	}
+
+	// Collect users by tag for earch role:
+	for (let role in roles_obj)
+	{
+		roles_obj[role].tags_obj = {};
+		for (let u in roles_obj[role].users)
+		{
+			let user = roles_obj[role].users[u];
+			let tag = user.tag;
+			if (tag == null) tag = '';
+
+			if (roles_obj[role].tags_obj[tag] == null)
+				roles_obj[role].tags_obj[tag] = [];
+
+			roles_obj[role].tags_obj[tag].push(user);
+		}
 	}
 
 	var roles = [];
-	for (var role in roles_obj)
+	for (let role in roles_obj)
 	{
-		roles_obj[role].sort(function(a, b) { return a.title > b.title });
-		roles.push({"role": role, "artists": roles_obj[role]});
+		roles_obj[role].users.sort(function(a, b) { return a.title > b.title });
+
+		let role_obj = {};
+		role_obj.role = role;
+		role_obj.artists = roles_obj[role].users;
+		role_obj.tags = [];
+
+		for (let tag in roles_obj[role].tags_obj)
+		{
+			roles_obj[role].tags_obj[tag].sort(function(a, b) { return a.title > b.title });
+
+			role_obj.tags.push({'tag':tag,'artists':roles_obj[role].tags_obj[tag]});
+		}
+
+		role_obj.tags.sort(function(a, b) { return a.tag > b.tag });
+
+		roles.push(role_obj);
+
 	}
 	roles.sort(function(a, b) { return a.role < b.role });
 
@@ -848,6 +908,56 @@ function c_MakeThumbnail(i_file, i_func)
 	n_Request({"send": {"cmdexec": {"cmds": [cmd]}}, "func": i_func, "file": i_file, "info": 'thumbnail'});
 }
 
+var c_file_good_symbols = ['_','-','.'];
+function c_IsFileGoodChar(i_char)
+{
+	var code = i_char.charCodeAt(0);
+
+	// Not ASCII
+	if (code >= 128)
+		return false;
+
+	// 0-9 (48-57)
+	if (code <= 57 && code >= 48)
+		return true;
+
+	// A-Z (65-90)
+	if (code <= 90 && code >= 65)
+		return true;
+
+	// A-Z (97-122)
+	if (code <= 122 && code >= 97)
+		return true;
+
+	if (c_file_good_symbols.indexOf(i_char) != -1)
+		return true;
+
+	return false;
+}
+
+function c_HighlightBadChars(i_file)
+{
+	var o_file = '';
+
+	for (let c = 0; c < i_file.length; c++)
+	{
+		let ch = i_file.charAt(c);
+		let bad = false == c_IsFileGoodChar(ch);
+
+		if (bad)
+		{
+			o_file += '<span class="file_bad_char">';
+			if (ch == ' ')
+				ch = '_';
+		}
+		o_file += ch;
+		if (bad)
+			o_file += '</span>';
+	}
+
+	return o_file;
+}
+
 /* ---------------- [ Path transposing functions ] ------------------------------------------------------- */
 
 function c_PathBase(i_file)
@@ -865,7 +975,7 @@ function c_PathPM_Rules2Server(i_path)
 	if (RULES.root_link)
 		return (RULES.root_link + i_path);
 	else
-		return ('/' + RULES.root + i_path);
+		return (RULES.root + i_path);
 }
 
 function c_PathPM_Rules2Client(i_path)
@@ -883,6 +993,36 @@ function c_PathPM_Server2Client(i_path)
 	return cgru_PM(i_path);
 }
 
+function c_IsUserSubsribedOnPath(i_path)
+{
+	if ((null == g_auth_user) || (null == g_auth_user.channels))
+		return false;
+
+	if (null == i_path)
+		i_path = g_CurPath();
+
+	for (let chan of g_auth_user.channels)
+		if (c_PathIsInFolder(chan.id, i_path))
+			return true;
+
+	return false;
+}
+
+// Check where i_subfolder is located in i_folder
+function c_PathIsInFolder(i_folder, i_subfolder)
+{
+	var folders = i_folder.split('/');
+	var subs = i_subfolder.split('/');
+
+	if (folders.length > subs.length)
+		return false;
+
+	for (let i = 0; i < folders.length; i++)
+		if (folders[i] != subs[i])
+			return false;
+
+	return true;
+}
 
 function c_CreateOpenButton(i_args)
 {
@@ -997,8 +1137,27 @@ function c_HttpToLinks(i_text)
 			link = text.substr(0, pos);
 			text = text.substr(pos);
 		}
-		// console.log('l='+link); console.log('t='+text);
-		text = text.replace(a_re, '<a target="_blank" class="link_auto" href="$1">$1</a>');
+		//text = text.replace(a_re, '<a target="_blank" class="link_auto" href="$1">$1</a>');
+		let found_links = [];
+		let matches = text.matchAll(a_re);
+		for (const match of matches)
+		{
+			let href = match[0];
+			if (found_links.includes(href))
+				continue;
+			found_links.push(href);
+			console.log(href);
+			let name = href;
+			if (name.includes('fv_Goto'))
+			{
+				name = name.split('fv_Goto');
+				name = name[name.length-1];
+				name = name.replace(/[:\"\{\}]|%22|%7D|/g,'');
+			}
+			name = name.replace(g_CurPath(), '');
+			while ((name.indexOf('/') == 0) && name.length) name = name.substr(1);
+			text = text.replaceAll(href, '<a target="_blank" class="link_auto" href="' + href + '">' + name + '</a>');
+		}
 		text = link + text;
 
 		if (out == null)

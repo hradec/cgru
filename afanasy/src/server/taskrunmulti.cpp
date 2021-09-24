@@ -334,13 +334,6 @@ bool TaskRunMulti::refresh( time_t currentTime, RenderContainer * renders, Monit
 	// There is no need to do something with zombie. It soon will be deleted.
 	if( isZombie() ) return changed;
 
-	// Slaves service stop timeout check:
-	if( m_time_services_started && m_time_services_stopped &&( currentTime - m_time_services_stopped > AFJOB::TASK_STOP_TIMEOUT ))
-	{
-		m_task->v_appendLog("Service stop timeout.");
-		releaseHost( renders, monitoring);
-		if( changed == false) changed = true;
-	}
 
 	// Start services and master if time and hosts are enough
 	if((m_master_running == false) && (m_stopping == false))
@@ -407,7 +400,7 @@ void TaskRunMulti::stop( const std::string & message, RenderContainer * renders,
 		else
 		{
 			// Finish tasks on slaves if there is no service
-			render->taskFinished( *tIt, monitoring);
+			render->taskFinished(*tIt, m_progress->state, monitoring);
 			m_task->v_appendLog( std::string("Finished task[") + af::itos((*tIt)->getNumber()) +
 					"] on host \"" + render->getName() + "\"");
 			delete *tIt;
@@ -488,7 +481,7 @@ void TaskRunMulti::releaseHost( RenderContainer * renders, MonitorContainer * mo
 		}
 		else
 		{
-			render->taskFinished( *tIt, monitoring);
+			render->taskFinished(*tIt, m_progress->state, monitoring);
 			m_task->v_appendLog( std::string("Releasing task[") + af::itos((*tIt)->getNumber()) +
 				"] on host \"" + render->getName() + "\"");
 		}

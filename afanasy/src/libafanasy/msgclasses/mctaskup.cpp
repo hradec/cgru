@@ -27,36 +27,38 @@ MCTaskUp::MCTaskUp
 
 	const std::string & i_log,
 	const std::string & i_activity,
+	const std::string & i_resources,
 	const std::string & i_report,
 	const std::string & i_listened,
 
 	int i_datalen,
 	char * i_data
 ):
-	m_clientid      ( i_clientid),
+	m_clientid      (i_clientid),
 
-	m_numjob        ( i_numjob),
-	m_numblock      ( i_numblock),
-	m_numtask       ( i_numtask),
-	m_number        ( i_number),
+	m_numjob        (i_numjob),
+	m_numblock      (i_numblock),
+	m_numtask       (i_numtask),
+	m_number        (i_number),
 
-	m_status        ( i_status),
-	m_percent       ( i_percent),
-	m_frame         ( i_frame),
-	m_percent_frame ( i_percent_frame),
+	m_status        (i_status),
+	m_percent       (i_percent),
+	m_frame         (i_frame),
+	m_percent_frame (i_percent_frame),
 
-	m_log           ( i_log),
-	m_activity      ( i_activity),
-	m_report        ( i_report),
+	m_log           (i_log),
+	m_activity      (i_activity),
+	m_resources     (i_resources),
+	m_report        (i_report),
 
-	m_listened      ( i_listened),
+	m_listened      (i_listened),
 
-	m_datalen       ( i_datalen ),
-	m_data          ( i_data ),
-	m_deleteData    ( false), // Don not delete data on client side, as it is not copied
+	m_datalen       (i_datalen),
+	m_data          (i_data),
+	m_deleteData    (false), // Don not delete data on client side, as it is not copied
 
 	m_files_num(0),
-	m_files_data( NULL)
+	m_files_data(NULL)
 {
 }
 
@@ -100,6 +102,7 @@ void MCTaskUp::v_readwrite( Msg * msg)
 	rw_int8_t ( m_percent_frame,  msg);
 
 	rw_String ( m_activity,       msg);
+	rw_String ( m_resources,      msg);
 	rw_String ( m_report,         msg);
 	rw_String ( m_log,            msg);
 
@@ -205,6 +208,7 @@ void MCTaskUp::v_generateInfoStream( std::ostringstream & stream, bool full) con
 			<< ", task="     << m_numtask
 			<< ", number="   << m_number
 			<< ", activity=" << m_activity
+			<< ", resources="<< m_resources
 			<< ", report="   << m_report
 			<< ", log="      << m_log
 			<< ", datalen="  << m_datalen
@@ -222,6 +226,7 @@ void MCTaskUp::v_generateInfoStream( std::ostringstream & stream, bool full) con
 			<< " T" << m_numtask
 			<< " #" << m_number
 			<< " A" << m_activity
+			<< " R" << m_resources
 			<< " R" << m_report
 			<< " L" << m_log
 			<< " D" << m_datalen

@@ -126,7 +126,7 @@ TaskProcess::TaskProcess( af::TaskExec * i_taskExec, RenderHost * i_render):
 
 	// Process environment:
 	if( m_taskexec->hasEnv())
-		m_environ = af::processEnviron( m_taskexec->getEnv());
+		m_environ = af::processEnviron(m_service->getEnvironment());
 
 	launchCommand();
 
@@ -189,7 +189,9 @@ void TaskProcess::launchCommand()
 	// On windows we attach process to a job to close all spawned childs:
 	m_hjob = CreateJobObject( NULL, NULL);
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION jeli = { 0 };
-	jeli.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+	jeli.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | 
+						JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION | 
+						JOB_OBJECT_LIMIT_BREAKAWAY_OK;
 	if( SetInformationJobObject( m_hjob, JobObjectExtendedLimitInformation, &jeli, sizeof( jeli ) ) == 0)
 		AFERROR("SetInformationJobObject failed.\n");
 	if( AssignProcessToJobObject( m_hjob, m_pinfo.hProcess) == false)
@@ -400,7 +402,12 @@ void TaskProcess::readProcess( const std::string & i_mode)
 	if( readsize > 0 )
 		output += std::string( m_readbuffer, readsize);
 
-	m_parser->read( i_mode, output, m_pid);
+	std::string resources;
+	resources += "{\n";
+	resources += m_render->getResourcesString();
+	resources += "\n}";
+
+	m_parser->read(i_mode, m_pid, output, resources);
 
 	if( output.size() && m_taskexec->isListening())
 	{
@@ -415,8 +422,8 @@ void TaskProcess::readProcess( const std::string & i_mode)
 		m_update_status = af::TaskExec::UPWarning;
 	}
 
-	// if task is not in "stopping" state
-	if( m_stop_time == 0 )
+	// If task is running and not in the "stopping" state
+	if ((m_pid != 0) && (m_stop_time == 0))
 	{
 		// ckeck parser reasons to force to stop a task
 	    if( m_parser->hasError())
@@ -459,6 +466,7 @@ void TaskProcess::sendTaskSate()
 	int frame            = m_parser->getFrame();
 	int percentframe     = m_parser->getPercentFrame();
 	std::string activity = m_parser->getActivity();
+	std::string resources= m_parser->getResources();
 	std::string report   = m_parser->getReport();
 
 
@@ -501,6 +509,7 @@ void TaskProcess::sendTaskSate()
 
 		log,
 		activity,
+		resources,
 		report,
 
 		m_listened,
@@ -567,7 +576,12 @@ void TaskProcess::processFinished( int i_exitCode)
 			     m_update_status  = af::TaskExec::UPFinishedKilled;
 		}
 	}
-	else if( m_parser->isBadResult())
+	else if(m_parser->hasError())
+	{
+		m_update_status = af::TaskExec::UPFinishedParserError;
+		AF_LOG << "Error from parser.";
+	}
+	else if(m_parser->isBadResult())
 	{
 		m_update_status = af::TaskExec::UPFinishedParserBadResult;
 		AF_LOG << "Bad result from parser.";

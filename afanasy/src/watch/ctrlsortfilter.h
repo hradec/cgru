@@ -29,6 +29,7 @@ public:
 	void init();
 
 	inline bool isSortEnabled()     const { return  (*m_sorttype1 != TNONE ) || (*m_sorttype2 != TNONE );}
+	inline bool isSortDisabled()    const { return  (*m_sorttype1 == TNONE ) && (*m_sorttype2 == TNONE );}
 	inline int  getSortType1()      const { return   *m_sorttype1;       }
 	inline int  getSortType2()      const { return   *m_sorttype2;       }
 	inline bool isSortAscending1()  const { return   *m_sortascending1;  }
@@ -45,8 +46,6 @@ public:
 	inline bool isFilterContain()       const { return !(*m_filtermatch);   }
 
 	inline const af::RegExp & getFilterRE() const { return m_filter_re; }
-
-	inline QHBoxLayout * getLayout() { return m_layout;}
 
 	enum TYPE{
 		TNONE,
@@ -92,7 +91,7 @@ private slots:
 	void actSortAscending2();
 	void actFilter( const QString & i_str);
 	void actFilterInclude();
-	void actFilterMacth();
+	void actFilterMatch();
 	void actFilterType( int i_type);
 
 private:
@@ -104,8 +103,6 @@ private:
 	std::vector<int> m_filter_types;
 
 	ListItems * m_parernlist;
-
-	QHBoxLayout * m_layout;
 
 	QLabel * m_sort_label;
 	QLabel * m_filter_label;

@@ -3,6 +3,7 @@
 "rufolder":".rules",
 "company":"CGRU",
 "panel_logo_img":"rules/icons/rules.png",
+"-panel_logo_img":"rules_panel.png",
 "playlist":"rules/playlist.json",
 "cache_time":60,
 
@@ -12,41 +13,56 @@
 	"recent":99
 },
 
+"bookmarks":{
+	"refresh":300,
+	"obsolete_delete_days":10,
+	"inactive_delete_days":366
+},
+
+"-group_folders_levels":[3,4],
+
 "flags":{
-	"hold"    :{"title":"HOLD",    "clr":[111,111,111],"short":"Hl",              "excl":true, "tip":"On hold"},
-	"error"   :{"title":"ERROR",   "clr":[255, 55, 55],"short":"Err", "p_max":99, "excl":false,"tip":"Error"},
-	"comment" :{"title":"COMMENT", "clr":[222,111,222],"short":"Cmm", "p_max":99, "excl":true, "tip":"Comment"},
-	"omit"    :{"title":"OMIT",    "clr":[ 99, 99, 99],"short":"Om",  "p_max":-1, "excl":true, "tip":"Omit"},
-	"done"    :{"title":"DONE",    "clr":[121,155,121],"short":"D",   "p_min":100,"excl":true, "tip":"Done"},
-	"closed"  :{"title":"CLOSED",  "clr":[ 11, 55, 11],"short":"CLS", "p_min":100,"excl":true, "tip":"Closed"},
-	"aux"     :{"title":"AUX",     "clr":[127,127,127],"short":"AUX", "p_max":-1, "excl":true, "tip":"Auxiliary"}
+	"hold"        :{"title":"HOLD",        "clr":[111,111,111], "short":"Hl",                          "mode":null,    "tip":"On hold"},
+	"question"    :{"title":"QUESTION",    "clr":[210,140,140], "short":"Que",                         "mode":null,    "tip":"Question"},
+	"error"       :{"title":"ERROR",       "clr":[255, 55, 55], "short":"Err",             "p_max":50, "mode":null,    "tip":"Error"},
+	"ready"       :{"title":"READY",       "clr":[230,230,130], "short":"Rdy",             "p_max": 1, "mode":"stage", "tip":"Ready"},
+	"inprogress"  :{"title":"INPROGRESS",  "clr":[210,210,210], "short":"IP",  "p_min":1,  "p_max":90, "mode":"stage", "tip":"In progress"},
+	"on_farm"     :{"title":"ONFARM",      "clr":[250,150,100], "short":"OF",  "p_min":20, "p_max":20, "mode":null,    "tip":"On farm"},
+	"check"       :{"title":"CHECK",       "clr":[ 77, 77,177], "short":"Chk", "p_min":60, "p_max":90, "mode":"stage", "tip":"To check"},
+	"comment"     :{"title":"COMMENT",     "clr":[222,111,222], "short":"Cmm",             "p_max":50, "mode":"stage", "tip":"Comment"},
+	"send_ready"  :{"title":"SENDREADY",   "clr":[ 77,177,177], "short":"SR",  "p_min":70, "p_max":90, "mode":"super", "tip":"Ready to send."},
+	"sent"        :{"title":"SENT",        "clr":[222,222,191], "short":"SNT", "p_min":80, "p_max":90, "mode":"super", "tip":"Was sent"},
+	"omit"        :{"title":"OMIT",        "clr":[ 99, 99, 99], "short":"Om",              "p_max":-1, "mode":"stage", "tip":"Omit"},
+	"hqres"       :{"title":"HQRES",       "clr":[100,250,100], "short":"HQR", "p_min":98, "p_max":98, "mode":"stage", "tip":"Render high quality results"},
+	"done"        :{"title":"DONE",        "clr":[121,155,121], "short":"DON", "p_min":100,            "mode":"stage", "tip":"Done"},
+	"closed"      :{"title":"CLOSED",      "clr":[ 11, 55, 11], "short":"CLS", "p_min":100,            "mode":"stage", "tip":"Closed"},
+	"aux"         :{"title":"AUX",         "clr":[127,127,127], "short":"AUX",             "p_max":-1, "mode":"stage", "tip":"Auxiliary",
+		"new_line":true},
+	"precomp"    :{"title":"PRECOMP",  "clr":[ 80, 96,115], "short":"PC", "p_min":10, "p_max":30, "excl":true, "tip":"Precomp exists"}
+
 },
 
 "tags":{
-	"wirem"   :{"title":"WiRem",    "short":"WR",  "tip":"Wire remove"},
-	"roto"    :{"title":"Roto",     "short":"Ro",  "tip":"Rotoscoping"},
-	"key"     :{"title":"Keying",   "short":"Key", "tip":"Keying"},
-	"back"    :{"title":"Back",     "short":"Bk",  "tip":"Back placement"},
+	"anim"    :{"title":"Anim",     "short":"Am",  "tip":"Animation"},
 	"cleanup" :{"title":"CleanUp",  "short":"Cl",  "tip":"Cleanup"},
 	"comp"    :{"title":"Comp",     "short":"Cp",  "tip":"Compositing"},
-
 	"concept" :{"title":"Concept",  "short":"Cc",  "tip":"Concept"},
-	"paint"   :{"title":"Paint",    "short":"Pt",  "tip":"Painting"},
-	"matte"   :{"title":"MtPaint",  "short":"Mp",  "tip":"Matte painting"},
-	"textur"  :{"title":"Textur",   "short":"Tx",  "tip":"Texturing"},
-
+	"frlnc"   :{"title":"Freelance","short":"Fl",  "tip":"Freelance"},
+	"fx"      :{"title":"FX",       "short":"FX",  "tip":"FX"},
+	"key"     :{"title":"Keying",   "short":"Key", "tip":"Keying"},
+	"layout"  :{"title":"Layout",   "short":"Lay", "tip":"Layout"},
+	"mimic"   :{"title":"Mimic",    "short":"Mim", "tip":"Mimic"},
 	"model"   :{"title":"Model",    "short":"Md",  "tip":"Modeling"},
-	"anim"    :{"title":"Anim",     "short":"Am",  "tip":"Animation"},
-	"track"   :{"title":"Track",    "short":"Tr",  "tip":"Tracking"},
-	"sim"     :{"title":"Sim",      "short":"Sm",  "tip":"Simulating"},
+	"paint"   :{"title":"Paint",    "short":"Pt",  "tip":"Painting"},
 	"render"  :{"title":"Render",   "short":"Rn",  "tip":"Rendering"},
-
+	"rig"     :{"title":"Rig",      "short":"Rig", "tip":"Rigging"},
+	"roto"    :{"title":"Roto",     "short":"Ro",  "tip":"Rotoscoping"},
 	"rnd"     :{"title":"R&D",      "short":"RnD", "tip":"Research and development"},
-	"animatic":{"title":"Animatic", "short":"Ac",  "tip":"Animiatic"},
-	"fullcg"  :{"title":"FullCG",   "short":"FCG", "tip":"Full CG Shot"},
-	"titles"  :{"title":"Titles",   "short":"Tt",  "tip":"Titles"},
+	"textur"  :{"title":"Textur",   "short":"Tx",  "tip":"Texturing"},
+	"track"   :{"title":"Track",    "short":"Tr",  "tip":"Tracking"},
 
-	"other"   :{"title":"Other",    "short":"Ot",  "tip":"Something else"}
+	"other"   :{"title":"Other",    "short":"Ot",  "tip":"Something else",
+		"new_line":true}
 },
 
 "comments":{
@@ -59,10 +75,10 @@
 
 "execute":[
 	{
-		"label":"XTerm",
+		"label":"Terminal",
 		"icon":"icons/terminal.png",
 		"title":"Open terminal in this location.",
-		"cmd":"cd \"@PATH@\"; xterm"
+		"terminal":"\"@PATH@\""
 	}
 ],
 
@@ -75,7 +91,7 @@
 		"show_files":true
 	},
 	"scenes":{
-		"seek":["[project]/shots","[project]/assets"],
+		"seek":["[project]/SCENE.*","[project]/EPISODE.*","[project]/SHOT.*","[project]/ASSETS.*","[project]/ANIM.*","[project]/RND.*","[project]/FREELANCE.*"],
 		"uploads":{
 			"upload":{
 				"masks":[".*"],
@@ -114,9 +130,20 @@
 				"folder":"RESULT/DAILIES"
 			}
 		},
+		"inserted_images":{
+			"forms":
+			{
+				"body":{
+					"folder":"REF/BODY"
+				},
+				"comment":{
+					"folder":"REF/COMMENTS"
+				}
+			}
+		},
 		"scripts":["shot.js"],
-		"subfolders_status_hide":false,
-		"subfolders_dailies_hide":true,
+		"subfolders_status_hide":true,
+		"subfolders_dailies_hide":false,
 		"post":"shot_Post",
 			"":"custom post function",
 		"references":{
@@ -126,10 +153,15 @@
 			"path":["SRC","SOURCE","images"]
 		},
 		"result":{
-			"path":["RESULT/JPG","RESULT/PNG","RESULT/DPX","RESULT/TIF","RESULT/EXR","images"]
+			"path":["RESULT/JPG","RESULT/PNG","RESULT/DPX","RESULT/TIF","RESULT/EXR","RESULT/FREELANCE","RESULT/ANIM","RESULT/RENDER"]
 		},
 		"dailies":{
-			"path":["RESULT/DAILIES"]
+			"path":["RESULT/DAILIES"],
+			"folders":{
+				"result/freelance":"RESULT/FREELANCE",
+				"result/anim":"RESULT/ANIM",
+				"render":"RESULT/RENDER"
+			}
 		},
 		"template":"rules/assets/shot",
 
@@ -240,6 +272,19 @@
 	"logo_frame_grav":"North",
 	"activity":"comp",
 
+	"-imgcmd":"convert",
+		"":"Specify image convert and draw command, default is 'convert'",
+
+	"slates":{
+		"noslate":      {"name":"No Slate",        "tooltip":"Do not draw first informative frame."},
+		"dailies_slate":{"name":"Dailies Slate",   "tooltip":"Common dailies first inforative frame."},
+		"slate_noatist":{"name":"Slate No Artist", "tooltip":"Dailies first informative frame with no artist."}
+	},
+	"templates":{
+		"dailies":         {"name":"Dailies",           "tooltip":"Common dailies."},
+		"dailies_withlogo":{"name":"Dailies With Logo", "tooltip":"Dailies with a logo image."}
+	},
+
 	"colorspaces":{
 		"auto":   {"name":"Auto",      "value":"auto",      "tooltip":"Try to read metadata"},
 		"ext":    {"name":"Extension", "value":"extension", "tooltip":"By image extension:\nDPX,CIN: cineon\nEXR: linear\nAny Other: sRGB"},
@@ -256,7 +301,9 @@
 		"sd360":  {"name":"640x360", "value":"640x360"},
 		"sd540":  {"name":"960x540", "value":"960x540"},
 		"hd720":  {"name":"HD720",   "value":"1280x720"},
-		"hd1080": {"name":"HD1080",  "value":"1920x1080"}
+		"hd1080": {"name":"HD1080",  "value":"1920x1080"},
+		"2k169":  {"name":"2K 16/9", "value":"2048x1152"},
+		"2k235":  {"name":"2K 2.35", "value":"2048x872"}
 	},
 
 	"codecs":{
@@ -296,6 +343,11 @@
 	"default_groups":["admins","users"]
 },
 
+"inserted_images":{
+	"size_make_thumbnail":200000,
+	"thumbnail_cmd":"rules/bin/convert -verbose \"@INPUT@\" -quality 85% -thumbnail 1280 \"@OUTPUT@\""
+},
+
 "cut":{
 	"input":"RESULT/ANIM,RESULT/PNG,RESULT/JPG,RESULT/TIF,RESULT/DPX",
 	"output":"COMMON/_cut",
@@ -314,7 +366,7 @@
 	"input":"RESULT/PNG,RESULT/TIF,RESULT/DPX",
 	"dest":"FINAL",
 	"-dest":"/incoming",
-	"cmd":"python /cgru/utilities/put.py",
+	"cmd":"python3 /cgru/utilities/put.py",
 	"-ftp":{
 		"host":"localhost",
 		"user":"",
@@ -336,8 +388,8 @@
 		"7z" : {"name":"7Z",  "tooltip":"Slowest, but small archive size"}
 	},
 	"default":"zip",
-	"cmd":"python /cgru/utilities/arch.py",
-	"cmd_x":"python /cgru/utilities/arch_x.py",
+	"cmd":"python3 /cgru/utilities/arch.py",
+	"cmd_x":"python3 /cgru/utilities/arch_x.py",
 	"dest":"",
 	"af_service":"arch",
 	"af_parser":"generic",
@@ -346,7 +398,7 @@
 },
 
 "walk":{
-	"cmd":"python /cgru/rules/bin/walk.py",
+	"cmd":"python3 /cgru/rules/bin/walk.py",
 	"af_service":"walk",
 	"af_parser":"generic",
 	"af_capacity":100
@@ -354,7 +406,7 @@
 
 "checksum":{
 	"md5":{
-		"cmd":"python /cgru/utilities/checksum.py",
+		"cmd":"python3 /cgru/utilities/checksum.py",
 		"name":"MD5",
 		"af_service":"checksum",
 		"af_parser":"generic",

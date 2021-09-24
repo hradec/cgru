@@ -179,7 +179,17 @@ function nw_GetSoftwareIcons()
 	obj.get.type = 'files';
 	obj.get.path = 'icons/software';
 
-	nw_send(obj);
+	nw_request({"send": obj, "func": cm_SoftwareIconsReceived});
+}
+
+function nw_GetTicketsIcons()
+{
+	var obj = {};
+	obj.get = {};
+	obj.get.type = 'files';
+	obj.get.path = 'icons/tickets';
+
+	nw_request({"send": obj, "func": cm_TicketsIconsReceived});
 }
 
 function nw_ConstructActionObject(i_type, i_ids)

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import json
+import time
 
 import af
 import cmd
@@ -55,6 +56,32 @@ def refresh():
             print(json.dumps(RenderFull, sort_keys=True, indent=4))
 
     cmd.Tray.showIcon( makeIcon())
+    cmd.Tray.updateToolTip(makeTip())
+
+def makeTip():
+    if Render is None: return None
+    if not 'tasks' in Render: return None
+    if len(Render['tasks']) == 0: return None
+
+    tip = ''
+    t = 0
+    for task in Render['tasks']:
+        sec_started = task['time_start']
+        percent = Render['tasks_percents'][t]
+        sec_running = int(time.time()) - sec_started
+        hrs_running = int(sec_running / 3600)
+        sec_running = int(sec_running - (hrs_running * 3600))
+        mns_running = int(sec_running / 60)
+        sec_running = int(sec_running - (mns_running * 60))
+        str_running = '%02d:%02d:%02d' % (hrs_running, mns_running, sec_running)
+
+        tip += '\n%s - %s' % (task['user_name'], task['service'])
+        tip += '\n%s[%s][%s]' % (task['job_name'], task['block_name'], task['name'])
+        tip += '\nRUNNING: %s - %d%%' % (str_running, percent)
+        t += 1
+
+    return tip
+
 
 def makeIcon():
 
@@ -109,7 +136,7 @@ def drawIconState( i_painter):
     online = state.find('OFF') == -1
     busy   = state.find('RUN') != -1
     NIMBY  = state.find('NBY') != -1
-    nimby  = state.find('NbY') != -1 or NIMBY
+    nimby  = state.find('NbY') != -1
     paused = state.find('PAU') != -1
 
     icon_size = i_painter.viewport().width()
@@ -134,10 +161,17 @@ def drawIconState( i_painter):
         elif nimby:
             if busy:
                 text_color = QtGui.QColor(255, 0, 0)
-                back_color = QtGui.QColor(50, 50, 250)
+                back_color = QtGui.QColor(50,150, 250)
             else:
                 text_color = QtGui.QColor(190, 190, 190)
-                back_color = QtGui.QColor(40, 40, 240)
+                back_color = QtGui.QColor(40,120, 240)
+        elif NIMBY:
+            if busy:
+                text_color = QtGui.QColor(255, 0, 0)
+                back_color = QtGui.QColor(20, 20, 190)
+            else:
+                text_color = QtGui.QColor(190, 190, 190)
+                back_color = QtGui.QColor(10, 10, 150)
         else:
             if busy:
                 text_color = QtGui.QColor(255, 0, 0)

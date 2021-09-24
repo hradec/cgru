@@ -1,15 +1,16 @@
-#include "name_af.h"
 
 #include "../include/afjob.h"
 
 #include "environment.h"
 #include "msg.h"
+#include "pool.h"
 #include "regexp.h"
 #include "render.h"
 
 #define AFOUTPUT
 #undef AFOUTPUT
 #include "../include/macrooutput.h"
+#include "../libafanasy/logger.h"
 
 char * af::jsonParseMsg( rapidjson::Document & o_doc, const af::Msg * i_msg, std::string * o_err)
 {
@@ -31,18 +32,18 @@ char * af::jsonParseData( rapidjson::Document & o_doc, const char * i_data, int 
 //printf("af::jsonParseMsg:\n");printf("%s\n", data);
 
 	std::string err;
-	if( o_doc.ParseInsitu<0>(data).HasParseError())
+	if (o_doc.ParseInsitu<0>(data).HasParseError())
 	{
 		int pos = o_doc.GetErrorOffset();
-		err = err + "JSON: " + o_doc.GetParseError();
-		err = err + " (at character " + af::itos( pos) + " of " + af::itos( i_data_len)  + "):\n";
-		if(( pos >= 0 ) && ( pos < i_data_len ))
+		err = o_doc.GetParseError();
+		err += " (at character " + af::itos(pos) + " of " + af::itos(i_data_len)  + "):\n";
+		if ((pos >= 0) && (pos < i_data_len))
 		{
 			static const int offset = 50;
 			int begin = pos - offset;
-			if( begin < 0 ) begin = 0;
+			if (begin < 0) begin = 0;
 			int end = pos + offset;
-			if( end >= i_data_len ) end = i_data_len - 1;
+			if (end >= i_data_len) end = i_data_len - 1;
 			err += std::string( offset, ' ') + "!\n";
 			err += af::strReplace( af::strReplace( std::string( i_data + begin, end - begin), '\n', ' '), '\t', ' ');
 		}
@@ -65,7 +66,7 @@ char * af::jsonParseData( rapidjson::Document & o_doc, const char * i_data, int 
 		if( o_err )
 			*o_err = err;
 		else
-			AFERRAR("%s", err.c_str())
+			AF_ERR << "JSON parsing error:\n" << err;
 	}
 
 	return data;
@@ -89,6 +90,11 @@ af::Msg * af::jsonMsgInfo( const std::string & i_kind, const std::string & i_tex
 af::Msg * af::jsonMsgError( const std::string & i_str)
 {
 	return af::jsonMsgInfo( "error", i_str);
+}
+af::Msg * af::jsonMsgObject(const std::string & i_str)
+{
+	std::string str = "{\"object\":" + i_str + "}";
+	return af::jsonMsg( str);
 }
 af::Msg * af::jsonMsgStatus( bool i_success, const std::string & i_type, const std::string & i_msg)
 {
@@ -139,16 +145,16 @@ af::Msg * af::jsonMsg( const std::string & i_type, const std::string & i_name, c
 bool af::jr_regexp( const char * i_name, RegExp & o_attr, const JSON & i_object, std::string * o_str)
 {
 	const JSON & value = i_object[i_name];
-	if( false == value.IsString()) return false;
+	if (false == value.IsString()) return false;
 	std::string pattern = (char*)value.GetString();
 	bool ok = o_attr.setPattern( pattern);
-	if( o_str == NULL )
-		return false;
-	if( ok )
+	if (NULL == o_str)
+		return ok;
+	if (ok)
 		*o_str += std::string("\n\"") + i_name + "\" set to \"" + pattern + "\"";
 	else
 		*o_str += std::string("\n\"") + i_name + "\" invalid pattern \"" + pattern + "\"";
-	return true;
+	return ok;
 }
 
 bool af::jr_string( const char * i_name, std::string & o_attr, const JSON & i_object, std::string * o_str)
@@ -366,7 +372,7 @@ void af::jw_stringmap( const char * i_name, const std::map<std::string,std::stri
 
 void af::jw_int32list( const char * i_name, const std::list<int32_t> & i_list, std::ostringstream & o_str)
 {
-	o_str << "\n,\"" << i_name << "\":[";
+	o_str << ",\n\"" << i_name << "\":[";
 	std::list<int32_t>::const_iterator it = i_list.begin();
 	for( ; it != i_list.end(); it++)
 	{
@@ -378,7 +384,7 @@ void af::jw_int32list( const char * i_name, const std::list<int32_t> & i_list, s
 
 void af::jw_int32vec( const char * i_name, const std::vector<int32_t> & i_vec, std::ostringstream & o_str)
 {
-	o_str << "\n,\"" << i_name << "\":[";
+	o_str << ",\n\"" << i_name << "\":[";
 	for( int i = 0; i < i_vec.size(); i++)
 	{
 		if( i ) o_str << ',';
@@ -387,43 +393,56 @@ void af::jw_int32vec( const char * i_name, const std::vector<int32_t> & i_vec, s
 	o_str << "]";
 }
 
-void af::jw_state( const int64_t & i_state, std::ostringstream & o_str, bool i_render)
+void af::jw_stateJob(const int64_t & i_state, std::ostringstream & o_str)
 {
 	o_str << "\"state\":\"";
 
-	if( i_render )
-	{
-		if( i_state & Render::SOnline      ) o_str << " ONL";
-		else                                 o_str << " OFF";
-		if( i_state & Render::Snimby       ) o_str << " NbY";
-		if( i_state & Render::SNIMBY       ) o_str << " NBY";
-		if( i_state & Render::SBusy        ) o_str << " RUN";
-		if( i_state & Render::SDirty       ) o_str << " DRT";
-		if( i_state & Render::SWOLFalling  ) o_str << " WFL";
-		if( i_state & Render::SWOLSleeping ) o_str << " WSL";
-		if( i_state & Render::SWOLWaking   ) o_str << " WWK";
-		if( i_state & Render::SPaused  ) o_str << " PAU";
-	}
-	else
-	{
-		if( i_state & AFJOB::STATE_READY_MASK           ) o_str << " RDY";
-		if( i_state & AFJOB::STATE_RUNNING_MASK         ) o_str << " RUN";
-		if( i_state & AFJOB::STATE_DONE_MASK            ) o_str << " DON";
-		if( i_state & AFJOB::STATE_ERROR_MASK           ) o_str << " ERR";
-		if( i_state & AFJOB::STATE_SKIPPED_MASK         ) o_str << " SKP";
-		if( i_state & AFJOB::STATE_OFFLINE_MASK         ) o_str << " OFF";
-		if( i_state & AFJOB::STATE_WARNING_MASK         ) o_str << " WRN";
-		if( i_state & AFJOB::STATE_PARSERERROR_MASK     ) o_str << " PER";
-		if( i_state & AFJOB::STATE_PARSERBADRESULT_MASK ) o_str << " PBR";
-		if( i_state & AFJOB::STATE_PARSERSUCCESS_MASK   ) o_str << " PSC";
-		if( i_state & AFJOB::STATE_WAITDEP_MASK         ) o_str << " WDP";
-		if( i_state & AFJOB::STATE_WAITTIME_MASK        ) o_str << " WTM";
-		if( i_state & AFJOB::STATE_STDOUT_MASK          ) o_str << " STO";
-		if( i_state & AFJOB::STATE_STDERR_MASK          ) o_str << " STE";
-		if( i_state & AFJOB::STATE_PPAPPROVAL_MASK      ) o_str << " PPA";
-		if( i_state & AFJOB::STATE_ERROR_READY_MASK     ) o_str << " RER";
-		if( i_state & AFJOB::STATE_WAITRECONNECT_MASK   ) o_str << " WRC";
-	}
+	if (i_state & AFJOB::STATE_READY_MASK          ) o_str << " RDY";
+	if (i_state & AFJOB::STATE_RUNNING_MASK        ) o_str << " RUN";
+	if (i_state & AFJOB::STATE_DONE_MASK           ) o_str << " DON";
+	if (i_state & AFJOB::STATE_ERROR_MASK          ) o_str << " ERR";
+	if (i_state & AFJOB::STATE_SKIPPED_MASK        ) o_str << " SKP";
+	if (i_state & AFJOB::STATE_OFFLINE_MASK        ) o_str << " OFF";
+	if (i_state & AFJOB::STATE_WARNING_MASK        ) o_str << " WRN";
+	if (i_state & AFJOB::STATE_PARSERERROR_MASK    ) o_str << " PER";
+	if (i_state & AFJOB::STATE_PARSERBADRESULT_MASK) o_str << " PBR";
+	if (i_state & AFJOB::STATE_PARSERSUCCESS_MASK  ) o_str << " PSC";
+	if (i_state & AFJOB::STATE_WAITDEP_MASK        ) o_str << " WDP";
+	if (i_state & AFJOB::STATE_WAITTIME_MASK       ) o_str << " WTM";
+	if (i_state & AFJOB::STATE_STDOUT_MASK         ) o_str << " STO";
+	if (i_state & AFJOB::STATE_STDERR_MASK         ) o_str << " STE";
+	if (i_state & AFJOB::STATE_PPAPPROVAL_MASK     ) o_str << " PPA";
+	if (i_state & AFJOB::STATE_ERROR_READY_MASK    ) o_str << " RER";
+	if (i_state & AFJOB::STATE_WAITRECONNECT_MASK  ) o_str << " WRC";
+	if (i_state & AFJOB::STATE_TRYTHISTASKNEXT_MASK) o_str << " TRY";
+
+	o_str << "\"";
+}
+
+void af::jw_statePool(const int64_t & i_state, std::ostringstream & o_str)
+{
+	o_str << "\"state\":\"";
+
+	if (i_state & Pool::SBusy  ) o_str << " RUN";
+	if (i_state & Pool::SPaused) o_str << " PAU";
+
+	o_str << "\"";
+}
+
+void af::jw_stateRender(const int64_t & i_state, std::ostringstream & o_str)
+{
+	o_str << "\"state\":\"";
+
+	if (i_state & Render::SOnline     ) o_str << " ONL"; else o_str << " OFF";
+	if (i_state & Render::Snimby      ) o_str << " NbY";
+	if (i_state & Render::SNIMBY      ) o_str << " NBY";
+	if (i_state & Render::SBusy       ) o_str << " RUN";
+	if (i_state & Render::SDirty      ) o_str << " DRT";
+	if (i_state & Render::SWOLFalling ) o_str << " WFL";
+	if (i_state & Render::SWOLSleeping) o_str << " WSL";
+	if (i_state & Render::SWOLWaking  ) o_str << " WWK";
+	if (i_state & Render::SPaused     ) o_str << " PAU";
+	if (i_state & Render::SSick       ) o_str << " SIC";
 
 	o_str << "\"";
 }

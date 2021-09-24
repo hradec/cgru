@@ -33,6 +33,10 @@ def ejectTasks():
 	cmd = af.Cmd().renderEjectTasks()
 	render.refreshAfter()
 
+def ejectAndNIMBY():
+	cmd = af.Cmd().renderEjectAndNIMBY()
+	render.refreshAfter()
+
 
 def ejectNotMyTasks():
 	cmd = af.Cmd().renderEjectNotMyTasks()
@@ -110,6 +114,6 @@ def refresh(reset=False):
 			free_set = False
 	elif toset_free:
 		if not free_set:
-			setFree('(keeper nimby schedule)')
+			setFree()
 			free_set = True
 			nimby_set = False

@@ -36,12 +36,13 @@ export TMPDIR=/tmp
 
 # overrides (set custom values there):
 [ -f override.sh ] && source override.sh
+[ -f override_maya.sh ] && source override_maya.sh
 
 # Add Maya binary to PATH:
 export PATH="${MAYA_LOCATION}/bin:${PATH}"
 
 # Add CGRU icons to Maya:
-export XBMLANGPATH="${MAYA_CGRU_LOCATION}/icons/%B"
+export XBMLANGPATH="${MAYA_CGRU_LOCATION}/icons/%B:${XBMLANGPATH}"
 
 # Add CGRU scripts to Maya scripts path:
 export MAYA_SCRIPT_PATH="${MAYA_CGRU_LOCATION}/mel/AETemplates:${MAYA_SCRIPT_PATH}"
@@ -53,6 +54,9 @@ export MAYA_SCRIPT_PATH="${MAYA_CGRU_LOCATION}/afanasy:${MAYA_SCRIPT_PATH}"
 
 # Disable the Customer Improvement Program
 export MAYA_DISABLE_CIP=1
+# https://discourse.techart.online/t/maya-reducing-maya-shutdown-time-by-disabling-autodesk-cip/4951
+# Disable the Customer Error Reporting
+export MAYA_DISABLE_CER=1
 
 export APP_DIR="${MAYA_LOCATION}"
 export APP_EXE="${MAYA_EXEC}"

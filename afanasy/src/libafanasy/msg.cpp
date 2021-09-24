@@ -453,6 +453,7 @@ void Msg::v_generateInfoStream( std::ostringstream & stream, bool full) const
 	else
 		stream << "!UNKNOWN!(" << m_type << ")";
 	stream << "[" << writeSize() << "]";
+	stream << ": " << m_address;
 }
 
 void Msg::stdOutData( bool withHeader)
@@ -577,6 +578,9 @@ const char * Msg::TNAMES[]=
 
 	/*- Branches messages -*/
 	"TBranchesList",              ///< Branches nodes list.
+
+	/*- Pools messages -*/
+	"TPoolsList",                 ///< Pools nodes list.
 
 	/*- Job messages -*/
 	"TJobsList",                  ///< Jobs list information.

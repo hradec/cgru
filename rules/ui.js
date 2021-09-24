@@ -31,7 +31,7 @@ var u_body_text = '';
 var u_body_editing = false;
 var u_body_edit_markup = 0;
 
-var u_backgroundColor = '#A0A0A0';
+var u_background = '#A0A0A0';
 var u_textColor = '#000000';
 cgru_params.push(['back_asset', 'Asset', '', 'Enter background style']);
 cgru_params.push(['back_body', 'Body', '', 'Enter background style']);
@@ -59,7 +59,7 @@ function View_files_Open()
 {
 	if (g_elCurFolder)
 		new FilesView(
-			{"el": $('files'), "path": g_elCurFolder.m_path, "walk": g_elCurFolder.m_dir, "limits": false});
+			{"el": $('files'), "path": g_elCurFolder.m_path, "walk": g_elCurFolder.m_dir, "limits": false, 'name':'files'});
 }
 
 function View_files_Close()
@@ -142,7 +142,7 @@ function u_InitAuth()
 {
 	st_InitAuth();
 	$('body_edit').style.display = 'block';
-	$('search_artists_div').style.display = 'block';
+	$('search_artists_grp').style.display = 'block';
 	$('auth_user').textContent = c_GetUserTitle() + ' [' + g_auth_user.id + ']';
 
 	if (c_CanExecuteSoft())
@@ -221,6 +221,7 @@ function u_Finish()
 	$('annotations').textContent = '';
 	u_el.thumbnail.style.display = 'none';
 
+	activity_Finish();
 	st_Finish();
 	nw_Finish();
 	a_Finish();
@@ -372,6 +373,7 @@ function u_ApplyStyles()
 
 	if (localStorage.background && localStorage.background.length)
 	{
+		u_background = localStorage.background;
 		document.body.style.background = localStorage.background;
 		var backs =
 			['header', 'footer', 'navig_div', 'sidepanel_div', 'content', 'navig_handle', 'sidepanel_handle'];
@@ -380,7 +382,10 @@ function u_ApplyStyles()
 	}
 
 	if (localStorage.text_color && localStorage.text_color.length)
+	{
+		u_textColor = localStorage.text_color;
 		document.body.style.color = localStorage.text_color;
+	}
 
 	var backs = ['asset', 'body', 'files', 'comments'];
 	for (var i = 0; i < backs.length; i++)
@@ -669,9 +674,8 @@ function u_BodyEditStart()
 	$('body_btn_edit_cancel').style.display = 'block';
 	$('body_panel').style.display = 'none';
 	$('body_panel_edit').style.display = 'block';
-	$('body_body').contentEditable = 'true';
-	$('body_body').classList.add('editing');
-	$('body_body').focus();
+
+	ec_EditingStart({'el':$('body_body'),'form':'body'});
 
 	u_body_editing = true;
 }
@@ -691,8 +695,8 @@ function u_BodyEditCancel(i_text)
 	$('body_btn_edit_cancel').style.display = 'none';
 	$('body_panel').style.display = 'block';
 	$('body_panel_edit').style.display = 'none';
-	$('body_body').classList.remove('editing');
-	$('body_body').contentEditable = 'false';
+
+	ec_EditingFinish({'el':$('body_body')});
 }
 
 function u_BodyEditSave()
@@ -1089,6 +1093,8 @@ function u_ExecuteShow(i_show)
 
 function u_CreateActions(i_actions, i_el)
 {
+	let elements = [];
+
 	for (let n = 0; n < i_actions.length; n++)
 	{
 		let action = i_actions[n];
@@ -1107,26 +1113,28 @@ function u_CreateActions(i_actions, i_el)
 		}
 
 		// Process command:
-		let cmd = c_PathPM_Server2Client(action.cmd);
-		cmd = cmd.replace(/@PATH@/g, c_PathPM_Rules2Client(g_CurPath()));
-		// '@arg@' will be replaced with '--arg [arg value]'
-		// Value will be the first defined in action, ASSET, RULES
-		// For example: '@fps@' will be replaces with '--fps 24'
-		let matches = cmd.match(/@\w*@/g);
-		if (matches && matches.length)
-			for (let i = 0; i < matches.length; i++)
-			{
-				let match = matches[i];
-				let arg = match.replace(/@/g,'');
-				let val = action[arg];
-				if (null == val) val = ASSET[arg];
-				if (null == val) val = RULES[arg];
-				if (val) val = '--' + arg + ' ' + val;
-				else val = '';
-				cmd = cmd.replace(match, val);
-			}
+		let cmd = null;
+		if (action.cmd)
+		{
+			cmd = c_PathPM_Server2Client(action.cmd);
+			cmd = cmd.replace(/@PATH@/g, c_PathPM_Rules2Client(g_CurPath()));
+		}
+
+		// Process open:
+		let open = null;
+		if (action.open)
+			open = action.open.replace(/@PATH@/g, c_PathPM_Rules2Client(g_CurPath()));
+
+		// Process terminal:
+		let terminal = null;
+		if (action.terminal)
+			terminal = action.terminal.replace(/@PATH@/g, c_PathPM_Rules2Client(g_CurPath()));
 
 		// Make an executable button:
-		cgru_CmdExecProcess({'element':el,'cmd':cmd});
+		cgru_CmdExecProcess({'element':el,'cmd':cmd,'open':open,'terminal':terminal});
+
+		elements.push(el);
 	}
+
+	return elements;
 }

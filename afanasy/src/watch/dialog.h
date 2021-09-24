@@ -8,7 +8,6 @@
 #include "labelversion.h"
 #include "watch.h"
 
-#include <QtCore/QLinkedList>
 #include <QtCore/QTimer>
 #include <QBoxLayout>
 #include <QLabel>
@@ -16,7 +15,7 @@
 #include <QMainWindow>
 #include <QWidget>
 
-class ButtonOut;
+class ButtonSnapWnd;
 class ButtonMonitor;
 class ListItems;
 class OfflineScreen;
@@ -73,6 +72,7 @@ private slots:
     void actSaveGUIOnExit();
 	void actSaveHotkeysOnExit();
     void actSaveWndRectsOnExit();
+    void actResetWndRects();
     void actSavePreferences();
     void actShowOfflineNoise();
 	void actGuiTheme( QString theme);
@@ -122,8 +122,8 @@ private:
 
     ButtonMonitor * m_btnMonitor[Watch::WLAST];
 
-    ButtonOut * m_btn_out_left;
-    ButtonOut * m_btn_out_right;
+    ButtonSnapWnd * m_btn_snap_left;
+    ButtonSnapWnd * m_btn_snap_right;
 
     af::MsgClassUserHost m_mcuserhost;
 

@@ -273,7 +273,7 @@ function a_ShowHeaders()
 		var elName = document.createElement('span');
 		elHeader.appendChild(elName);
 		elName.classList.add('name');
-		elName.textContent = a_name;
+		elName.innerHTML = c_HighlightBadChars(a_name);
 		//		elName.href = href;
 	}
 }
@@ -290,6 +290,27 @@ function a_Copy(i_args)
 	params.template = c_PathPM_Server2Client(i_args.template);
 
 	params.name = i_args.name;
+	if (params.name == null)
+	{
+		// Try to increment latest number in name by 10:
+		// Find all numbers
+		let numbers = ASSET.name.match(/\d+/g);
+		if ((numbers != null) && numbers.length)
+		{
+			let number = numbers[numbers.length-1];
+			let numplus = '' + (parseInt(number) + 10);
+			// Apply padding
+			while (numplus.length < number.length)
+				numplus = '0' + numplus;
+			// Lenght may be bigger on 'SHOT_990'
+			if (numplus.length == number.length)
+				params.name = ASSET.name.replace(number, numplus);
+				// Check if such folder already exists:
+				if (g_elCurFolder.m_elNext)
+					if (c_PathBase(g_elCurFolder.m_elNext.m_path) == params.name)
+						params.name = null;
+		}
+	}
 	if (params.name == null)
 		params.name = ASSET.name + '-01';
 
@@ -327,7 +348,7 @@ function a_CopySend(i_wnd)
 	i_wnd.m_elWait = elWait;
 	elWait.classList.add('wait');
 
-	var cmd = 'rules/bin/copy.py';
+	var cmd = 'rules/bin/copy_template.py';
 	cmd += ' -t "' + c_PathPM_Client2Server(params.template) + '"';
 	cmd += ' -d "' + c_PathPM_Rules2Server(params.destination) + '"';
 	cmd += ' ' + params.name;

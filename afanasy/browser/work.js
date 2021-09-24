@@ -11,13 +11,14 @@
 \* ....................................................................................................... */
 
 /*
-	work.js - work related methods for the jobs.js
+	work.js - work related methods for Branches, Jobs, Users
 */
 
 "use strict";
 
 var work_params = {
 	priority /***************/: {'type': 'num', 'label': 'Priority'},
+	pools                     : {"type": 'msi', "label": 'Pools'},
 	max_running_tasks /******/: {'type': 'num', 'label': 'Max Running Tasks'},
 	max_running_tasks_per_host: {'type': 'num', 'label': 'Max Running Tasks Per Host'},
 	hosts_mask /*************/: {'type': 'reg', 'label': 'Hosts Mask'},
@@ -129,9 +130,17 @@ function work_generateRunningCountsString(i_params, i_type)
 	}
 	else if (cm_IsJedi())
 	{
+		if (i_params.running_tasks_num)
+			str += "Tasks:<b>" + i_params.running_tasks_num + "</b>";
+		if (i_params.running_capacity_total)
+			str += " Capacity:<b>" + cm_ToKMG(i_params.running_capacity_total) + "</b>";
 	}
 	else
 	{
+		if (i_params.running_tasks_num)
+			str += "t:<b>" + i_params.running_tasks_num + "</b>";
+		if (i_params.running_capacity_total)
+			str += " c:<b>" + cm_ToKMG(i_params.running_capacity_total) + "</b>";
 	}
 
 	return str;
@@ -141,21 +150,6 @@ function work_CreatePanels(i_monitor, i_type)
 {
 	var elPanelL = i_monitor.elPanelL;
 	var elPanelR = i_monitor.elPanelR;
-
-
-	// Pools:
-	var el = document.createElement('div');
-	el.classList.add('section');
-	elPanelR.appendChild(el);
-	elPanelR.m_elPools = el;
-	el.style.display = 'none';
-
-	var elPools = elPanelR.m_elPools;
-	el = document.createElement('div');
-	el.classList.add('caption');
-	el.textContent = 'Pools:';
-	elPools.appendChild(el);
-	elPools.m_elArray = [];
 
 
 	// Work parameters below are not available for jobs
@@ -168,95 +162,30 @@ function work_CreatePanels(i_monitor, i_type)
 	acts.solve_ord = {
 		'name': 'solve_method',
 		'value': 'solve_order',
-		'label': 'ORD',
+		'label': 'ORDER',
 		'tooltip': 'Solve jobs by order.',
 		'handle': 'mh_Param'
 	};
 	acts.solve_pri = {
 		'name': 'solve_method',
 		'value': 'solve_priority',
-		'label': 'PRI',
+		'label': 'PRIORITY',
 		'tooltip': 'Solve jobs by priority.',
 		'handle': 'mh_Param'
 	};
 	acts.solve_cap = {
 		'name': 'solve_need',
 		'value': 'solve_capacity',
-		'label': 'CAP',
+		'label': 'CAPACITY',
 		'tooltip': 'Solve need by running capacity total.',
 		'handle': 'mh_Param'
 	};
 	acts.solve_tsk = {
 		'name': 'solve_need',
 		'value': 'solve_tasksnum',
-		'label': 'TKS',
+		'label': 'TASKS',
 		'tooltip': 'Solve need by running tasks number.',
 		'handle': 'mh_Param'
 	};
 	i_monitor.createCtrlBtns(acts);
-}
-
-function work_ResetPanels(i_monitor)
-{
-	var elPanelL = i_monitor.elPanelL;
-	var elPanelR = i_monitor.elPanelR;
-
-	// Pools:
-	var elPools = elPanelR.m_elPools;
-	for (var i = 0; i < elPools.m_elArray.length; i++)
-		elPools.removeChild(elPools.m_elArray[i]);
-	elPools.m_elArray = [];
-	elPools.style.display = 'none';
-}
-
-function work_UpdatePanels(i_monitor, i_node)
-{
-	var elPanelL = i_monitor.elPanelL;
-	var elPanelR = i_monitor.elPanelR;
-
-	var work = i_node.params;
-
-	// Pools:
-	var elPools = elPanelR.m_elPools;
-	var pools = work.pools;
-	if (pools)
-	{
-		elPools.style.display = 'block';
-		for (var pool in pools)
-		{
-			var el = document.createElement('div');
-			elPools.appendChild(el);
-			elPools.m_elArray.push(el);
-			el.textContent = pool + ':' + pools[pool];
-
-			el.m_node = i_node;
-			el.m_pname = pool;
-			el.m_pval = pools[pool];
-			el.ondblclick = function(e) { work_PoolDblClicked(e.currentTarget) }
-		}
-	}
-}
-
-function work_PoolDblClicked(i_el)
-{
-	var value = i_el.m_pname + ':' + i_el.m_pval;
-
-	var args = {};
-
-	//	args.param    = 'pools';
-	args.type = 'str';
-	args.receiver = this.window;
-	args.wnd = this.window;
-	args.handle = 'work_PoolSet';
-	args.value = value;
-	args.name = 'pool_parameter';
-	args.info = 'Edit pool:';
-
-	new cgru_Dialog(args);
-}
-
-function work_PoolSet(i_value, i_param)
-{
-	console.log('i_value = ' + i_value);
-	console.log('i_param = ' + i_param);
 }

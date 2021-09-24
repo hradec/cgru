@@ -6,7 +6,8 @@ source ./distribution.sh
 
 # List packages:
 
-packages="yasm p7zip wget inkscape cmake subversion"
+#packages="yasm p7zip wget inkscape cmake subversion"
+packages="inkscape cmake subversion"
 packages_noarch=""
 
 # Packages for Debian distributions:
@@ -34,17 +35,16 @@ function debianArch(){
 
 # Packages for RedHat distributions:
 function redhatArch(){
-	packages="$packages vim"
+	packages="$packages vim-minimal"
 	packages="$packages gcc-c++"
 	packages="$packages git"
-	packages="$packages python-devel"
-	packages="$packages postgresql-devel"
-	packages="$packages PyQt4"
-	packages="$packages qt-devel"
+	packages="$packages python36-devel"
+	packages="$packages postgresql-server-devel"
+	packages="$packages libpq-devel"
+	#packages="$packages PyQt4"
 	packages="$packages qt5-qtbase-devel"
 	packages="$packages qt5-qtmultimedia-devel"
 	packages="$packages libzip libzip-devel"
-	packages="$packages OpenEXR-devel"
 	packages="$packages rpm-build"
 
 	pkg_manager_cmd="yum install"
@@ -55,10 +55,11 @@ function fedoraArch(){
 	packages="$packages vim"
 	packages="$packages gcc-c++"
 	packages="$packages postgresql-devel"
+	packages="$packages postgresql-server-devel"
 	packages="$packages qt5-qtmultimedia-devel"
 	packages="$packages rpm-build"
 	packages="$packages git"
-	packages="$packages PyQt5"
+	packages="$packages python3-pyside2"
 	packages="$packages libzip libzip-devel"
 	packages="$packages python3-devel"
 	packages="$packages OpenEXR-devel"

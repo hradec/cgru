@@ -54,10 +54,9 @@ int     Environment::max_run_tasks_per_host =          AFGENERAL::MAX_RUN_TASKS_
 int     Environment::file_name_size_max =              AFGENERAL::FILE_NAME_SIZE_MAX;
 
 int     Environment::task_default_capacity =           AFJOB::TASK_DEFAULT_CAPACITY;
-int     Environment::task_update_timeout =             AFJOB::TASK_UPDATE_TIMEOUT;
-int     Environment::task_stop_timeout =               AFJOB::TASK_STOP_TIMEOUT;
 int     Environment::task_log_linesmax =               AFJOB::TASK_LOG_LINESMAX;
 int     Environment::task_progress_change_timeout =    AFJOB::TASK_PROGRESS_CHANGE_TIMEOUT;
+int     Environment::task_reconnect_timeout =          AFJOB::TASK_RECONNECT_TIMEOUT;
 
 int     Environment::serverport =                      AFADDR::SERVER_PORT;
 
@@ -67,15 +66,9 @@ int     Environment::watch_get_events_sec =            AFWATCH::GET_EVENTS_SEC;
 int     Environment::watch_connection_lost_time =      AFWATCH::CONNECTION_LOST_TIME;
 int     Environment::watch_refresh_gui_sec =           AFWATCH::REFRESH_GUI_SEC;
 int     Environment::watch_render_idle_bar_max =       AFWATCH::RENDER_IDLE_BAR_MAX;
+bool    Environment::watch_work_user_visible =         AFWATCH::WORK_USER_VISIBLE;
 
-int     Environment::render_heartbeat_sec =            AFRENDER::HEARTBEAT_SEC;
-int     Environment::render_up_resources_period =      AFRENDER::UP_RESOURCES_PERIOD;
-int     Environment::render_default_capacity =         AFRENDER::DEFAULTCAPACITY;
-int     Environment::render_default_maxtasks =         AFRENDER::DEFAULTMAXTASKS;
 int     Environment::render_nice =                     AFRENDER::TASKPROCESSNICE;
-int     Environment::render_zombietime =               AFRENDER::ZOMBIETIME;
-int     Environment::render_exit_no_task_time =        AFRENDER::EXIT_NO_TASK_TIME;
-int     Environment::render_connection_lost_time =     AFRENDER::CONNECTION_LOST_TIME;
 
 
 std::string Environment::rules_url;
@@ -91,6 +84,10 @@ std::string Environment::render_cmd_wolwake =          AFRENDER::CMD_WOLWAKE;
 std::string Environment::render_networkif =            AFRENDER::NETWORK_IF;
 std::string Environment::render_hddspace_path =        AFRENDER::HDDSPACE_PATH;
 std::string Environment::render_iostat_device =        AFRENDER::IOSTAT_DEVICE;
+
+int Environment::render_overflow_mem  = -1;
+int Environment::render_overflow_swap = -1;
+int Environment::render_overflow_hdd  = -1;
 
 std::string Environment::pswd_visor =                  AFUSER::PSWD_VISOR;
 std::string Environment::pswd_god =                    AFUSER::PSWD_GOD;
@@ -149,6 +146,7 @@ std::string Environment::store_folder_branches;
 std::string Environment::store_folder_jobs;
 std::string Environment::store_folder_renders;
 std::string Environment::store_folder_users;
+std::string Environment::store_folder_pools;
 
 std::string Environment::timeformat =                 AFGENERAL::TIME_FORMAT;
 std::string Environment::servername =                 AFADDR::SERVER_NAME;
@@ -159,10 +157,15 @@ std::string Environment::hostname;
 
 std::string Environment::executable_path;
 std::string Environment::cgrulocation;
+std::string Environment::customconfig;
 std::string Environment::afroot;
 std::string Environment::home;
 std::string Environment::home_afanasy;
+std::string Environment::icons_path;
+
 std::string Environment::http_serve_dir;
+std::string Environment::http_site_index;
+std::string Environment::http_directory_index;
 
 Address Environment::serveraddress;
 
@@ -187,6 +190,8 @@ std::vector<std::string> Environment::previewcmds;
 std::vector<std::string> Environment::annotations;
 std::vector<std::string> Environment::rendercmds;
 std::vector<std::string> Environment::rendercmds_admin;
+std::vector<std::string> Environment::render_launch_cmds;
+std::vector<std::string> Environment::render_launch_cmds_exit;
 std::vector<std::string> Environment::ip_trust;
 std::vector<std::string> Environment::render_resclasses;
 std::vector<std::string> Environment::m_cmdarguments;
@@ -213,7 +218,10 @@ void Environment::getVars( const JSON * i_obj)
 	getVar( i_obj, digest_file,                       "af_digest_file"                       );
 	getVar( i_obj, digest_realm,                      "realm"                                );
 	getVar( i_obj, serverport,                        "af_serverport"                        );
-	getVar( i_obj, http_serve_dir,                    "af_http_serve_dir"                    );
+
+	getVar(i_obj, http_serve_dir,                     "af_http_serve_dir"                    );
+	getVar(i_obj, http_site_index,                    "af_http_site_index"                   );
+	getVar(i_obj, http_directory_index,               "af_http_directory_index"              );
 
 	getVar( i_obj, rules_url,                         "rules_url"                            );
 	getVar( i_obj, projects_root,                     "projects_root"                        );
@@ -229,6 +237,7 @@ void Environment::getVars( const JSON * i_obj)
 	getVar( i_obj, previewcmds,                       "previewcmds"                          );
 	getVar( i_obj, annotations,                       "annotations"                          );
 	getVar( i_obj, cmd_shell,                         "cmd_shell"                            );
+	getVar( i_obj, icons_path,                        "icons_path"                           );
 
 	getVar( i_obj, afnode_log_lines_max,              "af_node_log_lines_max"                );
 	getVar( i_obj, priority,                          "af_priority"                          );
@@ -267,17 +276,11 @@ void Environment::getVars( const JSON * i_obj)
 	getVar( i_obj, so_client_TCP_NODELAY,             "af_so_client_TCP_NODELAY"             );
 	getVar( i_obj, so_client_TCP_CORK,                "af_so_client_TCP_CORK"                );
 
-
 	getVar( i_obj, task_default_capacity,             "af_task_default_capacity"             );
-	getVar( i_obj, task_update_timeout,               "af_task_update_timeout"               );
-	getVar( i_obj, task_stop_timeout,                 "af_task_stop_timeout"                 );
 	getVar( i_obj, task_log_linesmax,                 "af_task_log_linesmax"                 );
 	getVar( i_obj, task_progress_change_timeout,      "af_task_progress_change_timeout"      );
+	getVar( i_obj, task_reconnect_timeout,            "af_task_reconnect_timeout"            );
 
-	getVar( i_obj, render_heartbeat_sec,              "af_render_heartbeat_sec"              );
-	getVar( i_obj, render_up_resources_period,        "af_render_up_resources_period"        );
-	getVar( i_obj, render_default_capacity,           "af_render_default_capacity"           );
-	getVar( i_obj, render_default_maxtasks,           "af_render_default_maxtasks"           );
 	getVar( i_obj, render_cmd_reboot,                 "af_render_cmd_reboot"                 );
 	getVar( i_obj, render_cmd_shutdown,               "af_render_cmd_shutdown"               );
 	getVar( i_obj, render_cmd_wolsleep,               "af_render_cmd_wolsleep"               );
@@ -287,17 +290,20 @@ void Environment::getVars( const JSON * i_obj)
 	getVar( i_obj, render_iostat_device,              "af_render_iostat_device"              );
 	getVar( i_obj, render_resclasses,                 "af_render_resclasses"                 );
 	getVar( i_obj, render_nice,                       "af_render_nice"                       );
-	getVar( i_obj, render_zombietime,                 "af_render_zombietime"                 );
-	getVar( i_obj, render_exit_no_task_time,          "af_render_exit_no_task_time"          );
-	getVar( i_obj, render_connection_lost_time,       "af_render_connection_lost_time"       );
 	getVar( i_obj, render_windowsmustdie,             "af_render_windowsmustdie"             );
+	getVar( i_obj, render_overflow_mem,               "af_render_overflow_mem"               );
+	getVar( i_obj, render_overflow_swap,              "af_render_overflow_swap"              );
+	getVar( i_obj, render_overflow_hdd,               "af_render_overflow_hdd"               );
 
 	getVar( i_obj, rendercmds,                        "af_rendercmds"                        );
 	getVar( i_obj, rendercmds_admin,                  "af_rendercmds_admin"                  );
+	getVar( i_obj, render_launch_cmds,                "af_render_launch_cmds"                );
+	getVar( i_obj, render_launch_cmds_exit,           "af_render_launch_cmds_exit"           );
 	getVar( i_obj, watch_get_events_sec,              "af_watch_get_events_sec"              );
 	getVar( i_obj, watch_refresh_gui_sec,             "af_watch_refresh_gui_sec"             );
 	getVar( i_obj, watch_connection_lost_time,        "af_watch_connection_lost_time"        );
 	getVar( i_obj, watch_render_idle_bar_max,         "af_watch_render_idle_bar_max"         );
+	getVar( i_obj, watch_work_user_visible,           "af_watch_work_user_visible"           );
 
 	getVar( i_obj, monitor_zombietime,                "af_monitor_zombietime"                );
 
@@ -550,12 +556,17 @@ Environment::Environment( uint32_t flags, int argc, char** argv )
 	if( username.empty()) username = "unknown";
 
 	// Convert to lowercase:
-	std::transform( username.begin(), username.end(), username.begin(), ::tolower);
-	// cut DOMAIN/
-	size_t dpos = username.rfind('/');
-	if( dpos == std::string::npos) dpos = username.rfind('\\');
-	if( dpos != std::string::npos) username = username.substr( dpos + 1);
-	std::transform( username.begin(), username.end(), username.begin(), ::tolower);
+	std::transform(username.begin(), username.end(), username.begin(), ::tolower);
+
+	// cut DOMAIN
+	{
+		size_t dpos = username.rfind('/');
+		if (dpos == std::string::npos)
+			dpos = username.rfind('\\');
+		if (dpos != std::string::npos)
+			username = username.substr( dpos + 1);
+	}
+
 	PRINT("Afanasy user name = '%s'\n", username.c_str());
 
 //
@@ -590,9 +601,20 @@ Environment::Environment( uint32_t flags, int argc, char** argv )
 		}
 		computername = buffer;
 	}
-	if( hostname.empty()) hostname = computername;
-	std::transform( hostname.begin(), hostname.end(), hostname.begin(), ::tolower);
-	std::transform( computername.begin(), computername.end(), computername.begin(), ::tolower);
+
+	if(hostname.empty())
+		hostname = computername;
+
+	// To lower case:
+	std::transform(hostname.begin(), hostname.end(), hostname.begin(), ::tolower);
+	std::transform(computername.begin(), computername.end(), computername.begin(), ::tolower);
+
+	// Cut DOMAIN:
+	{
+		size_t dpos = hostname.find('.');
+		if (dpos != std::string::npos)
+			hostname = hostname.substr(0, dpos);
+	}
 
 	PRINT("Local computer name = '%s'\n", computername.c_str());
 	PRINT("Afanasy host name = '%s'\n", hostname.c_str());
@@ -686,8 +708,10 @@ void Environment::load()
 	m_config_data.clear();
 
 	m_config_data = "{\"cgru_config\":[";
+	customconfig = af::getenv("CGRU_CUSTOM_CONFIG");
 
 	loadFile( cgrulocation + "/config_default.json");
+	loadFile( customconfig);
 	loadFile( home_afanasy + "/config.json");
 
 	PRINT("Getting variables from environment:\n");
@@ -713,19 +737,19 @@ void Environment::load()
 void Environment::loadFile( const std::string & i_filename)
 {
 	// Check that file is not alreadt loaded, to prevent cyclic include
-	for( int i = 0; i < m_config_files.size(); i++)
-		if( m_config_files[i] == i_filename )
+	for(int i = 0; i < m_config_files.size(); i++)
+		if(m_config_files[i] == i_filename)
 		{
-			AFERRAR("Config file already included:\n%s", i_filename.c_str())
+			AF_ERR << "Config file already included: " << i_filename;
 			return;
 		}
 
 	// Add file to store loaded:
 	m_config_files.push_back( i_filename);
 
-	if( false == pathFileExists( i_filename))
+	if(false == pathFileExists(i_filename))
 	{
-		printf("Config file does not exist:\n%s\n", i_filename.c_str());
+		AF_WARN << "Config file does not exist: " << i_filename;
 		return;
 	}
 
@@ -736,9 +760,13 @@ void Environment::loadFile( const std::string & i_filename)
 	if( buffer == NULL )
 		return;
 
+	std::string err;
 	rapidjson::Document doc;
-	char * data = jsonParseData( doc, buffer, filesize);
-	if( data == NULL )
+	char * data = jsonParseData(doc, buffer, filesize, &err);
+	if (err.size())
+		AF_ERR << "Config file \"" << i_filename << "\" has error:\n" << err;
+
+	if (data == NULL)
 	{
 		delete [] buffer;
 		return;
@@ -803,6 +831,7 @@ bool Environment::initAfterLoad()
 	store_folder_jobs    = store_folder + AFGENERAL::PATH_SEPARATOR +    AFJOB::STORE_FOLDER;
 	store_folder_renders = store_folder + AFGENERAL::PATH_SEPARATOR + AFRENDER::STORE_FOLDER;
 	store_folder_users   = store_folder + AFGENERAL::PATH_SEPARATOR +   AFUSER::STORE_FOLDER;
+	store_folder_pools   = store_folder + AFGENERAL::PATH_SEPARATOR +   AFPOOL::STORE_FOLDER;
 
 	// HTTP serve folder:
 	if( http_serve_dir.empty()) 
@@ -847,7 +876,7 @@ bool Environment::initAfterLoad()
 	// Check whether server address is configured:
 	if(( servername == std::string(AFADDR::SERVER_NAME)) && ( isServer() != true ))
 	{
-		printf("WARNING: SERVER ADDRESS ID NOT CONFIGURED, USING %s\n", AFADDR::SERVER_NAME);
+		printf("WARNING: SERVER ADDRESS IS NOT CONFIGURED, USING %s\n", AFADDR::SERVER_NAME);
 	}
 
 	// Solve server name

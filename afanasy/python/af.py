@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 import json
@@ -94,6 +93,20 @@ class Task:
                 afile = Pathmap.toServer(afile)
             self.data["files"].append(afile)
 
+    def setEnv(self, i_name, i_value, i_transfer_to_server=True):
+        """Missing DocString
+
+        :param i_name:
+        :param i_value:
+        :return:
+        """
+        if "environment" not in self.data:
+            self.data["environment"] = dict()
+        if i_transfer_to_server:
+            self.data["environment"][i_name] = Pathmap.toServer(i_value)
+        else:
+            self.data["environment"][i_name] = i_value
+
 
 class Block:
     """Missing DocString
@@ -182,7 +195,7 @@ class Block:
         :param value:
         :return:
         """
-        self.data["frames_per_task"] = value
+        self.data["frames_per_task"] = int(value)
 
     def setSequential(self, value):
         """Missing DocString
@@ -190,7 +203,7 @@ class Block:
         :param value:
         :return:
         """
-        self.data["sequential"] = value
+        self.data["sequential"] = int(value)
 
     def setCapacity(self, capacity):
         """Missing DocString
@@ -209,8 +222,8 @@ class Block:
         :return:
         """
         if capacity_coeff_min >= 0 or capacity_coeff_max >= 0:
-            self.data["capacity_coeff_min"] = capacity_coeff_min
-            self.data["capacity_coeff_max"] = capacity_coeff_max
+            self.data["capacity_coeff_min"] = int(capacity_coeff_min)
+            self.data["capacity_coeff_max"] = int(capacity_coeff_max)
 
     def setWorkingDirectory(self, working_directory, TransferToServer=True):
         """Missing DocString
@@ -276,7 +289,7 @@ class Block:
                 afile = Pathmap.toServer(afile)
             self.data["files"].append(afile)
 
-    def setEnv(self, i_name, i_value):
+    def setEnv(self, i_name, i_value, i_transfer_to_server=True):
         """Missing DocString
 
         :param i_name:
@@ -285,8 +298,22 @@ class Block:
         """
         if "environment" not in self.data:
             self.data["environment"] = dict()
+        if i_transfer_to_server:
+            self.data["environment"][i_name] = Pathmap.toServer(i_value)
+        else:
+            self.data["environment"][i_name] = i_value
 
-        self.data["environment"][i_name] = i_value
+    def addTicket(self, i_name, i_count):
+        """Missing DocString
+
+        :param i_name:
+        :param i_count:
+        :return:
+        """
+        if "tickets" not in self.data:
+            self.data["tickets"] = dict()
+
+        self.data["tickets"][i_name] = i_count
 
     def setName(self, value):
         """Missing DocString
@@ -350,7 +377,8 @@ class Block:
         :param value:
         :return:
         """
-        self.data["need_hdd"] = value
+        if value > 0:
+            self.data["need_hdd"] = int(value)
 
     def setNeedMemory(self, value):
         """Missing DocString
@@ -358,7 +386,8 @@ class Block:
         :param value:
         :return:
         """
-        self.data["need_memory"] = value
+        if value > 0:
+            self.data["need_memory"] = int(value)
 
     def setNeedPower(self, value):
         """Missing DocString
@@ -366,7 +395,8 @@ class Block:
         :param value:
         :return:
         """
-        self.data["need_power"] = value
+        if value > 0:
+            self.data["need_power"] = int(value)
 
     def setDependSubTask(self):
         """Missing DocString
@@ -381,7 +411,7 @@ class Block:
         :return:
         """
         if value > 0:
-            self.data["task_max_run_time"] = value
+            self.data["task_max_run_time"] = int(value)
 
     def setTaskMinRunTime(self, value):
         """Missing DocString
@@ -390,7 +420,7 @@ class Block:
         :return:
         """
         if value > 0:
-            self.data["task_min_run_time"] = value
+            self.data["task_min_run_time"] = int(value)
 
     def setTaskProgressChangeTimeout(self, value):
         """If running task will not change its progress (percentage)
@@ -398,7 +428,7 @@ class Block:
         :param value: timeout in seconds
         """
         if value > 0:
-            self.data["task_progress_change_timeout"] = value
+            self.data["task_progress_change_timeout"] = int(value)
 
     def setMaxRunningTasks(self, value):
         """Missing DocString
@@ -407,7 +437,7 @@ class Block:
         :return:
         """
         if value >= 0:
-            self.data["max_running_tasks"] = value
+            self.data["max_running_tasks"] = int(value)
 
     def setMaxRunTasksPerHost(self, value):
         """Missing DocString
@@ -416,7 +446,7 @@ class Block:
         :return:
         """
         if value >= 0:
-            self.data["max_running_tasks_per_host"] = value
+            self.data["max_running_tasks_per_host"] = int(value)
 
     def setHostsMask(self, value):
         """Missing DocString
@@ -466,18 +496,18 @@ class Block:
     def skipThumbnails(self):
         self.data['flags'] = afcommon.setBlockFlag(self.data['flags'], 'skipthumbnails')
 
-    def skipExistingFiles(self, i_size_min=-1, i_size_max=-1):
+    def skipExistingFiles(self, i_size_min = -1, i_size_max = -1):
         self.data['flags'] = afcommon.setBlockFlag(self.data['flags'], 'skipexistingfiles')
-        if i_size_min != -1:
+        if i_size_min > 0:
             self.data['file_size_min'] = i_size_min
-        if i_size_min != -1:
+        if i_size_max > 0:
             self.data['file_size_max'] = i_size_max
 
-    def checkRenderedFiles(self, i_size_min=-1, i_size_max=-1):
+    def checkRenderedFiles(self, i_size_min = -1, i_size_max = -1):
         self.data['flags'] = afcommon.setBlockFlag(self.data['flags'], 'checkrenderedfiles')
-        if i_size_min != -1:
+        if i_size_min > 0:
             self.data['file_size_min'] = i_size_min
-        if i_size_min != -1:
+        if i_size_max > 0:
             self.data['file_size_max'] = i_size_max
 
     def setMultiHost(self, h_min, h_max, h_max_wait, master_on_slave=False,
@@ -583,7 +613,7 @@ class Job:
             priority = 250
             print('Warning: priority clamped to maximum = %d' % priority)
 
-        self.data["priority"] = priority
+        self.data["priority"] = int(priority)
 
     def setCmdPre(self, command, TransferToServer=True):
         """Missing DocString
@@ -634,6 +664,13 @@ class Job:
 
     def setPools(self, i_pools):
         self.data['pools'] = i_pools
+
+    def tryTask(self, i_block, i_task):
+        if 'try_this_tasks_num' not in self.data:
+            self.data['try_this_tasks_num'] = []
+            self.data['try_this_blocks_num'] = []
+        self.data['try_this_tasks_num'].append(i_task)
+        self.data['try_this_blocks_num'].append(i_block)
 
     def setBranch(self, i_branch, i_transferToServer=True):
         if i_transferToServer:
@@ -739,7 +776,7 @@ class Job:
         :return:
         """
         if value >= 0:
-            self.data["max_running_tasks"] = value
+            self.data["max_running_tasks"] = int(value)
 
     def setMaxRunTasksPerHost(self, value):
         """Missing DocString
@@ -748,7 +785,7 @@ class Job:
         :return:
         """
         if value >= 0:
-            self.data["max_running_tasks_per_host"] = value
+            self.data["max_running_tasks_per_host"] = int(value)
 
     def setHostsMask(self, value):
         """Missing DocString
@@ -1058,6 +1095,18 @@ class Cmd:
         self.data['operation'] = {'type': 'eject_tasks'}
         self._sendRequest()
 
+    def renderEjectAndNIMBY(self):
+        """Missing DocString
+
+        :return:
+        """
+        self.action = 'action'
+        self.data['type'] = 'renders'
+        self.data['mask'] = cgruconfig.VARS['HOSTNAME']
+        self.data['operation'] = {'type': 'eject_tasks'}
+        self.data['params'] = {'NIMBY': True}
+        self._sendRequest()
+
     def renderEjectNotMyTasks(self):
         """Missing DocString
 
@@ -1209,3 +1258,44 @@ class Cmd:
         :return:
         """
         return self.renderGetList(cgruconfig.VARS['HOSTNAME'])
+
+    def appendBlocks(self, jobId, blocks, verbose=False):
+        """Append new blocks to an existing job
+
+        :param jobId: Id of the job to which blocks are added
+        :param blocks: list of new Block() objects
+        :param bool verbose: verbosity toggle
+        :return: server response
+        """
+        blocks_data = []
+        for b in blocks:
+            b.fillTasks()
+            blocks_data.append(b.data)
+
+        self.action = 'action'
+        self.data['type'] = 'jobs'
+        self.data['ids'] = [jobId]
+        self.data['operation'] = {'type': 'append_blocks',
+                                  'blocks': blocks_data}
+        return self._sendRequest(verbose)
+
+    def appendTasks(self, jobId, blockId, tasks, verbose=False):
+        """Append new tasks to an existing block
+
+        :param jobId: Id of the job to which tasks are added
+        :param blockId: Index of the block to which tasks are added
+        :param tasks: list of new Task() objects
+        :param bool verbose: verbosity toggle
+        :return: server response
+        """
+        tasks_data = []
+        for t in tasks:
+            tasks_data.append(t.data)
+
+        self.action = 'action'
+        self.data['type'] = 'jobs'
+        self.data['ids'] = [jobId]
+        self.data['block_ids'] = [blockId]
+        self.data['operation'] = {'type': 'append_tasks',
+                                  'tasks': tasks_data}
+        return self._sendRequest(verbose)

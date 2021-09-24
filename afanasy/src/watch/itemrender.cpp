@@ -6,6 +6,7 @@
 #include "../libafqt/qenvironment.h"
 
 #include "ctrlsortfilter.h"
+#include "itempool.h"
 #include "listrenders.h"
 #include "watch.h"
 
@@ -17,14 +18,14 @@
 #include "../include/macrooutput.h"
 #include "../libafanasy/logger.h"
 
-const int ItemRender::ms_HeightHost = 27;
-const int ItemRender::ms_HeightHostSmall = 12;
-const int ItemRender::ms_HeightAnnotation = 14;
-const int ItemRender::ms_HeightTask = 15;
-const int ItemRender::ms_HeightOffline = 15;
+const int ItemRender::HeightBase = 27;
+const int ItemRender::HeightSmall = 12;
+const int ItemRender::HeightOffline = 15;
+const int ItemRender::HeightAnnotation = 14;
+const int ItemRender::HeightTask = 18;
 
-ItemRender::ItemRender( af::Render * i_render, const CtrlSortFilter * i_ctrl_sf):
-	ItemNode( (af::Node*)i_render, i_ctrl_sf),
+ItemRender::ItemRender(ListRenders * i_list_renders, af::Render * i_render, const CtrlSortFilter * i_ctrl_sf):
+	ItemFarm(i_list_renders, i_render, TRender, i_ctrl_sf),
 	m_online( false),
 	m_taskstartfinishtime( 0),
 	m_plotCpu( 2),
@@ -39,22 +40,23 @@ ItemRender::ItemRender( af::Render * i_render, const CtrlSortFilter * i_ctrl_sf)
 	m_plotCpu.setColor( 200,   0,  0, 0);
 	m_plotCpu.setColor(  50, 200, 20, 1);
 
-//   plotMem.setLabel("M%1");
-	m_plotMem.setLabel("M");
+	m_plotMem.setLabel("M %1");
+	m_plotMem.setLabelValue(1000);
 	m_plotMem.setColor(  50, 200, 20, 0);
 	m_plotMem.setColor(   0,  50,  0, 1);
 	m_plotMem.setColorHot( 255, 0, 0);
 
-//   plotSwp.setLabel("S%1");
+	m_plotSwp.setLabel("S %1");
+	m_plotSwp.setLabelValue(1000);
 	m_plotSwp.setColor( 100, 200, 30);
 	m_plotSwp.setColorHot( 255, 0, 0);
 
-//   plotHDD.setLabel("H%1");
-	m_plotHDD.setLabel("H");
+	m_plotHDD.setLabel("H %1");
+	m_plotHDD.setLabelValue(1000);
 	m_plotHDD.setColor(  50, 200, 20);
 	m_plotHDD.setColorHot( 255, 0, 0);
 
-	m_plotNet.setLabel("N%1");
+	m_plotNet.setLabel("N %1");
 	m_plotNet.setLabelValue( 1000);
 	m_plotNet.setColor(  90, 200, 20, 0);
 	m_plotNet.setColor(  20, 200, 90, 1);
@@ -83,11 +85,11 @@ ItemRender::ItemRender( af::Render * i_render, const CtrlSortFilter * i_ctrl_sf)
 	m_plotIO_wh_g =  50;
 	m_plotIO_wh_b =  90;
 
-	m_plotIO.setLabel("D%1");
+	m_plotIO.setLabel("D %1");
 	m_plotIO.setLabelValue( 1000);
 	m_plotIO.setAutoScaleMaxBGC( 100000);
 
-	updateValues( i_render, 0);
+	updateValues(i_render, 0);
 }
 
 ItemRender::~ItemRender()
@@ -99,7 +101,6 @@ ItemRender::~ItemRender()
 void ItemRender::deleteTasks()
 {
 	for( std::list<af::TaskExec*>::iterator it = m_tasks.begin(); it != m_tasks.end(); it++) delete *it;
-	m_tasksicons.clear();
 }
 
 void ItemRender::deletePlots()
@@ -113,90 +114,110 @@ bool ItemRender::calcHeight()
 	int old_height = m_height;
 
 	m_plots_height = 0;
-	for( unsigned i = 0; i < m_plots.size(); i++) if( m_plots[i]->height+4 > m_plots_height ) m_plots_height = m_plots[i]->height+4;
-	m_plots_height += 2;
-	if( ListRenders::getDisplaySize() == ListRenders::ESMallSize )
-	    m_plots_height += ms_HeightHostSmall;
-	else
-	    m_plots_height += ms_HeightHost;
+	for (unsigned i = 0; i < m_plots.size(); i++)
+		if (m_plots[i]->height+4 > m_plots_height)
+			m_plots_height = m_plots[i]->height+4;
 
-	switch( ListRenders::getDisplaySize() )
+	m_plots_height += 2;
+	if (afqt::QEnvironment::render_item_size.n == ListRenders::ESmallSize)
+	    m_plots_height += HeightSmall;
+	else
+	    m_plots_height += HeightBase;
+
+	switch (afqt::QEnvironment::render_item_size.n)
 	{
-	case  ListRenders::ESMallSize:
+	case  ListRenders::ESmallSize:
 	case  ListRenders::ENormalSize:
 	    m_height = m_plots_height;
 		break;
 
 	case  ListRenders::EBigSize:
-	    m_height = m_plots_height + ms_HeightAnnotation;
+	    m_height = m_plots_height + HeightTickets;
+		if(false == m_annotation.isEmpty())
+			m_height += HeightAnnotation;
 		break;
 
 	default:
-	    if( m_online ) m_height = m_plots_height + ms_HeightTask * int( m_tasks.size());
-	    else m_height = ms_HeightOffline;
-	    if( false == m_annotation.isEmpty()) m_height += ms_HeightAnnotation;
+	    if (m_online)
+			m_height = m_plots_height + HeightTask * int(m_tasks.size());
+	    else
+			m_height = HeightOffline;
+
+		if (m_tickets_host.size() && (m_tasks.size() == 0))
+			m_height += HeightTickets - 4;
+
+	    if(false == m_annotation.isEmpty())
+			m_height += HeightAnnotation;
 	}
+
+	if (m_services.size() || m_services_disabled.size())
+		m_height += HeightServices;
 
 	return old_height == m_height;
 }
 
-void ItemRender::updateValues( af::Node * i_node, int i_type)
+bool ItemRender::v_isSelectable() const
 {
-	af::Render * render = (af::Render*)i_node;
+	if (af::Environment::GOD())
+		return true;
 
-	switch( i_type )
+	if ((getName() == QString::fromUtf8(af::Environment::getComputerName().c_str())) ||
+		(getUserName() == QString::fromUtf8(af::Environment::getUserName().c_str())))
+		return true;
+
+	return false;
+}
+
+void ItemRender::v_updateValues(af::Node * i_afnode, int i_msgType)
+{
+	af::Render * render = (af::Render*)i_afnode;
+
+	switch(i_msgType)
 	{
 	case 0: // The item was just created
 	case af::Msg::TRendersList:
 	{
-		updateNodeValues( i_node);
+		m_info_text_render.clear();
 
-		setHidden(  render->isHidden()  );
-		setOffline( render->isOffline() );
+		updateNodeValues(i_afnode);
 
-	    m_engine             = afqt::stoq( render->getEngine());
-	    m_username           = afqt::stoq( render->getUserName());
-	    m_capacity           = render->getCapacity();
-	    m_maxtasks           = render->getMaxTasks();
-	    m_time_launched      = render->getTimeLaunch();
-	    m_time_registered    = render->getTimeRegister();
+		updateFarmValues(render);
+
+		setParentPath(afqt::stoq(render->getPool()));
+
+		// Set flags that will be used to hide/show node in list:
+		setHideFlag_Hidden(  render->isHidden()  );
+		setHideFlag_Offline( render->isOffline() );
+		setHideFlag_Pools(false);
+
+		m_capacity        = render->getCapacityHost();
+		m_maxtasks        = render->getMaxTasksHost();
+		m_power           = render->getPowerHost();
+		m_properties      = afqt::stoq(render->getPropertiesHost());
+		m_engine          = afqt::stoq(render->getEngine());
+		m_username        = afqt::stoq(render->getUserName());
+		m_time_launched   = render->getTimeLaunch();
+		m_time_registered = render->getTimeRegister();
+
+		m_info_text_render += "OS: <b>" + afqt::stoq(render->getOS()) + "</b> - " + m_engine;
 
 		if( render->getAddress().notEmpty())
 		{
 	        m_address_ip_str = render->getAddress().generateIPString().c_str();
 	        m_address_str = render->getAddress().v_generateInfoString().c_str();
+
+			m_info_text_render += "<br>IP: <b>" + m_address_ip_str + "</b>";
 		}
 
+		m_info_text_render += QString("<br>User: <b>%1</b>").arg(m_username);
+
 		bool becameOnline = false;
-	    if(((m_online == false) && (render->isOnline())) || (i_type == 0))
+	    if(((m_online == false) && (render->isOnline())) || (i_msgType == 0))
 		{
 			becameOnline = true;
 	        m_update_counter = 0;
 
-	        m_host = render->getHost();
 	        m_hres.copy( render->getHostRes());
-
-	        m_plotMem.setScale( m_hres.mem_total_mb);
-	        m_plotMem.setHotMin(( 90*m_hres.mem_total_mb)/100);
-	        m_plotMem.setHotMax((100*m_hres.mem_total_mb)/100);
-	        m_plotHDD.setScale( m_hres.hdd_total_gb);
-	        m_plotHDD.setHotMin(( 95*m_hres.hdd_total_gb)/100);
-	        m_plotHDD.setHotMax((100*m_hres.hdd_total_gb)/100);
-	        m_plotSwp.setScale( m_hres.swap_total_mb);
-	        if( m_hres.swap_total_mb )
-			{
-	            m_plotSwp.setLabel("S");
-	            m_plotSwp.setHotMin(( 10*m_hres.swap_total_mb)/100);
-	            m_plotSwp.setHotMax((100*m_hres.swap_total_mb)/100);
-			}
-			else
-			{
-	            m_plotSwp.setLabel("S%1");
-	            m_plotSwp.setLabelValue( 1000);
-	            m_plotSwp.setHotMin( 100);
-	            m_plotSwp.setHotMax( 10000);
-	            m_plotSwp.setAutoScaleMaxBGC( 100000);
-			}
 		}
 
 		// It became offline:
@@ -206,26 +227,44 @@ void ItemRender::updateValues( af::Node * i_node, int i_type)
 	            m_plots[i]->height = 0;
 		}
 
-	    m_online = render->isOnline();
-	    if( m_time_launched) m_creationTime = "Launched   at " + afqt::time2Qstr( m_time_launched);
-	    else m_creationTime = "Offline.";
-	    if( m_time_registered) m_creationTime += "\nRegistered at " + afqt::time2Qstr( m_time_registered);
-	    else m_creationTime = "\nNot registered.";
+		m_info_text_render += "<br>@HRES@";
 
-	    m_busy = render->isBusy();
-	    m_taskstartfinishtime = render->getTasksStartFinishTime();
+		if (m_capacity != -1)
+			m_info_text_render += QString("<br>Capacity: %1").arg(m_capacity);
+		if (m_maxtasks != -1)
+			m_info_text_render += QString("<br>Maximum Tasks: %1").arg(m_maxtasks);
+		if (m_power != -1)
+			m_info_text_render += QString("<br>Custom \"power\": %1").arg(m_power);
+		if (m_properties.size())
+			m_info_text_render += QString("<br>Custom \"properties\": %1").arg(m_properties);
+
+	    m_online = render->isOnline();
+		m_info_text_render += "<br>";
+		m_info_text_render += "<br>Registered: <b>" + afqt::time2Qstr(m_time_registered) + "</b>";
+		if (m_online)
+		{
+			m_info_text_render += "<br>Launched: <b>" + afqt::time2Qstr(m_time_launched) + "</b>";
+		}
+		else
+		{
+			m_info_text_render += "<br>Offline";
+			if (m_wol_operation_time > 0)
+				m_info_text_render += " since <b>" + afqt::time2Qstr(m_wol_operation_time) + "</b>";
+		}
+
+		m_busy = render->isBusy();
+		m_taskstartfinishtime = render->getTasksStartFinishTime();
 
 		// Get tasks inforamtion:
 		deleteTasks();
-	        m_tasksusers.clear();
-	    m_tasks_users_counts.clear();
-	    m_tasks = render->takeTasks();
+		m_tasksusers.clear();
+		m_tasks_users_counts.clear();
+		m_tasks = render->takeTasks();
 		QStringList tasks_users;
 		QList<int> tasks_counts;
 		m_elder_task_time = time(NULL);
 	    for( std::list<af::TaskExec*>::const_iterator it = m_tasks.begin(); it != m_tasks.end(); it++)
 		{
-	        m_tasksicons.push_back( Watch::getServiceIconSmall( QString::fromUtf8( (*it)->getServiceType().c_str())));
 			QString tusr = QString::fromUtf8( (*it)->getUserName().c_str());
 			int pos = tasks_users.indexOf( tusr);
 			if( pos != -1) tasks_counts[pos]++;
@@ -251,15 +290,30 @@ void ItemRender::updateValues( af::Node * i_node, int i_type)
 	    m_capacity_used = render->getCapacityUsed();
 		if( Watch::isPadawan())
 		{
-		    m_capacity_usage = QString("Capacity: %1 of %2; Tasks: %3 of %4").arg( m_capacity_used).arg( m_capacity).arg( m_tasks.size()).arg( m_maxtasks);
+		    m_capacity_usage = QString("Tasks: %1").arg(m_tasks.size());
+			if (render->getMaxTasksHost() != -1)
+				m_capacity_usage += QString("/%1").arg(render->getMaxTasksHost());
+		    m_capacity_usage += QString(" Capacity: %1").arg(m_capacity_used);
+			if (render->getCapacityHost() != -1)
+				m_capacity_usage += QString("/%1").arg(render->getCapacityHost());
 		}
 		else if( Watch::isJedi())
 		{
-		    m_capacity_usage = QString("C:%1/%2 T:%3/%4").arg( m_capacity_used).arg( m_capacity).arg( m_tasks.size()).arg( m_maxtasks);
+		    m_capacity_usage = QString("Tasks:%1").arg(m_tasks.size());
+			if (render->getMaxTasksHost() != -1)
+				m_capacity_usage += QString("/%1").arg(render->getMaxTasksHost());
+		    m_capacity_usage += QString(" Cap:%1").arg(m_capacity_used);
+			if (render->getCapacityHost() != -1)
+				m_capacity_usage += QString("/%1").arg(render->getCapacityHost());
 		}
 		else
 		{
-		    m_capacity_usage = QString("%1/%2 (%3/%4)").arg( m_capacity_used).arg( m_capacity).arg( m_tasks.size()).arg( m_maxtasks);
+		    m_capacity_usage = QString("t:%1").arg(m_tasks.size());
+			if (render->getMaxTasksHost() != -1)
+				m_capacity_usage += QString("/%1").arg(render->getMaxTasksHost());
+		    m_capacity_usage += QString(" c:%1").arg(m_capacity_used);
+			if (render->getCapacityHost() != -1)
+				m_capacity_usage += QString("/%1").arg(render->getCapacityHost());
 		}
 
 	    if( m_busy )
@@ -279,6 +333,7 @@ void ItemRender::updateValues( af::Node * i_node, int i_type)
 	    m_wolWaking   = render->isWOLWaking();
 	    m_wol_operation_time = render->getWOLTime();
 
+		m_sick = render->isSick();
 	    m_NIMBY = render->isNIMBY();
 	    m_nimby = render->isNimby();
 		m_paused = render->isPaused();
@@ -303,7 +358,12 @@ void ItemRender::updateValues( af::Node * i_node, int i_type)
 	         m_state = m_username;
 
 	    m_state += '-' + QString::number( m_priority);
-		if( isLocked() ) m_state += " (LOCK)";
+
+		if (m_sick)
+			m_state += " SICK!";
+
+		if (isLocked())
+			m_state += " (LOCK)";
 
 		if( false == becameOnline)
 		{
@@ -320,19 +380,36 @@ void ItemRender::updateValues( af::Node * i_node, int i_type)
 		m_idle_time = render->getIdleTime();
 		m_busy_time = render->getBusyTime();
 
-	    int cpubusy = m_hres.cpu_user + m_hres.cpu_nice + m_hres.cpu_system + m_hres.cpu_iowait + m_hres.cpu_irq + m_hres.cpu_softirq;
 	    int mem_used = m_hres.mem_total_mb - m_hres.mem_free_mb;
 	    int hdd_used = m_hres.hdd_total_gb - m_hres.hdd_free_gb;
 
+		m_plotCpu.setLabel(QString("C %1*%2").arg(m_hres.cpu_num).arg(double(m_hres.cpu_mhz) / 1024.0, 0, 'f', 1));
 	    m_plotCpu.addValue( 0, m_hres.cpu_system + m_hres.cpu_iowait + m_hres.cpu_irq + m_hres.cpu_softirq);
 	    m_plotCpu.addValue( 1, m_hres.cpu_user + m_hres.cpu_nice);
-	    m_plotCpu.setLabelValue( cpubusy);
 
-	    m_plotMem.addValue( 0, mem_used);
-	    m_plotMem.addValue( 1, m_hres.mem_cached_mb + m_hres.mem_buffers_mb);
+		m_plotMem.setScale(m_hres.mem_total_mb);
+		m_plotMem.addValue( 0, mem_used);
+		m_plotMem.addValue( 1, m_hres.mem_cached_mb + m_hres.mem_buffers_mb);
+		m_plotMem.setHotMin(( 90*m_hres.mem_total_mb)/100);
+		m_plotMem.setHotMax((100*m_hres.mem_total_mb)/100);
 
-	    m_plotSwp.addValue( 0, m_hres.swap_used_mb);
+		m_plotSwp.setScale(m_hres.swap_total_mb);
+		if (m_hres.swap_total_mb)
+		{
+			m_plotSwp.setHotMin(( 10*m_hres.swap_total_mb)/100);
+			m_plotSwp.setHotMax((100*m_hres.swap_total_mb)/100);
+		}
+		else
+		{
+			m_plotSwp.setHotMin(100);
+			m_plotSwp.setHotMax(10000);
+			m_plotSwp.setAutoScaleMaxBGC(100000);
+		}
+		m_plotSwp.addValue( 0, m_hres.swap_used_mb);
 
+		m_plotHDD.setScale(m_hres.hdd_total_gb);
+		m_plotHDD.setHotMin(( 95*m_hres.hdd_total_gb)/100);
+		m_plotHDD.setHotMax((100*m_hres.hdd_total_gb)/100);
 	    m_plotHDD.addValue( 0, hdd_used, (m_update_counter % 10) == 0);
 
 	    m_plotNet.addValue( 0, m_hres.net_recv_kbsec);
@@ -376,44 +453,77 @@ void ItemRender::updateValues( af::Node * i_node, int i_type)
 
 	    m_update_counter++;
 
+		m_info_text_hres.clear();
+		m_info_text_hres += QString("CPU: <b>%1</b> x<b>%2</b> MHz").arg(m_hres.cpu_mhz).arg(m_hres.cpu_num);
+		m_info_text_hres += QString("<br>MEM: <b>%1</b> Gb").arg(m_hres.mem_total_mb>>10);
+		if( m_hres.swap_total_mb )
+			m_info_text_hres += QString(" Swap: <b>%1</b> Gb").arg(m_hres.swap_total_mb>>10);
+		m_info_text_hres += QString("<br>HDD: <b>%1</b> Gb").arg(m_hres.hdd_total_gb);
+
+		m_loggedin_users.clear();
+		if (m_hres.logged_in_users.size())
+		{
+			m_info_text_hres += QString("<br>Logged in:");
+			for (int i = 0 ; i < m_hres.logged_in_users.size() ; ++i)
+			{
+				if (i) m_loggedin_users += ",";
+				QString user = afqt::stoq(m_hres.logged_in_users[i]);
+				m_loggedin_users += user;
+				m_info_text_hres += QString("<br><b>%1</b>").arg(user);
+			}
+		}
+
+
 		break;
 	}
 	default:
-		AFERRAR("ItemRender::updateValues: Invalid type = [%s]\n", af::Msg::TNAMES[i_type]);
+		AFERRAR("ItemRender::v_updateValues: Invalid type = [%s]\n", af::Msg::TNAMES[i_msgType]);
 		return;
 	}
 
-	if( m_taskstartfinishtime )
+	// Construct properties and time busy state string
+	m_props_state.clear();
+
+	if (m_power != -1)
+		m_props_state += QString(" %1").arg(m_power);
+	if (m_properties.size())
+		m_props_state += QString(" %1").arg(m_properties);
+
+	if (m_taskstartfinishtime)
 	{
-	    m_taskstartfinishtime_str = af::time2strHMS( time(NULL) - m_taskstartfinishtime ).c_str();
-	    if( m_busy == false ) m_taskstartfinishtime_str += " free";
-	    else m_taskstartfinishtime_str += " busy";
+		m_props_state += QString(" %1").arg(af::time2strHMS(time(NULL) - m_taskstartfinishtime).c_str());
+		if (m_busy) m_props_state += " busy";
+		//else m_props_state += " free";
 	}
-	else m_taskstartfinishtime_str = "NEW";
+	else
+		m_props_state += " NEW";
+
 
 	calcHeight();
+
 
 	if( m_wolWaking ) m_offlineState = "Waking Up";
 	else if( m_wolSleeping || m_wolFalling) m_offlineState = "Sleeping";
 	else m_offlineState = "Offline";
+
+	// Join info texts:
+	m_info_text = m_info_text_render;
+	m_info_text.replace("@HRES@", m_info_text_hres);
+
+    ItemNode::updateInfo();
 }
 
-void ItemRender::paint( QPainter *painter, const QStyleOptionViewItem &option) const
+void ItemRender::v_paint(QPainter * i_painter, const QRect & i_rect, const QStyleOptionViewItem & i_option) const
 {
-	assert( painter );
+	const int x = i_rect.x(); const int y = i_rect.y(); const int w = i_rect.width(); const int h = i_rect.height();
 
-	if( !painter )
-		return;
- 
-	// Calculate some sizes:
-	int x = option.rect.x(); int y = option.rect.y(); int w = option.rect.width(); int h = option.rect.height();
-
-	int base_height = ms_HeightHost;
+	int y_cur = y;
+	int base_height = HeightBase;
 	int plot_y_offset = 4;
 	int plot_h = base_height - 5;
-	if( ListRenders::getDisplaySize() == ListRenders::ESMallSize )
+	if (afqt::QEnvironment::render_item_size.n == ListRenders::ESmallSize)
 	{
-	    base_height = ms_HeightHostSmall;
+	    base_height = HeightSmall;
 		plot_y_offset = 1;
 		plot_h = base_height - 1;
 	}
@@ -426,26 +536,28 @@ void ItemRender::paint( QPainter *painter, const QStyleOptionViewItem &option) c
 
 	static const int left_x_offset = 25;
 	int left_text_x = x + left_x_offset;
-	int left_text_w = plot_x - left_x_offset - 5;
-	int right_text_x = x + plot_x + allplots_w - 5;
-	int right_text_w = w - plot_x - allplots_w;
+	int left_text_w = plot_x - left_text_x - 4;
+	int right_text_x = plot_x + allplots_w;
+	int right_text_w = w - (right_text_x - x) - 4;
 
 	// Draw back with render state specific color (if it is not selected)
 	const QColor * itemColor = &(afqt::QEnvironment::clr_itemrender.c);
-	if     ( m_online == false ) itemColor = &(afqt::QEnvironment::clr_itemrenderoff.c   );
-	else if( m_paused ) itemColor = &(afqt::QEnvironment::clr_itemrenderpaused.c );
-	else if( m_NIMBY || m_nimby ) itemColor = &(afqt::QEnvironment::clr_itemrendernimby.c );
-	else if( m_busy            ) itemColor = &(afqt::QEnvironment::clr_itemrenderbusy.c  );
+	if      (m_online == false) itemColor = &(afqt::QEnvironment::clr_itemrenderoff.c);
+	else if (m_sick  ) itemColor = &(afqt::QEnvironment::clr_itemrendersick.c);
+	else if (m_paused) itemColor = &(afqt::QEnvironment::clr_itemrenderpaused.c);
+	else if (m_NIMBY ) itemColor = &(afqt::QEnvironment::clr_itemrenderNIMBY.c);
+	else if (m_nimby ) itemColor = &(afqt::QEnvironment::clr_itemrendernimby.c);
+	else if (m_busy  ) itemColor = &(afqt::QEnvironment::clr_itemrenderbusy.c);
 
 	// Draw standart backgroud
-	drawBack( painter, option, itemColor, m_dirty ? &(afqt::QEnvironment::clr_error.c) : NULL);
+	drawBack(i_painter, i_rect, i_option, itemColor, m_dirty ? &(afqt::QEnvironment::clr_error.c) : NULL);
 
 	QString offlineState_time = m_offlineState;
-	if( m_wol_operation_time > 0 )
-	    offlineState_time = m_offlineState + " " + afqt::stoq( af::time2strHMS( time(NULL) - m_wol_operation_time ));
+	if (m_wol_operation_time > 0)
+	    offlineState_time = m_offlineState + " " + afqt::stoq(af::time2strHMS(time(NULL) - m_wol_operation_time ));
 
 	// Draw busy/idle bar:
-	if( m_online )
+	if (m_online && m_parent_pool)
 	{
 		int width = w/7;
 		static const int height = 3;
@@ -456,221 +568,250 @@ void ItemRender::paint( QPainter *painter, const QStyleOptionViewItem &option) c
 		int bar_secs = curtime - m_idle_time;
 		int busy_secs = curtime - m_busy_time;
 		int max = af::Environment::getWatchRenderIdleBarMax();
-		painter->setBrush( QBrush( afqt::QEnvironment::clr_itemrenderoff.c, Qt::SolidPattern ));
+		i_painter->setBrush(QBrush(afqt::QEnvironment::clr_itemrenderoff.c, Qt::SolidPattern));
 
-		if( m_host.m_wol_idlesleep_time > 0 )
+		if ((m_parent_pool->get_idle_free_time() > 0) && (isNimby() || isNIMBY()) && (false == isBusy()))
 		{
-			max = m_host.m_wol_idlesleep_time;
-			painter->setOpacity( .5);
-			painter->setBrush( QBrush( afqt::QEnvironment::clr_running.c, Qt::SolidPattern ));
+			// We have auto nimby off (free) enabled,
+			// Nimby is set and render has no tasks
+			max = m_parent_pool->get_idle_free_time();
+			i_painter->setOpacity(.5);
+			i_painter->setBrush(QBrush(afqt::QEnvironment::clr_error.c, Qt::SolidPattern));
 		}
-		if(( m_host.m_nimby_busyfree_time > 0 ) && ( busy_secs > 6 ) && ( isNimby() == false) && ( isNIMBY() == false))
+		else if ((m_parent_pool->get_busy_nimby_time() > 0) && (busy_secs > 6) && isFree())
 		{
+			// We have auto nimby enabled,
+			// Nimby is not set (is free) and render is busy (for more 6 seconds - afwatch update interval)
 			bar_secs = busy_secs;
-			max = m_host.m_nimby_busyfree_time;
-			painter->setOpacity( 1.0);
-			painter->setBrush( QBrush( afqt::QEnvironment::clr_itemrendernimby.c, Qt::SolidPattern ));
+			max = m_parent_pool->get_busy_nimby_time();
+			i_painter->setOpacity(1.0);
+			i_painter->setBrush(QBrush(afqt::QEnvironment::clr_itemrendernimby.c, Qt::SolidPattern));
 		}
-		if(( m_host.m_nimby_idlefree_time > 0 ) && ( isNimby() || isNIMBY() ))
+		else if (m_parent_pool->get_idle_wolsleep_time() > 0)
 		{
-			max = m_host.m_nimby_idlefree_time;
-			painter->setOpacity( .5);
-			painter->setBrush( QBrush( afqt::QEnvironment::clr_error.c, Qt::SolidPattern ));
+			// We have auto sleep enabled
+			max = m_parent_pool->get_idle_wolsleep_time();
+			i_painter->setOpacity(.5);
+			i_painter->setBrush(QBrush(afqt::QEnvironment::clr_running.c, Qt::SolidPattern));
 		}
 
-		if( max > 0 )
+		if (max > 0)
 		{
 			int barw = width * bar_secs / max;
-			if( barw > width ) barw = width;
-			painter->setPen( Qt::NoPen );
-			painter->drawRect( posx, posy, barw, height);
+			if (barw > width) barw = width;
+			i_painter->setPen(Qt::NoPen);
+			i_painter->drawRect(posx, posy, barw, height);
 		}
 
-		painter->setOpacity( 1.0);
-		painter->setPen( afqt::QEnvironment::clr_outline.c );
-		painter->setBrush( Qt::NoBrush);
-		painter->drawRect( posx, posy, width, height);
+		i_painter->setOpacity(1.0);
+		i_painter->setPen(afqt::QEnvironment::clr_outline.c);
+		i_painter->setBrush(Qt::NoBrush);
+		i_painter->drawRect(posx, posy, width, height);
 	}
-
 
 	QString ann_state = m_state;
 	// Join annotation+state+tasks on small displays:
-	if(  ListRenders::getDisplaySize() == ListRenders::ESMallSize )
+	if (afqt::QEnvironment::render_item_size.n == ListRenders::ESmallSize)
 	{
-	    if( false == m_annotation.isEmpty())
+	    if (false == m_annotation.isEmpty())
 	        ann_state = m_annotation + ' ' + ann_state;
-	    if( false == m_tasks_users_counts.isEmpty())
+	    if (false == m_tasks_users_counts.isEmpty())
 	        ann_state = ann_state + ' ' + m_tasks_users_counts;
 	}
 	else
 	{
-		if( m_paused )
+		if (m_paused)
 		{
 			ann_state = "Paused" + ann_state;
 		}
-	    else if( m_NIMBY )
+	    else if (m_NIMBY)
 		{
 			ann_state = "NIMBY" + ann_state;
 		}
-	    else if( m_nimby )
+	    else if (m_nimby)
 		{
 			ann_state = "nimby" + ann_state;
 		}
 	}
 
-	if( false == m_online )
+	// Paint offline render and exit.
+	if (false == m_online)
 	{
-		painter->setPen(   afqt::QEnvironment::qclr_black );
-		painter->setFont(  afqt::QEnvironment::f_info);
-	    painter->drawText( x+5, y, w-10, ms_HeightOffline, Qt::AlignVCenter | Qt::AlignRight, ann_state );
+		i_painter->setPen(  afqt::QEnvironment::qclr_black);
+		i_painter->setFont( afqt::QEnvironment::f_info);
+		i_painter->drawText(x+5, y_cur, w-10, HeightOffline, Qt::AlignVCenter | Qt::AlignRight, ann_state);
 
 		QRect rect_center;
-	    painter->drawText( x+5, y, w-10, ms_HeightOffline, Qt::AlignVCenter | Qt::AlignHCenter, offlineState_time, &rect_center);
-	    painter->drawText( x+5, y, (w>>1)-10-(rect_center.width()>>1), ms_HeightOffline, Qt::AlignVCenter | Qt::AlignLeft,    m_name + ' ' + m_engine);
+		i_painter->drawText(x+5, y_cur, w-10, HeightOffline,
+				Qt::AlignVCenter | Qt::AlignHCenter, offlineState_time, &rect_center);
+		i_painter->drawText(x+5, y_cur, (w>>1)-10-(rect_center.width()>>1), HeightOffline,
+				Qt::AlignVCenter | Qt::AlignLeft, m_name + ' ' + m_engine);
 
-		// Print annonation at next line if display is not small
-	    if( false == m_annotation.isEmpty() && (ListRenders::getDisplaySize() != ListRenders::ESMallSize))
-	            painter->drawText( x+5, y+2, w-10, ms_HeightOffline-4 + ms_HeightOffline, Qt::AlignBottom | Qt::AlignHCenter, m_annotation);
+		y_cur += HeightOffline;
+
+		if (m_services.size() || m_services_disabled.size())
+		{
+			drawServices(i_painter, i_option, x+6, y_cur+2, w-12, HeightServices-4);
+			y_cur += HeightServices;
+		}
+
+		if (m_tickets_pool.size() || m_tickets_host.size())
+		{
+			drawTickets(i_painter, i_option, x+6, y_cur+2, w-12, HeightTickets-4);
+			y_cur += HeightTickets;
+		}
+
+		if (m_annotation.size())
+		{
+			i_painter->setPen(afqt::QEnvironment::qclr_black);
+			i_painter->setFont(afqt::QEnvironment::f_info);
+			i_painter->drawText( x+5, y_cur, w-10, HeightAnnotation-2, Qt::AlignVCenter | Qt::AlignHCenter, m_annotation);
+		}
 
 		return;
 	}
-	
-	QString users = "";
-	for (int i = 0 ; i < m_hres.logged_in_users.size() ; ++i)
-	{
-		if ( i ) users += ",";
-		users += QString::fromStdString(m_hres.logged_in_users[i]);
-	}
 
-	switch( ListRenders::getDisplaySize() )
+	switch (afqt::QEnvironment::render_item_size.n)
 	{
-	case ListRenders::ESMallSize:
-		painter->setPen(   clrTextInfo( option) );
-		painter->setFont(  afqt::QEnvironment::f_info);
-	    painter->drawText( left_text_x, y+1, left_text_w, h, Qt::AlignVCenter | Qt::AlignLeft, m_name + ' ' + m_capacity_usage + ' ' + users + ' ' + m_engine);
+	case ListRenders::ESmallSize:
+		i_painter->setPen(clrTextInfo(i_option));
+		i_painter->setFont(afqt::QEnvironment::f_info);
+	    i_painter->drawText(left_text_x, y_cur, left_text_w, h, Qt::AlignTop | Qt::AlignLeft,
+				m_name + ' ' + m_capacity_usage + ' ' + m_loggedin_users + ' ' + m_engine);
 
-		painter->setPen(   clrTextInfo( option) );
-		painter->setFont(  afqt::QEnvironment::f_info);
-		painter->drawText( right_text_x, y+1, right_text_w, h, Qt::AlignVCenter | Qt::AlignRight, ann_state );
+		i_painter->setPen(clrTextInfo(i_option));
+		i_painter->setFont(afqt::QEnvironment::f_info);
+		i_painter->drawText(right_text_x, y_cur, right_text_w, h, Qt::AlignTop | Qt::AlignRight, ann_state);
 
 		break;
 	default:
-		painter->setPen(   clrTextMain( option) );
-		painter->setFont(  afqt::QEnvironment::f_name);
-	    painter->drawText( left_text_x, y, left_text_w, h, Qt::AlignTop | Qt::AlignLeft, m_name + ' ' + m_engine);
+		i_painter->setPen(clrTextMain(i_option));
+		i_painter->setFont(afqt::QEnvironment::f_name);
+	    i_painter->drawText(left_text_x, y_cur, left_text_w, h, Qt::AlignTop | Qt::AlignLeft, m_name + ' ' + m_engine);
 
-		painter->setPen(   afqt::QEnvironment::qclr_black );
-		painter->setFont(  afqt::QEnvironment::f_info);
-		painter->drawText( right_text_x, y+2, right_text_w, h, Qt::AlignTop | Qt::AlignRight, ann_state );
+		i_painter->setPen(afqt::QEnvironment::qclr_black );
+		i_painter->setFont(afqt::QEnvironment::f_info);
+		i_painter->drawText(right_text_x, y_cur+2, right_text_w, h, Qt::AlignTop | Qt::AlignRight, ann_state );
 
-		painter->setPen(   clrTextInfo( option) );
-		painter->setFont(  afqt::QEnvironment::f_info);
-	    painter->drawText( left_text_x,  y, left_text_w,  base_height+2, Qt::AlignBottom | Qt::AlignLeft,  m_capacity_usage + ' ' + users);
+		i_painter->setPen(clrTextInfo(i_option));
+		i_painter->setFont(afqt::QEnvironment::f_info);
+	    i_painter->drawText(left_text_x,  y_cur, left_text_w,  base_height+2, Qt::AlignBottom | Qt::AlignLeft,  m_capacity_usage + ' ' + m_loggedin_users);
 	}
 	
 	// Print Bottom|Right
 	// busy/free time for big displays or annotation+users for normal
-	switch( ListRenders::getDisplaySize() )
+	switch (afqt::QEnvironment::render_item_size.n)
 	{
-	case ListRenders::ESMallSize:
+	case ListRenders::ESmallSize:
 		break;
 	case ListRenders::ENormalSize:
-	    if( m_annotation.isEmpty() && m_tasks_users_counts.isEmpty())
+	    if (m_annotation.isEmpty() && m_tasks_users_counts.isEmpty())
 			break;
-		painter->drawText( right_text_x, y, right_text_w, base_height+2, Qt::AlignBottom | Qt::AlignRight,
+		i_painter->drawText(right_text_x, y, right_text_w, base_height+2, Qt::AlignBottom | Qt::AlignRight,
 	        m_annotation + ' ' + m_tasks_users_counts);
 		break;
 	default:
-		painter->drawText( right_text_x, y, right_text_w, base_height+2, Qt::AlignBottom | Qt::AlignRight,
-	        m_taskstartfinishtime_str);
+		i_painter->drawText(right_text_x, y, right_text_w, base_height+2, Qt::AlignBottom | Qt::AlignRight,
+	        m_props_state);
 	}
 
 	// Print information under plotters:
-	switch( ListRenders::getDisplaySize() )
+	y_cur += m_plots_height;
+	switch (afqt::QEnvironment::render_item_size.n)
 	{
-	case  ListRenders::ESMallSize:
+	case  ListRenders::ESmallSize:
 	case  ListRenders::ENormalSize:
+		if (m_services.size() || m_services_disabled.size())
+		{
+			drawServices(i_painter, i_option, x+6, y_cur+2, w-12, HeightServices-4);
+			y_cur += HeightServices;
+		}
+		/*
+		if (m_tickets_pool.size() || m_tickets_host.size())
+		{
+			drawTickets(i_painter, i_option, x+6, y_cur+2, w-12, HeightTickets-4);
+			y_cur += HeightTickets;
+		}
+		*/
 		break;
 	case  ListRenders::EBigSize:
 	{
-	    painter->drawText( x+5, y, w-10, m_plots_height + ms_HeightAnnotation, Qt::AlignBottom | Qt::AlignLeft, m_tasks_users_counts);
+		i_painter->drawText(x+5, y_cur+4, w-10, HeightAnnotation, Qt::AlignBottom | Qt::AlignLeft, m_tasks_users_counts);
 
-	    if( false == m_annotation.isEmpty())
+		if (m_tickets_host.size())
+			drawTickets(i_painter, i_option, x+6, y_cur, w-12, HeightTickets-4);
+
+		y_cur += HeightTickets;
+
+		if (m_services.size() || m_services_disabled.size())
 		{
-			 painter->setPen(   afqt::QEnvironment::qclr_black );
-			 painter->setFont(  afqt::QEnvironment::f_info);
-	         painter->drawText( x+5, y, w-10, m_plots_height + ms_HeightAnnotation, Qt::AlignBottom | Qt::AlignRight, m_annotation);
+			drawServices(i_painter, i_option, x+6, y_cur, w-12, HeightServices-4);
+			y_cur += HeightServices;
+		}
+	    if (m_annotation.size())
+		{
+			i_painter->setPen(afqt::QEnvironment::qclr_black);
+			i_painter->setFont( afqt::QEnvironment::f_info);
+			i_painter->drawText(x+5, y_cur, w-10, HeightAnnotation, Qt::AlignVCenter | Qt::AlignHCenter, m_annotation);
 		}
 
 		break;
 	}
 	default:
 	{
-	    std::list<af::TaskExec*>::const_iterator it = m_tasks.begin();
-	    std::list<const QPixmap*>::const_iterator icons_it = m_tasksicons.begin();
-	    for( int numtask = 1; it != m_tasks.end(); it++, icons_it++, numtask++)
+		if (m_services.size() || m_services_disabled.size())
 		{
-			QString taskstr = QString("%1").arg((*it)->getCapacity());
-			if((*it)->getCapCoeff()) taskstr += QString("x%1").arg((*it)->getCapCoeff());
-			taskstr += QString(": %1[%2][%3]").arg( QString::fromUtf8((*it)->getJobName().c_str())).arg(QString::fromUtf8((*it)->getBlockName().c_str())).arg(QString::fromUtf8((*it)->getName().c_str()));
-			if((*it)->getNumber()) taskstr += QString("(%1)").arg((*it)->getNumber());
-
-			QRect rect_usertime;
-			QString user_time = QString("%1 - %2").arg(QString::fromUtf8((*it)->getUserName().c_str())).arg( af::time2strHMS( time(NULL) - (*it)->getTimeStart()).c_str());
-
-			// Show task percent
-			if( m_tasks_percents.size() >= numtask )
-			if( m_tasks_percents[numtask-1] > 0 )
-			{
-				user_time += QString(" %1%").arg( m_tasks_percents[numtask-1]);
-
-				// Draw task percent bar:
-				painter->setPen( Qt::NoPen );
-				painter->setOpacity( .5);
-				painter->setBrush( QBrush( afqt::QEnvironment::clr_done.c, Qt::SolidPattern ));
-		        painter->drawRect( x, y+m_plots_height + ms_HeightTask * (numtask-1),
-					(w-5)*m_tasks_percents[numtask-1]/100, ms_HeightTask - 2);
-				painter->setOpacity(1.0);
-			}
-
-			painter->setPen(   clrTextInfo( option) );
-	        painter->drawText( x, y, w-5, m_plots_height + ms_HeightTask * numtask - 2, Qt::AlignBottom | Qt::AlignRight, user_time, &rect_usertime );
-	        painter->drawText( x+18, y, w-30-rect_usertime.width(), m_plots_height + ms_HeightTask * numtask - 2, Qt::AlignBottom | Qt::AlignLeft, taskstr);
-
-			// Draw an icon only if pointer is not NULL:
-			if( *icons_it )
-			{
-	            painter->drawPixmap( x+5, y + m_plots_height + ms_HeightTask * numtask - 15, *(*icons_it) );
-			}
+			drawServices(i_painter, i_option, x+6, y_cur+2, w-12, HeightServices-4);
+			y_cur += HeightServices;
 		}
-		painter->setPen(   afqt::QEnvironment::qclr_black );
-		painter->setFont(  afqt::QEnvironment::f_info);
-	    painter->drawText( x+5, y, w-10, h-1, Qt::AlignBottom | Qt::AlignHCenter, m_annotation);
+
+		int tkhost_width = 0;
+		if (m_tickets_pool.size() || m_tickets_host.size())
+			drawTickets(i_painter, i_option, x+6, y_cur-2, w-12, HeightTickets-4, &tkhost_width);
+
+		std::list<af::TaskExec*>::const_iterator it = m_tasks.begin();
+		for (int numtask = 0; it != m_tasks.end(); it++, numtask++)
+		{
+			int task_percent = 0;
+			if (m_tasks_percents.size() >= numtask+1)
+				task_percent = m_tasks_percents[numtask];
+
+			drawTask(i_painter, i_option, *it, task_percent, x + 5, y_cur, w - tkhost_width - 10, HeightTask - 2);
+
+			y_cur += HeightTask;
+		}
+
+		if (m_annotation.size())
+		{
+			i_painter->setPen(afqt::QEnvironment::qclr_black);
+			i_painter->setFont(afqt::QEnvironment::f_info);
+			i_painter->drawText(x+5, y_cur, w-10, HeightAnnotation, Qt::AlignVCenter | Qt::AlignHCenter, m_annotation);
+		}
 	}
 	}
 
-	m_plotCpu.paint( painter, plot_x, plot_y, plot_w, plot_h);
+	m_plotCpu.paint(i_painter, plot_x, plot_y, plot_w, plot_h);
 	plot_x += plot_dw;
-	m_plotMem.paint( painter, plot_x, plot_y, plot_w, plot_h);
+	m_plotMem.paint(i_painter, plot_x, plot_y, plot_w, plot_h);
 	plot_x += plot_dw;
-	m_plotSwp.paint( painter, plot_x, plot_y, plot_w, plot_h);
+	m_plotSwp.paint(i_painter, plot_x, plot_y, plot_w, plot_h);
 	plot_x += plot_dw;
-	m_plotHDD.paint( painter, plot_x, plot_y, plot_w, plot_h);
+	m_plotHDD.paint(i_painter, plot_x, plot_y, plot_w, plot_h);
 	plot_x += plot_dw;
-	m_plotNet.paint( painter, plot_x, plot_y, plot_w, plot_h);
+	m_plotNet.paint(i_painter, plot_x, plot_y, plot_w, plot_h);
 	plot_x += plot_dw;
-	m_plotIO.paint(  painter, plot_x, plot_y, plot_w, plot_h);
+	m_plotIO.paint( i_painter, plot_x, plot_y, plot_w, plot_h);
 
 	plot_x = x + 4;
-	for( unsigned i = 0; i < m_plots.size(); i++)
+	for (unsigned i = 0; i < m_plots.size(); i++)
 	{
 	    int custom_w = (w - 4) / int( m_plots.size());
 		int plot_y = y + base_height + 4;
-	    m_plots[i]->paint( painter, plot_x, plot_y, custom_w-4, m_plots[i]->height);
+	    m_plots[i]->paint(i_painter, plot_x, plot_y, custom_w-4, m_plots[i]->height);
 		plot_x += custom_w;
 	}
 
-	if( m_busy)
+	if (m_busy)
 	{
 		int stars_offset_y = 13;
 		int stars_offset_x = 13;
@@ -678,7 +819,8 @@ void ItemRender::paint( QPainter *painter, const QStyleOptionViewItem &option) c
 		int star_size_txt = 11;
 		int tasks_num_x = 25;
 		int tasks_num_y = 28;
-		if( ListRenders::getDisplaySize() == ListRenders::ESMallSize)
+
+		if (afqt::QEnvironment::render_item_size.n == ListRenders::ESmallSize)
 		{
 			stars_offset_y = 7;
 			stars_offset_x = 17;
@@ -688,29 +830,99 @@ void ItemRender::paint( QPainter *painter, const QStyleOptionViewItem &option) c
 			tasks_num_y = 16;
 		}
 
-	    if( m_tasks.size() > 1 )
+	    if (m_tasks.size() > 1 )
 		{
-			drawStar( star_size_txt, x+stars_offset_x, y+stars_offset_y, painter);
-			painter->setFont( afqt::QEnvironment::f_name);
-			painter->setPen( afqt::QEnvironment::clr_textstars.c);
-			painter->drawText( x, y, tasks_num_x, tasks_num_y, Qt::AlignHCenter | Qt::AlignVCenter,
-	                           QString::number( m_tasks.size()));
+			drawStar(star_size_txt, x+stars_offset_x, y+stars_offset_y, i_painter);
+			i_painter->setFont(afqt::QEnvironment::f_name);
+			i_painter->setPen(afqt::QEnvironment::clr_textstars.c);
+			i_painter->drawText(x, y, tasks_num_x, tasks_num_y, Qt::AlignHCenter | Qt::AlignVCenter,
+	                           QString::number(m_tasks.size()));
 		}
 		else
 		{
-			drawStar( star_size_one, x+stars_offset_x, y+stars_offset_y, painter);
+			drawStar(star_size_one, x+stars_offset_x, y+stars_offset_y, i_painter);
 		}
 	}
 
-	if( m_wolFalling)
+	if (m_wolFalling)
 	{
-		painter->setFont( afqt::QEnvironment::f_name);
-		painter->setPen( afqt::QEnvironment::clr_star.c);
-		painter->drawText( x, y, w, h, Qt::AlignCenter, offlineState_time);
+		i_painter->setFont(afqt::QEnvironment::f_name);
+		i_painter->setPen(afqt::QEnvironment::clr_star.c);
+		i_painter->drawText(x, y, w, h, Qt::AlignCenter, offlineState_time);
 	}
 }
 
-void ItemRender::setSortType( int i_type1, int i_type2 )
+void ItemRender::drawTask(QPainter * i_painter, const QStyleOptionViewItem & i_option,
+		const af::TaskExec * i_exec, int i_percent,
+		int i_x, int i_y, int i_w, int i_h) const
+{
+	int tw = 0;
+	// Prepare strings
+	QString taskstr = QString("%1").arg(i_exec->getCapacity());
+	if (i_exec->getCapCoeff())
+		taskstr += QString("x%1").arg(i_exec->getCapCoeff());
+	taskstr += QString(": %1[%2][%3]").arg( QString::fromUtf8(i_exec->getJobName().c_str()))
+		.arg(QString::fromUtf8(i_exec->getBlockName().c_str()))
+		.arg(QString::fromUtf8(i_exec->getName().c_str()));
+	if (i_exec->getNumber())
+		taskstr += QString("(%1)").arg(i_exec->getNumber());
+
+	QString user_time = QString("%1 - %2")
+		.arg(QString::fromUtf8(i_exec->getUserName().c_str()))
+		.arg( af::time2strHMS( time(NULL) - i_exec->getTimeStart()).c_str());
+
+	// Show task percent
+	if (i_percent > 0)
+	{
+		user_time += QString(" %1%").arg(i_percent);
+
+		// Draw task percent bar:
+		i_painter->setPen(Qt::NoPen);
+		i_painter->setOpacity(.5);
+		i_painter->setBrush(QBrush(afqt::QEnvironment::clr_done.c, Qt::SolidPattern));
+		i_painter->drawRect(i_x+1, i_y+1, (i_w-2)*i_percent/100, i_h-2);
+		i_painter->setOpacity(1.0);
+	}
+
+	// Draw an icon if exists:
+	const QPixmap * icon = Watch::getServiceIconSmall(afqt::stoq(i_exec->getServiceType()));
+	if (icon)
+	{
+		i_painter->drawPixmap(i_x+5, i_y, *icon);
+		tw += icon->width() + 2;
+	}
+
+	// Setup pen color
+	QPen pen(clrTextInfo(i_option));
+
+	// Draw tickets
+	for (auto const & tIt : i_exec->m_tickets)
+	{
+		tw += Item::drawTicket(i_painter, pen, i_x+5 + tw, i_y+1, i_w-5 - tw, Item::HeightTickets - 5,
+				Item::TKD_LEFT,
+				afqt::stoq(tIt.first), tIt.second);
+
+		tw += 8;
+	}
+
+	i_painter->setPen(pen);
+	i_painter->setFont(afqt::QEnvironment::f_info);
+
+	// Draw informatin strings
+	QRect rect_usertime;
+	i_painter->drawText(i_x+5, i_y, i_w-10, i_h,
+			Qt::AlignVCenter | Qt::AlignRight, user_time, &rect_usertime );
+
+	i_painter->drawText(i_x+5 + tw, i_y, i_w-15 - tw - rect_usertime.width(), i_h,
+			Qt::AlignVCenter | Qt::AlignLeft, taskstr);
+
+	// Draw task border:
+	i_painter->setPen(afqt::QEnvironment::clr_outline.c);
+	i_painter->setBrush(Qt::NoBrush);
+	i_painter->drawRoundedRect(i_x, i_y, i_w, i_h, 1.0, 1.0);
+}
+
+void ItemRender::v_setSortType( int i_type1, int i_type2 )
 {
 	resetSorting();
 
@@ -791,7 +1003,7 @@ void ItemRender::setSortType( int i_type1, int i_type2 )
 	}
 }
 
-void ItemRender::setFilterType( int i_type )
+void ItemRender::v_setFilterType( int i_type )
 {
 	resetFiltering();
 

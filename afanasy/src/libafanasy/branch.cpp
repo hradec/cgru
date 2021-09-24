@@ -51,7 +51,7 @@ void Branch::initDefaultValues()
 
 	setSolveJobs(false);
 	setSolvePriority();
-	setSolveCapacity();
+	setSolveTasksNum();
 
 	m_branches_num = 0;
 	m_branches_total = 0;
@@ -82,9 +82,6 @@ void Branch::v_readwrite(Msg *msg)
 	rw_int32_t(m_branches_total, msg);
 	rw_int32_t(m_jobs_num,       msg);
 	rw_int32_t(m_jobs_total,     msg);
-
-	// NEW_VERSION
-	// RW Active jobs and active users.
 }
 
 void Branch::v_jsonWrite(std::ostringstream &o_str, int i_type) const
@@ -122,7 +119,7 @@ void Branch::v_jsonWrite(std::ostringstream &o_str, int i_type) const
 		o_str << "\n\"id\":" << (*it)->getId();
 		o_str << ",\n\"name\":\"" << (*it)->getName() << "\"";
 		o_str << ",\n\"user_name\":\"" << (*it)->getUserName() << "\"";
-		o_str << ",\n"; jw_state((*it)->getState(), o_str);
+		o_str << ",\n"; jw_stateJob((*it)->getState(), o_str);
 
 		if ((*it)->getRunningTasksNum() > 0)
 			o_str << ",\n\"running_tasks_num\":" << (*it)->getRunningTasksNum();

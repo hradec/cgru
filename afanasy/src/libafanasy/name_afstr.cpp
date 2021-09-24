@@ -1,5 +1,9 @@
 #include "name_af.h"
 
+#ifdef WINNT
+#include <cctype>
+#endif
+
 #include "../include/afanasy.h"
 #include "../include/afjob.h"
 
@@ -98,20 +102,19 @@ const std::string af::state2str( int state)
 	return str;
 }
 
-const std::string af::toKMG(long long i_number)
+const std::string af::toKMG(long long i_number, int i_base, const std::string & i_separator)
 {
 	static const int labels_size = 5;
 	static const char labels[labels_size] = {'K','M','G','T','P'};
-	static const int base = 1000;
 
 	// Calculate power
 	int pow = 0; long long th = 1;
 	for (; pow < labels_size; pow++)
 	{
-		if (th * base > i_number)
+		if (th * i_base > i_number)
 			break;
 
-		th *= base;
+		th *= i_base;
 	}
 
 	// Divide and convert to string
@@ -127,9 +130,16 @@ const std::string af::toKMG(long long i_number)
 	// Create std::string and add power label
 	std::string str(buf, len);
 	if (pow)
-		str += labels[pow-1];
+		str += i_separator + labels[pow-1];
 
 	return str;
+}
+
+const std::string af::toLower(const std::string & i_str)
+{
+	std::string lower(i_str);
+	std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c){ return std::tolower(c); });
+	return lower;
 }
 
 const std::string af::vectToStr( const std::vector<int32_t> & i_vec)

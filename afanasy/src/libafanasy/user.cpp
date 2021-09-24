@@ -135,22 +135,17 @@ void User::v_readwrite( Msg * msg)
 	Node::v_readwrite( msg);
 	Work::readwrite( msg);
 
-	rw_int64_t ( m_state,                 msg);
-	rw_int64_t ( m_flags,                 msg);
-	rw_int64_t ( m_time_activity,         msg);
-	rw_String  ( m_host_name,             msg);
-	rw_uint8_t ( m_errors_retries,        msg);
-	rw_uint8_t ( m_errors_avoid_host,     msg);
-	rw_uint8_t ( m_errors_task_same_host, msg);
-	rw_int32_t ( m_errors_forgive_time,   msg);
-	rw_int64_t ( m_time_register,         msg);
-	rw_int32_t ( m_jobs_life_time,        msg);
+	rw_int64_t(m_time_activity,         msg);
+	rw_String (m_host_name,             msg);
+	rw_uint8_t(m_errors_retries,        msg);
+	rw_uint8_t(m_errors_avoid_host,     msg);
+	rw_uint8_t(m_errors_task_same_host, msg);
+	rw_int32_t(m_errors_forgive_time,   msg);
+	rw_int64_t(m_time_register,         msg);
+	rw_int32_t(m_jobs_life_time,        msg);
 
-	rw_String  ( m_annotation,            msg);
-	rw_String  ( m_custom_data,           msg);
-
-	rw_int32_t ( m_jobs_num,              msg);
-	rw_int32_t ( m_running_jobs_num,      msg);
+	rw_int32_t(m_jobs_num,              msg);
+	rw_int32_t(m_running_jobs_num,      msg);
 }
 
 int User::v_calcWeight() const
@@ -175,8 +170,8 @@ void User::v_generateInfoStream( std::ostringstream & stream, bool full) const
       if( m_max_running_tasks < 1 ) stream << " (no limit)";
       stream << "\n Running Tasks Number = " << m_running_tasks_num;
       stream << "\n Running Tasks Capacity Total = " << m_running_capacity_total;
-      if( hasHostsMask())        stream << "\n Hosts Mask = \"" << m_hosts_mask.getPattern() << "\"";
-      if( hasHostsMaskExclude()) stream << "\n Exclude Hosts Mask = \"" << m_hosts_mask_exclude.getPattern() << "\"";
+
+		Work::generateInfoStream(stream, full);
 
       stream << "\n Errors Solving: ";
       stream << "\n    Errors To Avoid Host = " << int(m_errors_avoid_host);

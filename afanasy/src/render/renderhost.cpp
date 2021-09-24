@@ -18,6 +18,9 @@
 
 extern bool AFRunning;
 
+extern int ZombieTime;
+extern int ExitNoTaskTime;
+
 RenderHost::RenderHost():
 	af::Render( Client::GetEnvironment),
 	m_updateMsgType( af::Msg::TRenderRegister),
@@ -31,8 +34,7 @@ RenderHost::RenderHost():
 
     setOnline();
 
-    m_host.m_os = af::strJoin( af::Environment::getPlatform(), " ");
-    GetResources( m_host, m_hres);
+	GetResources(m_hres);
 
     std::vector<std::string> resclasses = af::Environment::getRenderResClasses();
     for( std::vector<std::string>::const_iterator it = resclasses.begin(); it != resclasses.end(); it++)
@@ -55,11 +57,10 @@ RenderHost::RenderHost():
 
 	af::sleep_msec( 100);
 
-    GetResources( m_host, m_hres);
+	GetResources(m_hres);
     for( int i = 0; i < m_pyres.size(); i++) m_pyres[i]->update();
 
     v_stdOut();
-    m_host.v_stdOut( true);
     m_hres.v_stdOut( true);
 }
 
@@ -123,13 +124,15 @@ void RenderHost::serverUpdateFailed()
     if (m_connected == false)
 		return;
 
+    if (false == AFRunning)
+        return;
+
 	AF_LOG << "Failed to connect to server."
 			<< " Last success connect time: " << af::time2str(m_server_update_time);
 	AF_LOG << "Last connect was: " << (time(NULL) - m_server_update_time) << " seconds ago"
-			<< ", Connection lost time: " << af::Environment::getRenderConnectionLostTime() << "s"
-			<< ", Zombie time: " << af::Environment::getRenderZombieTime() << "s";
+			<< ", Zombie time: " << ZombieTime << "s";
 
-	if (time(NULL) >= (m_server_update_time + af::Environment::getRenderConnectionLostTime()))
+	if (time(NULL) >= (m_server_update_time + ZombieTime))
 	{
 		connectionLost();
 	}
@@ -167,15 +170,14 @@ void RenderHost::refreshTasks()
         m_taskprocesses[t]->refresh();
     }
 
-	// Time render has task(s):
+	// Check exit with no task time:
 	if( m_taskprocesses.size())
 	{
 		m_has_tasks_time = time(NULL);
 	}
-	else if(( af::Environment::getRenderExitNoTaskTime() >= 0 ) &&
-		( time(NULL) - m_has_tasks_time >= af::Environment::getRenderExitNoTaskTime()))
+	else if ((ExitNoTaskTime > 0) && ((time(NULL) - m_has_tasks_time) >= ExitNoTaskTime))
 	{
-		AF_LOG << "No tasks for " << af::Environment::getRenderExitNoTaskTime() << " seconds.";
+		AF_LOG << "No tasks for " << ExitNoTaskTime << " seconds.";
 		AFRunning = false;
 	}
 
@@ -202,13 +204,17 @@ void RenderHost::getResources()
 		return;
 	}
 
-	GetResources( m_host, m_hres);
+	GetResources(m_hres);
 
 	for( int i = 0; i < m_pyres.size(); i++)
 		m_pyres[i]->update();
 
 	//hres.stdOut();
 	m_up.setResources( &m_hres);
+
+	std::ostringstream str;
+	m_hres.jsonWrite(str);
+	m_resources_string = str.str();
 }
 
 af::Msg * RenderHost::updateServer()

@@ -5,13 +5,13 @@
 #include "../libafanasy/msgclasses/mcgeneral.h"
 #include "../libafanasy/msgclasses/mcafnodes.h"
 
+#include "item.h"
 #include "listitems.h"
 
 class QVBoxLayout;
 class QMouseEvent;
 
 class ItemNode;
-class CtrlSortFilter;
 
 class ListNodes : public ListItems
 {
@@ -22,22 +22,34 @@ public:
 	ListNodes( QWidget * i_parent, const std::string & i_type);
 	virtual ~ListNodes();
 
-	enum e_HideShow {
+	enum e_HideFlags {
 		e_HideInvert     = 1<<0,
 		e_HideHidden     = 1<<2,
 		e_HideDone       = 1<<3,
 		e_HideOffline    = 1<<4,
-		e_HideError      = 1<<5
+		e_HideEmpty      = 1<<5,
+		e_HideError      = 1<<6,
+		e_HideSystem     = 1<<7,
+		e_HidePools      = 1<<8,
 	};
 
-	int32_t getFlagsHideShow() const { return ms_flagsHideShow; }
+	int32_t getFlagsHideShow() const { return m_hide_flags; }
 
 	virtual void v_connectionEstablished();
+
+	/// Store nodes that can have childs for a quick access via map
+	void hrStoreParent(ItemNode * i_item);
+
+	void hrParentChanged(ItemNode * i_item);
+
+	void processHidden();
 
 public slots:
 	void actHideShow( int i_type);
 
 protected:
+
+	void initListNodes();
 
 	virtual void showEvent( QShowEvent  * event );
 
@@ -49,16 +61,15 @@ protected:
 
 	virtual void v_connectionLost();
 
-	virtual bool init( bool createModelView = true);
-
-	virtual ItemNode * v_createNewItem( af::Node * i_node, bool i_subscibed) = 0;
+	virtual ItemNode * v_createNewItemNode(af::Node * i_afnode, Item::EType i_type, bool i_notify) = 0;
 
 	void get() const;
-	void get( const std::vector<int32_t> & i_ids) const;
+	void get(const std::string & i_type) const;
+	void get(const std::vector<int32_t> & i_ids) const;
+	static void get(const std::vector<int32_t> & i_ids, const std::string & i_type);
 
-	bool updateItems( af::Msg* msg);
+	bool updateItems(af::Msg* msg, Item::EType i_type);
 
-	CtrlSortFilter * m_ctrl_sf;
 	void initSortFilterCtrl();
 
 	void sort();
@@ -66,6 +77,15 @@ protected:
 
 	/// Needed for jobs, to get user jobs list from server
 	virtual void v_resetSorting();
+
+	// Nedded to store hide flags.
+	// Each descendant class should store flags in own variable.
+	virtual void v_hideChanged();
+
+protected:
+	std::vector<std::string> m_node_types;
+
+	uint32_t m_hide_flags;
 
 private slots:
 	void actAnnotate();
@@ -82,10 +102,9 @@ private slots:
 	void filterSettingsChanged();
 
 private:
-	void processHidden();
-
-	static uint32_t ms_flagsHideShow;
 
 private:
 	bool m_subscribed;
+
+	QMap<QString, ItemNode*> m_hr_parents_map;
 };

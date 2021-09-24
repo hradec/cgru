@@ -478,6 +478,7 @@ function p_CreateElement(i_obj, i_elParent)
 	elDel.classList.add('button');
 	elDel.classList.add('delete');
 	elDel.title = 'Double click to remove this item.';
+	elDel.onclick = function(e) {e.stopPropagation(); return false;}
 	elDel.ondblclick = p_ItemDelOnClick;
 
 	el.m_title = title;
@@ -489,8 +490,10 @@ function p_CreateElement(i_obj, i_elParent)
 
 function p_ItemDelOnClick(i_evt)
 {
+	i_evt.stopPropagation();
 	var obj = i_evt.currentTarget.m_obj;
 	p_Action([{"id": obj.id}], 'del');
+	return false;
 }
 
 function p_GetCurrentShots()
@@ -581,12 +584,12 @@ function p_Put()
 		return;
 	}
 
-	args.shots = [];
+	args.paths = [];
 	for (var i = 0; i < p_elCurFolder.m_elArray.length; i++)
 		if (p_elCurFolder.m_elArray[i].m_path)
-			args.shots.push(p_elCurFolder.m_elArray[i].m_path);
+			args.paths.push(p_elCurFolder.m_elArray[i].m_path);
 
-	if (args.shots.length < 1)
+	if (args.paths.length < 1)
 	{
 		c_Error('Current folder has less then one shot.');
 		return;

@@ -2,7 +2,6 @@
 
 #include "name_afqt.h"
 #include "attr.h"
-#include "attrnumber.h"
 #include "attrcolor.h"
 
 #include <QtGui/QColor>
@@ -28,12 +27,14 @@ public:
 	static const QString & getFileName() { return ms_filename; }
 
 	static bool save();
-	static void saveWndRects( QByteArray & data);
 	static void saveGUI( QByteArray & data);
 	static void saveHotkeys( QByteArray & data);
 
 	static bool getRect( const QString & i_name, QRect & rect);
 	static void setRect( const QString & i_name, const QRect & rect);
+	static void resetAllRects();
+
+	static QMap<QString, AttrNumber> ms_attrs_panel;
 
 	static AttrNumber level;
 
@@ -101,11 +102,14 @@ public:
 	static AttrColor clr_taskwarningrun;
 	static AttrColor clr_taskskipped;
 	static AttrColor clr_taskwaitreconn;
+	static AttrColor clr_tasktrynext;
 	static AttrColor clr_itemrender;
 	static AttrColor clr_itemrenderoff;
 	static AttrColor clr_itemrenderbusy;
 	static AttrColor clr_itemrendernimby;
+	static AttrColor clr_itemrenderNIMBY;
 	static AttrColor clr_itemrenderpaused;
+	static AttrColor clr_itemrendersick;
 	static AttrColor clr_itemrenderpltclr;
 	static AttrColor clr_error;
 	static AttrColor clr_errorready;
@@ -132,11 +136,13 @@ public:
 
 	static QFont f_name;
 	static QFont f_info;
+	static QFont f_muted;
 	static QFont f_plotter;
 	static QFont f_min;
 
-	static AttrNumber thumb_jobs_num;
 	static AttrNumber thumb_jobs_height;
+	static AttrNumber thumb_work_height;
+	static AttrNumber render_item_size;
 
 	inline static const QString & getServerName() { return ms_servername; }
 	inline static const QString & getUserName()   { return ms_username;   }
@@ -147,6 +153,8 @@ public:
 
 	static const QStringList getThemes();
 
+	static const QString & getDateTimeFormat();
+
 	static bool loadTheme( const QString & i_theme);
 
 	static bool loadAttrs( const QString & i_filename );
@@ -154,8 +162,21 @@ public:
 	static void getHotkey( const QString & i_name, QString & o_str);
 	static void setHotkey( const QString & i_name, const QString & i_str);
 
+	static bool hasCollapsedJobSerial(int64_t i_serial);
+	static void addCollapsedJobSerial(int64_t i_serial);
+	static void delCollapsedJobSerial(int64_t i_serial);
+	static void clearCollapsedJobSerials();
+	inline static bool collapseNewJobs() {return ms_jobs_collapse_new;}
+	inline static void setCollapseNewJobs(bool i_collapse) {ms_jobs_collapse_new = i_collapse;}
+
 private:
    static void solveServerAddress();
+
+	static void loadWndRects(const JSON & i_obj);
+	static void saveWndRects(QByteArray & o_data);
+
+	static void loadCollapsedJobsSerials(const JSON & i_obj);
+	static void saveCollapsedJobsSerials(QByteArray & o_data);
 
 private:
 	static bool ms_valid;
@@ -174,4 +195,6 @@ private:
 	static QList<Attr*> ms_attrs_gui;
 	static QMap<QString, Attr*> ms_attrs_hotkeys;
 	static QStringList ms_hotkeys_names;
+	static QList<int64_t> ms_jobs_serials_collapsed;
+	static bool ms_jobs_collapse_new;
 };

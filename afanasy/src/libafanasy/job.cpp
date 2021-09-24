@@ -71,8 +71,6 @@ bool Job::jsonRead( const JSON &i_object, std::string * io_changes)
 
 	jr_regexp("depend_mask",        m_depend_mask,         i_object, io_changes);
 	jr_regexp("depend_mask_global", m_depend_mask_global,  i_object, io_changes);
-	jr_regexp("need_os",            m_need_os,             i_object, io_changes);
-	jr_regexp("need_properties",    m_need_properties,     i_object, io_changes);
 
 	jr_string("user_name",     m_user_name,     i_object, io_changes);
 
@@ -121,18 +119,28 @@ bool Job::jsonRead( const JSON &i_object, std::string * io_changes)
 	jr_int64 ("time_creation", m_time_creation, i_object);
 	jr_int64 ("time_started",  m_time_started,  i_object);
 	jr_int64 ("time_done",     m_time_done,     i_object);
-	
+
+	jr_int32vec("try_this_tasks_num",  m_try_this_tasks_num,  i_object);
+	jr_int32vec("try_this_blocks_num", m_try_this_blocks_num, i_object);
+
 	jr_string("project",    m_project,    i_object);
 	jr_string("department", m_department, i_object);
 
-	const JSON & blocks = i_object["blocks"];
-	if( false == blocks.IsArray())
+	return jsonReadAndAppendBlocks(i_object["blocks"]);
+}
+
+bool Job::jsonReadAndAppendBlocks( const JSON &i_blocks)
+{
+	if( false == i_blocks.IsArray())
 	{
 		AFERROR("Job::jsonRead: Can't find blocks array.");
 		return false;
 	}
 
-	m_blocks_num = blocks.Size();
+	int old_blocks_num = m_blocks_num;
+	BlockData ** old_blocks_data = m_blocks_data;
+
+	m_blocks_num += i_blocks.Size();
 	if( m_blocks_num < 1 )
 	{
 		AFERROR("Job::jsonRead: Blocks array has zero size.");
@@ -140,16 +148,21 @@ bool Job::jsonRead( const JSON &i_object, std::string * io_changes)
 	}
 
 	m_blocks_data = new BlockData*[m_blocks_num];
-	for( int b = 0; b < m_blocks_num; b++) m_blocks_data[b] = NULL;
 	for( int b = 0; b < m_blocks_num; b++)
+		m_blocks_data[b] = b < old_blocks_num ? old_blocks_data[b] : NULL;
+	if( NULL == old_blocks_data)
+		delete [] old_blocks_data;
+	for( int b = old_blocks_num; b < m_blocks_num; b++)
 	{
-		m_blocks_data[b] = newBlockData( blocks[b], b);
+		m_blocks_data[b] = newBlockData( i_blocks[b - old_blocks_num], b);
 		if( m_blocks_data[b] == NULL)
 		{
 			AFERROR("Job::jsonRead: Can not allocate memory for new block.\n");
 			return false;
 		}
 	}
+
+	setAppendedBlocksFlag();
 
 	return true;
 }
@@ -171,7 +184,7 @@ void Job::v_jsonWrite( std::ostringstream & o_str, int i_type) const
 	if( m_state != 0 )
 	{
 		o_str << ",\n";
-		jw_state( m_state, o_str);
+		jw_stateJob(m_state, o_str);
 	}
 
 	if( isPPAFlag())
@@ -215,6 +228,9 @@ void Job::v_jsonWrite( std::ostringstream & o_str, int i_type) const
 	if( m_time_life != -1 )
 		o_str << ",\n\"time_life\":"                  << m_time_life;
 
+	if (m_try_this_tasks_num.size() ) af::jw_int32vec("try_this_tasks_num",  m_try_this_tasks_num,  o_str);
+	if (m_try_this_blocks_num.size()) af::jw_int32vec("try_this_blocks_num", m_try_this_blocks_num, o_str);
+
 	if( m_folders.size())
 		af::jw_stringmap("folders", m_folders, o_str);
 
@@ -222,10 +238,6 @@ void Job::v_jsonWrite( std::ostringstream & o_str, int i_type) const
 		o_str << ",\n\"depend_mask\":\""        << af::strEscape( m_depend_mask.getPattern()        ) << "\"";
 	if( hasDependMaskGlobal())
 		o_str << ",\n\"depend_mask_global\":\"" << af::strEscape( m_depend_mask_global.getPattern() ) << "\"";
-	if( hasNeedOS())
-		o_str << ",\n\"need_os\":\""            << af::strEscape( m_need_os.getPattern()            ) << "\"";
-	if( hasNeedProperties())
-		o_str << ",\n\"need_properties\":\""    << af::strEscape( m_need_properties.getPattern()    ) << "\"";
 
 	if( m_blocks_data == NULL )
 	{
@@ -262,10 +274,6 @@ void Job::initDefaultValues()
 
 	m_depend_mask.setCaseSensitive();
 	m_depend_mask_global.setCaseSensitive();
-	m_need_os.setCaseInsensitive();
-	m_need_os.setContain();
-	m_need_properties.setCaseSensitive();
-	m_need_properties.setContain();
 }
 
 bool Job::isValid( std::string * o_err) const
@@ -320,8 +328,6 @@ void Job::v_readwrite( Msg * msg)
 	Work::readwrite(   msg);
 
 	rw_int64_t(m_serial,     msg);
-	rw_int64_t(m_flags,      msg);
-	rw_int64_t(m_state,      msg);
 
 	rw_int32_t(m_blocks_num,      msg);
 	rw_int32_t(m_user_list_order, msg);
@@ -336,10 +342,8 @@ void Job::v_readwrite( Msg * msg)
 	rw_String(m_host_name,    msg);
 	rw_String(m_command_pre,  msg);
 	rw_String(m_command_post, msg);
-	rw_String(m_annotation,   msg);
 	rw_String(m_report,       msg);
 	rw_String(m_description,  msg);
-	rw_String(m_custom_data,  msg);
 	rw_String(m_thumb_path,   msg);
 	rw_String(m_project,      msg);
 	rw_String(m_department,   msg);
@@ -347,8 +351,9 @@ void Job::v_readwrite( Msg * msg)
 
 	rw_RegExp(m_depend_mask,        msg);
 	rw_RegExp(m_depend_mask_global, msg);
-	rw_RegExp(m_need_os,            msg);
-	rw_RegExp(m_need_properties,    msg);
+
+	rw_Int32_Vect(m_try_this_tasks_num,  msg);
+	rw_Int32_Vect(m_try_this_blocks_num, msg);
 
 	rw_StringMap(m_folders, msg);
 
@@ -426,8 +431,6 @@ int Job::v_calcWeight() const
 	weight += weigh( m_folders);
 	weight += m_depend_mask.weigh();
 	weight += m_depend_mask_global.weigh();
-	weight += m_need_os.weigh();
-	weight += m_need_properties.weigh();
 	return weight;
 }
 
@@ -438,6 +441,34 @@ void Job::stdOutJobBlocksTasks() const
 	o_str << std::endl;
 	generateInfoStreamBlocks( o_str, true);
 	std::cout << o_str.str() << std::endl;
+}
+
+const std::string Job::tryNextTasksToStr(int i_limit) const
+{
+	if (m_try_this_tasks_num.size() != m_try_this_blocks_num.size())
+	{
+		AF_ERR << "Try tasks and blocks size mismatch: "
+			<< m_try_this_tasks_num.size() << " != " << m_try_this_blocks_num.size();
+		return std::string();
+	}
+
+	if (m_try_this_tasks_num.size() == 0)
+		return std::string();
+
+	std::ostringstream o_str;
+	for (int i = 0; i < m_try_this_tasks_num.size(); i++)
+	{
+		if (i) o_str << ',';
+		if (i == i_limit)
+		{
+			o_str << "...";
+			break;
+		}
+
+		o_str << m_try_this_blocks_num[i] << ':' << m_try_this_tasks_num[i];
+	}
+
+	return o_str.str();
 }
 
 void Job::generateInfoStreamBlocks( std::ostringstream & o_str, bool full) const
@@ -467,8 +498,6 @@ void Job::generateInfoStreamJob(    std::ostringstream & o_str, bool full) const
    o_str << "[" << m_user_list_order << "]";
 	if( isHidden()) o_str << " (hidden)";
 
-	Work::generateInfoStream( o_str, full);
-
 	bool display_blocks = true;
 	if( m_blocks_num == 0)
 	{
@@ -496,6 +525,8 @@ void Job::generateInfoStreamJob(    std::ostringstream & o_str, bool full) const
       return;
    }
 
+	Work::generateInfoStream(o_str, full);
+
 	if (m_branch.size()) o_str << "\n Branch = " << m_branch;
    if( m_annotation.size())  o_str << "\n    " << m_annotation;
    if( m_report.size())      o_str << "\n    " << m_report;
@@ -519,14 +550,9 @@ void Job::generateInfoStreamJob(    std::ostringstream & o_str, bool full) const
    if( m_max_running_tasks == -1 ) o_str << " (no limit)";
    o_str << "\n Maximum running tasks per host = " << m_max_running_tasks_per_host;
    if( m_max_running_tasks_per_host == -1 ) o_str << " (no limit)";
-   o_str << "\n Hosts mask: \"" << m_hosts_mask.getPattern() << "\"";
-   if( m_hosts_mask.empty()) o_str << " (any host)";
-   if( m_hosts_mask_exclude.notEmpty()) o_str << "\n Exclude hosts mask: \"" << m_hosts_mask_exclude.getPattern() << "\"";
    if( m_depend_mask.notEmpty()) o_str << "\n Depend mask = \"" << m_depend_mask.getPattern() << "\"";
    if( m_depend_mask_global.notEmpty()) o_str << "\n Global depend mask = \"" << m_depend_mask_global.getPattern() << "\"";
    if( m_time_wait ) o_str << "\n Wait time = " << af::time2str( m_time_wait);
-   if( m_need_os.notEmpty()) o_str << "\n Needed OS: \"" << m_need_os.getPattern() << "\"";
-   if( m_need_properties.notEmpty()) o_str << "\n Needed properties: \"" << m_need_properties.getPattern() << "\"";
    if( m_command_pre.size()) o_str << "\n Pre command:\n" << m_command_pre;
    if( m_command_post.size()) o_str << "\n Post command:\n" << m_command_post;
 

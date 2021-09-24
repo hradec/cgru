@@ -28,7 +28,7 @@ Gizmo {
 
    addUserKnob { 20 "" Parameters }
    addUserKnob {  4 platform M { "Any" "Native"}  l "Plafrorm" }
-   addUserKnob {  3 maxhosts        l "Maximum Hosts"          }
+   addUserKnob {  3 maxruntasks     l "Max Running Tasks"      }
    addUserKnob {  3 priority        l "Priority"               }
    addUserKnob {  1 hostsmask       l "Hosts Mask"             }
    addUserKnob {  1 hostsmaskexcl   l "Exclude Hosts Mask"     }
@@ -52,6 +52,15 @@ Gizmo {
    addUserKnob {  6 singlejob   l "Construct single job" }
 
    addUserKnob { 20 "" Advanced }
+   addUserKnob { 26 "" l "" }
+   addUserKnob {  6 tmpscene l "Create and render temporary scene file" }
+   addUserKnob { 26 "" l "" }
+   addUserKnob {  6 tickets_use  l "Tickets" }
+   addUserKnob {  1 tickets_data l ""    }
+   addUserKnob { 26 "" l "" }
+   addUserKnob {  6 pools_use  l "Pools" }
+   addUserKnob {  1 pools_data l "" }
+   addUserKnob { 26 "" l "" }
    addUserKnob {  6 tmpimage l "Render to temporary image" }
    addUserKnob { 26 "" l "" }
    addUserKnob {  6 pathsmap l "Apply paths map to scene" }
@@ -70,7 +79,7 @@ Gizmo {
 	timecode       ""
 	timecode_use    1
 
-	maxhosts       -1
+	maxruntasks    -1
 	priority       -1
 	capacity       -1
 	maxperhost     -1
@@ -87,6 +96,11 @@ Gizmo {
 	forceframes     0
 	singlejob       1
 
+	tmpscene        1
+	tickets_use     0
+	tickets_data    NUKE:1,NET:100
+	pools_use       0
+	pools_data      farm:10,work:-10,comp:10,sim:-10
 	tmpimage        1
 	pathsmap        1
 

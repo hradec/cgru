@@ -11,6 +11,7 @@
 #include "ctrlsortfilter.h"
 #include "monitorhost.h"
 #include "modelnodes.h"
+#include "paramspaneljob.h"
 #include "viewitems.h"
 #include "watch.h"
 
@@ -21,6 +22,7 @@
 #include <QBoxLayout>
 #include <QInputDialog>
 #include <QMenu>
+#include <QSplitter>
 
 #define AFOUTPUT
 #undef AFOUTPUT
@@ -45,10 +47,14 @@ bool    ListJobs::ms_FilterInclude_SU  = true;
 bool    ListJobs::ms_FilterMatch_SU    = false;
 std::string ListJobs::ms_FilterString_SU = "";
 
-ListJobs::ListJobs( QWidget* parent):
-	ListNodes( parent, "jobs")
+uint32_t ListJobs::ms_hide_flags = e_HideHidden;
+
+ListJobs::ListJobs(QWidget * i_parent, bool i_listwork, const std::string & i_name):
+	ListNodes(i_parent, i_name),
+	m_listwork(i_listwork),
+	m_all_blocks_menu_shown(false)
 {
-	if( af::Environment::VISOR())
+	if( af::Environment::VISOR() || m_listwork)
 		m_ctrl_sf = new CtrlSortFilter( this,
 			&ms_SortType1_SU, &ms_SortAscending1_SU,
 			&ms_SortType2_SU, &ms_SortAscending2_SU,
@@ -79,50 +85,143 @@ ListJobs::ListJobs( QWidget* parent):
 		m_ctrl_sf->addFilterType( CtrlSortFilter::TUSERNAME);
 	}
 
+	// Get stored hide flags:
+	m_hide_flags = ms_hide_flags;
+
 	initSortFilterCtrl();
 
-	CtrlJobs * control = new CtrlJobs( m_ctrl_sf, this);
-	m_ctrl_sf->getLayout()->addWidget( control);
-
+	CtrlJobs * control = new CtrlJobs(m_ctrl_sf, this, m_listwork);
+	m_toplayout->addWidget(control);
 
 	// Add left panel buttons:
+	if (af::Environment::VISOR() || (false == m_listwork))
+	{
 	ButtonPanel * bp;
 
-	bp = addButtonPanel("LOG","jobs_log","Show job log.");
+	bp = addButtonPanel(Item::TAny, "LOG","jobs_log","Show job log.");
 	connect( bp, SIGNAL( sigClicked()), this, SLOT( actRequestLog()));
 
-	bp = addButtonPanel("EHO","jobs_show_err_hosts","Show error hosts.");
-	connect( bp, SIGNAL( sigClicked()), this, SLOT( actRequestErrorHostsList()));
-
-	bp = addButtonPanel("PAU","jobs_pause","Pause selected jobs.","P");
+	bp = addButtonPanel(Item::TJob, "PAUSE","jobs_pause","Pause selected jobs.","P");
 	connect( bp, SIGNAL( sigClicked()), this, SLOT( actPause()));
 
-	bp = addButtonPanel("STA","jobs_start","Start selected jobs.","S");
+	bp = addButtonPanel(Item::TJob, "START","jobs_start","Start selected jobs.","S");
 	connect( bp, SIGNAL( sigClicked()), this, SLOT( actStart()));
 
-	bp = addButtonPanel("REH","jobs_reset_avoid_hosts","Reset error hosts.","E");
-	connect( bp, SIGNAL( sigClicked()), this, SLOT( actResetErrorHosts()));
-
-	bp = addButtonPanel("RET","jobs_restart_error_tasks","Restart error tasks.","R");
-	connect( bp, SIGNAL( sigClicked()), this, SLOT( actRestartErrors()));
-
-	bp = addButtonPanel("RST","jobs_restart","Restart selected jobs.","", true);
-	connect(bp, SIGNAL(sigClicked()), this, SLOT(actRestart()));
-
-	bp = addButtonPanel("RSP","jobs_restart_pause","Restart&Pause selected jobs.","", true);
-	connect(bp, SIGNAL(sigClicked()), this, SLOT(actRestartPause()));
-
-	bp = addButtonPanel("DEL","jobs_delete","Delete selected jobs.","", true);
-	connect(bp, SIGNAL(sigClicked()), this, SLOT(actDelete()));
+	bp = addButtonPanel(Item::TJob, "STOP","jobs_stop","Stop selected jobs tasks and pause jobs.","", true);
+	connect(bp, SIGNAL(sigClicked()), this, SLOT(actStop()));
 
 	if (false == af::Environment::VISOR())
 	{
-		bp = addButtonPanel("DDJ","jobs_delete_done","Delete all done jobs.","", true);
-		connect(bp, SIGNAL(sigClicked()), this, SLOT(actDeleteDone()));
+		addButtonsMenu(Item::TJob, "Move","Move job(s).");
+
+		bp = addButtonPanel(Item::TJob, "Up", "move_up", "Move job(s) up.","u");
+		connect(bp, SIGNAL(sigClicked()), this, SLOT(actMoveUp()));
+
+		bp = addButtonPanel(Item::TJob, "Down", "move_down", "Move job(s) down.","d");
+		connect(bp, SIGNAL(sigClicked()), this, SLOT(actMoveDown()));
+
+		bp = addButtonPanel(Item::TJob, "Top", "move_top", "Move job(s) top.","t");
+		connect(bp, SIGNAL(sigClicked()), this, SLOT(actMoveTop()));
+
+		bp = addButtonPanel(Item::TJob, "Bottom", "move_bottom", "Move job(s) bottom.","b");
+		connect(bp, SIGNAL(sigClicked()), this, SLOT(actMoveBottom()));
+
+		resetButtonsMenu();
 	}
 
+	addButtonsMenu(Item::TJob, "Restart","Restart jobs tasks menu.");
 
-	init();
+	bp = addButtonPanel(Item::TJob, "ALL TASKS","jobs_restart","Restart all tasks of all selected jobs.","", true);
+	connect(bp, SIGNAL(sigClicked()), this, SLOT(actRestart()));
+
+	bp = addButtonPanel(Item::TJob, "AND PAUSE","jobs_restart_pause","Restart tasks and pause selected jobs.","", true);
+	connect(bp, SIGNAL(sigClicked()), this, SLOT(actRestartPause()));
+
+	bp = addButtonPanel(Item::TJob, "WARNINGS","jobs_restart_warning","Restart tasks with warnings.","", true);
+	connect(bp, SIGNAL(sigClicked()), this, SLOT(actRestartWarnings()));
+
+	bp = addButtonPanel(Item::TJob, "RUNNING","jobs_restart_running","Restart runnning tasks.","", true);
+	connect(bp, SIGNAL(sigClicked()), this, SLOT(actRestartRunning()));
+
+	bp = addButtonPanel(Item::TJob, "SKIPPED","jobs_restart_skipped","Restart skipped tasks.","", true);
+	connect(bp, SIGNAL(sigClicked()), this, SLOT(actRestartSkipped()));
+
+	bp = addButtonPanel(Item::TJob, "DONE","jobs_restart_done","Restart done tasks.","", true);
+	connect(bp, SIGNAL(sigClicked()), this, SLOT(actRestartDone()));
+
+	resetButtonsMenu();
+
+	addButtonsMenu(Item::TJob, "Errors","Show/Manipulate error hosts and tasks.");
+
+	bp = addButtonPanel(Item::TJob, "SHOW HOSTS","jobs_show_err_hosts","Show error hosts.");
+	connect( bp, SIGNAL( sigClicked()), this, SLOT( actRequestErrorHostsList()));
+
+	bp = addButtonPanel(Item::TJob, "RESET HOSTS","jobs_reset_avoid_hosts","Reset error hosts.","E");
+	connect( bp, SIGNAL( sigClicked()), this, SLOT( actResetErrorHosts()));
+
+	bp = addButtonPanel(Item::TJob, "RETRY TASKS","jobs_restart_error_tasks","Restart error tasks.","R");
+	connect( bp, SIGNAL( sigClicked()), this, SLOT( actRestartErrors()));
+
+	resetButtonsMenu();
+
+	bp = addButtonPanel(Item::TJob, "LISTEN","jobs_listen","Listen job running tasks ouput.");
+	connect(bp, SIGNAL(sigClicked()), this, SLOT(actListenJob()));
+
+	bp = addButtonPanel(Item::TAny, "CUSTOM DATA","node_custom_data","Edit node custom data.");
+	connect(bp, SIGNAL(sigClicked()), this, SLOT(actCustomData()));
+
+	if (m_listwork)
+	{
+		bp = addButtonPanel(Item::TAny, "DELETE","work_delete","Delete selected jobs or branches.","", true);
+		connect(bp, SIGNAL(sigClicked()), this, SLOT(actDelete()));
+	}
+	else
+	{
+		bp = addButtonPanel(Item::TAny, "DELETE","jobs_delete","Delete selected jobs.","", true);
+		connect(bp, SIGNAL(sigClicked()), this, SLOT(actDelete()));
+	}
+
+	if (false == af::Environment::VISOR() && (false == m_listwork))
+	{
+		bp = addButtonPanel(Item::TJob, "DEL DONE","jobs_delete_done","Delete all done jobs.","",
+				true /*double click*/, true /*always active*/);
+		connect(bp, SIGNAL(sigClicked()), this, SLOT(actDeleteDone()));
+	}
+	}
+
+	// Add parameters
+	if ((af::Environment::VISOR()) || (af::Environment::getPermUserModJobPriority()))
+	{
+		int max = 200;
+		if(( isTypeUsers()) && ( true != af::Environment::VISOR()))
+			max = af::Environment::getPriority();
+		addParam_Num(Item::TAny, "priority",              "Priority",           "Priority number", 0, max);
+	}
+	addParam_Str(Item::TAny, "annotation",                "Annotation",         "Annotation string");
+	addParam_separator();
+	addParam_MSI(Item::TJob, "pools",                     "Pools",              "Pools priorities");
+	addParam_separator();
+	addParam_Tim(Item::TJob, "time_wait",                 "Wait Time",          "Time to wait to start");
+	addParam_separator();
+	addParam_Num(Item::TAny, "max_running_tasks",         "Maximum Running",    "Maximum running tasks number", -1, 1<<20);
+	addParam_Num(Item::TAny, "max_running_tasks_per_host","Max Run Per Host",   "Max run tasks on the same host", -1, 1<<20);
+	addParam_separator();
+	addParam_REx(Item::TAny, "hosts_mask",                "Hosts Mask",         "Host names pattern that job can run on");
+	addParam_REx(Item::TAny, "hosts_mask_exclude",        "Hosts Mask Exclude", "Host names pattern that job will not run");
+	addParam_REx(Item::TJob, "depend_mask",               "Depend Mask",        "Jobs name mask to wait");
+	addParam_REx(Item::TJob, "depend_mask_global",        "Global Depend",      "Depend mask for jobs from any user");
+	addParam_separator();
+	addParam_Num(Item::TBranch, "max_tasks_per_second",   "Max Tasks Per Second", "Maximum tasks starts per second", -1, 1<<20);
+	addParam_Hrs(Item::TJob,    "time_life",              "Life Time",            "Time to be deleted after creation");
+	addParam_separator();
+	addParam_Num(Item::TJob, "need_power",      "Power Needed",       "Job need client that has at least this power", -1, 1<<30);
+	addParam_REx(Item::TJob, "need_os",         "OS Needed",          "Job will run only on this OS");
+	addParam_MiB(Item::TJob, "need_memory",     "Memory Needed",      "Job need client to have at least this free memory (GB)", -1, 1<<30);
+	addParam_GiB(Item::TJob, "need_hdd",        "HDD Needed",         "Job need client to have at least this free HDD space (GB)", -1, 1<<30);
+	addParam_REx(Item::TJob, "need_properties", "Properties Needed",  "Job need client that has such properties");
+
+	m_paramspanel = new ParamsPanelJob();
+	initListNodes();
 
 	QTimer * timer = new QTimer(this);
 	timer->start( 1000 * af::Environment::getWatchRefreshGuiSec());
@@ -131,11 +230,21 @@ ListJobs::ListJobs( QWidget* parent):
 	m_parentWindow->setWindowTitle("Jobs:");
 }
 
+ListJobs::~ListJobs()
+{
+}
+
+void ListJobs::v_hideChanged()
+{
+	// Store hide flags:
+	ms_hide_flags = m_hide_flags;
+}
+
 void ListJobs::v_showFunc()
 {
-	if( Watch::isConnected() == false) return;
+	if (Watch::isConnected() == false) return;
 
-	if( af::Environment::VISOR())
+	if (af::Environment::VISOR() || m_listwork)
 		get();
 	else
 	{
@@ -194,6 +303,13 @@ void ListJobs::contextMenuEvent( QContextMenuEvent *event)
 	action = new QAction( "Show Log", this);
 	connect( action, SIGNAL( triggered() ), this, SLOT( actRequestLog() ));
 	menu.addAction( action);
+
+	if (jobitem->has_tasks_trying_next)
+	{
+		action = new QAction("Reset Trying Tasks", this);
+		connect(action, SIGNAL(triggered()), this, SLOT(actResetTryingNextTasks()));
+		menu.addAction(action);
+	}
 
 	action = new QAction( "Show Error Hosts", this);
 	connect( action, SIGNAL( triggered() ), this, SLOT( actRequestErrorHostsList() ));
@@ -278,9 +394,12 @@ void ListJobs::contextMenuEvent( QContextMenuEvent *event)
 	}
 	else
 	{
-		  action = new QAction("Change Owner", this);
-		  connect( action, SIGNAL( triggered() ), this, SLOT( actSetUser() ));
-		  menu.addAction( action);
+		action = new QAction("Change Owner", this);
+		connect( action, SIGNAL( triggered() ), this, SLOT( actSetUser() ));
+		menu.addAction( action);
+		action = new QAction("Change Branch", this);
+		connect(action, SIGNAL(triggered()), this, SLOT(actChangeBranch()));
+		menu.addAction(action);
 	}
 	menu.addSeparator();
 	
@@ -304,58 +423,15 @@ void ListJobs::contextMenuEvent( QContextMenuEvent *event)
 
 	submenu = new QMenu( "Set Parameter", this);
 
-	if (af::Environment::VISOR())
-	{
-		action = new QAction("Change Branch", this);
-		connect(action, SIGNAL(triggered()), this, SLOT(actChangeBranch()));
-		submenu->addAction(action);
-	}
-	action = new QAction( "Max Running Tasks", this);
-	connect( action, SIGNAL( triggered() ), this, SLOT( actMaxRunningTasks() ));
-	submenu->addAction( action);
-	action = new QAction( "Max Run Tasks Per Host", this);
-	connect( action, SIGNAL( triggered() ), this, SLOT( actMaxRunTasksPerHost() ));
-	submenu->addAction( action);
-	action = new QAction( "Hosts Mask", this);
-	connect( action, SIGNAL( triggered() ), this, SLOT( actHostsMask() ));
-	submenu->addAction( action);
-	action = new QAction( "Hosts Exclude Mask", this);
-	connect( action, SIGNAL( triggered() ), this, SLOT( actHostsMaskExclude() ));
-	submenu->addAction( action);
+	addMenuParameters(submenu);
 
-	if(( af::Environment::VISOR()) || ( af::Environment::getPermUserModJobPriority()))
-	{
-	   action = new QAction( "Priority", this);
-	   connect( action, SIGNAL( triggered() ), this, SLOT( actPriority() ));
-	   submenu->addAction( action);
-	}
+	submenu->addSeparator();
 
-	action = new QAction( "Depend Mask", this);
-	connect( action, SIGNAL( triggered() ), this, SLOT( actDependMask() ));
-	submenu->addAction( action);
-	action = new QAction( "Global Depend Mask", this);
-	connect( action, SIGNAL( triggered() ), this, SLOT( actDependMaskGlobal() ));
-	submenu->addAction( action);
-	action = new QAction( "Wait Time", this);
-	connect( action, SIGNAL( triggered() ), this, SLOT( actWaitTime() ));
-	submenu->addAction( action);
 	action = new QAction( "Preview Approval", this);
 	connect( action, SIGNAL( triggered() ), this, SLOT( actPreviewApproval() ));
 	submenu->addAction( action);
 	action = new QAction( "No Preview Approval", this);
 	connect( action, SIGNAL( triggered() ), this, SLOT( actNoPreviewApproval() ));
-	submenu->addAction( action);
-	action = new QAction( "OS Needed", this);
-	connect( action, SIGNAL( triggered() ), this, SLOT( actNeedOS() ));
-	submenu->addAction( action);
-	action = new QAction( "Properties Needed", this);
-	connect( action, SIGNAL( triggered() ), this, SLOT( actNeedProperties() ));
-	submenu->addAction( action);
-	action = new QAction( "Post Command", this);
-	connect( action, SIGNAL( triggered() ), this, SLOT( actPostCommand() ));
-	submenu->addAction( action);
-	action = new QAction( "Life Time", this);
-	connect( action, SIGNAL( triggered() ), this, SLOT( actLifeTime() ));
 	submenu->addAction( action);
 
 	submenu->addSeparator();
@@ -369,36 +445,48 @@ void ListJobs::contextMenuEvent( QContextMenuEvent *event)
 
 	submenu->addSeparator();
 
-	action = new QAction( "Custom Data", this);
-	connect( action, SIGNAL( triggered() ), this, SLOT( actCustomData() ));
+	action = new QAction( "Post Command", this);
+	connect( action, SIGNAL( triggered() ), this, SLOT( actPostCommand() ));
 	submenu->addAction( action);
 
 	menu.addMenu( submenu);
 
 	menu.addSeparator();
 
+	m_all_blocks_menu_shown = false;
 	if( selectedItemsCount == 1)
 	{
 		if( jobitem->getBlocksNum() > 1)
 		{
 			submenu = new QMenu( "Tasks Blocks", this);
-			for( int b = -1; b < jobitem->getBlocksNum(); b++)
+			for (int b = -1; b < jobitem->getBlocksNum(); b++)
 			{
-				QMenu * subsubmenu = new QMenu( b == -1 ? QString("_to_all_") : jobitem->getBlockName(b), this);
-				jobitem->generateMenu( b, subsubmenu , this);
-				submenu->addMenu( subsubmenu);
+				QMenu * subsubmenu = new QMenu(b == -1 ? QString("_to_all_") : jobitem->getBlockName(b), this);
+				if (b == -1)
+				{
+					// This menu changes all job blocks
+					connect(subsubmenu, SIGNAL(aboutToShow()), this, SLOT(slot_BlocksMenuForAll()));
+				}
+				else
+				{
+					connect(subsubmenu, SIGNAL(aboutToShow()), this, SLOT(slot_BlocksMenuNotAll()));
+				}
+				jobitem->getBlockInfo(b==-1?0:b)->generateMenu(subsubmenu);
+				submenu->addMenu(subsubmenu);
 			}
 		}
 		else
 		{
-			submenu = new QMenu( "Tasks Block", this);
-			jobitem->generateMenu( 0, submenu, this);
+			submenu = new QMenu("Tasks Block", this);
+			jobitem->getBlockInfo(0)->generateMenu(submenu);
+			connect(submenu, SIGNAL(aboutToShow()), this, SLOT(slot_BlocksMenuNotAll()));
 		}
 	}
 	else
 	{
-		submenu = new QMenu( "All Selected Blocks", this);
-		jobitem->generateMenu( -1, submenu, this);
+		submenu = new QMenu("All Selected Blocks", this);
+		jobitem->getBlockInfo(0)->generateMenu( submenu);
+		connect(submenu, SIGNAL(aboutToShow()), this, SLOT(slot_BlocksMenuForAll()));
 	}
 	menu.addMenu( submenu);
 
@@ -431,25 +519,26 @@ void ListJobs::contextMenuEvent( QContextMenuEvent *event)
 
 	menu.exec(event->globalPos());
 }
-
-ListJobs::~ListJobs()
-{
-}
+void ListJobs::slot_BlocksMenuForAll() {m_all_blocks_menu_shown = true; }
+void ListJobs::slot_BlocksMenuNotAll() {m_all_blocks_menu_shown = false;}
 
 bool ListJobs::v_caseMessage( af::Msg * msg)
 {
-	switch( msg->type())
+	switch (msg->type())
 	{
 	case af::Msg::TJobsList:
 	{
-		if( updateItems( msg) && (af::Environment::VISOR() == false))
+		if (updateItems(msg, Item::TJob))
 		{
-			getUserJobsOrder();
+			// We should get user jobs order only if:
+			// user is not admin, it is not list work (it inherits this class) and sorting is disabled
+			if ((af::Environment::VISOR() == false) && (false == m_listwork) && (m_ctrl_sf->isSortDisabled()))
+				getUserJobsOrder();
 		}
 
-		if( false == isSubscribed() )
+		if (false == isSubscribed())
 		{
-			if( af::Environment::VISOR() == false )
+			if (af::Environment::VISOR() == false)
 			{
 				m_view->scrollToBottom();
 			}
@@ -462,10 +551,13 @@ bool ListJobs::v_caseMessage( af::Msg * msg)
 	}
 	case af::Msg::TUserJobsOrder:
 	{
-		af::MCGeneral ids( msg);
-		AF_DEBUG << "Jobs order received: " << ids.v_generateInfoString( true);
-		if( ids.getId() == MonitorHost::getUid())
-			sortMatch( ids.getList());
+		if ((af::Environment::VISOR() == false) && (false == m_listwork) && (m_ctrl_sf->isSortDisabled()))
+		{
+			af::MCGeneral ids(msg);
+			AF_DEBUG << "Jobs order received: " << ids.v_generateInfoString(true);
+			if (ids.getId() == MonitorHost::getUid())
+				sortMatch(ids.getList());
+		}
 		break;
 	}
 
@@ -480,9 +572,9 @@ bool ListJobs::v_processEvents( const af::MonitorEvents & i_me)
 {
 	bool processed = false;
 
-	if( i_me.m_events[af::Monitor::EVT_jobs_del].size())
+	if (i_me.m_events[af::Monitor::EVT_jobs_del].size())
 	{
-		deleteItems( i_me.m_events[af::Monitor::EVT_jobs_del]);
+		deleteItems(i_me.m_events[af::Monitor::EVT_jobs_del], Item::TJob);
 		calcTotals();
 		processed = true;
 	}
@@ -503,22 +595,62 @@ bool ListJobs::v_processEvents( const af::MonitorEvents & i_me)
 
 	if( i_me.m_jobs_order_ids.size())
 	{
-		sortMatch( i_me.m_jobs_order_ids);
+		if ((af::Environment::VISOR() == false) && (false == m_listwork) && (m_ctrl_sf->isSortDisabled()))
+		{
+			sortMatch( i_me.m_jobs_order_ids);
+		}
+
 		processed = true;
 	}
 
 	return processed;
 }
 
-ItemNode * ListJobs::v_createNewItem( af::Node *node, bool i_subscibed)
+ItemNode * ListJobs::v_createNewItemNode(af::Node * i_afnode, Item::EType i_type, bool i_notify)
 {
-	return new ItemJob( this, (af::Job*)node, i_subscibed, m_ctrl_sf);
+	af::Job * job = static_cast<af::Job*>(i_afnode);
+
+	if (false == af::Environment::VISOR())
+	{
+		// User should not see ther users jobs if watch is not in admin mode.
+		// But just switching from admin mode, prevous asked jobs can arrive.
+		if (job->getUserName() != af::Environment::getUserName())
+			return NULL;
+	}
+
+	return new ItemJob(this, false /*in work list*/, job, m_ctrl_sf, i_notify);
+}
+
+void ListJobs::v_itemToBeDeleted(Item * i_item)
+{
+	// If there is not more items we can delete all collapsed jobs serials.
+	// On a job deletion we remove its serial, but deletion can happen by other GUI when this GUI is closed.
+	// So w/o clearing collapsed jobs serials list can grow unlimited with time.
+	if (count() == 0)
+		afqt::QEnvironment::clearCollapsedJobSerials();
 }
 
 void ListJobs::v_resetSorting()
 {
-	if( af::Environment::VISOR() == false )
+	if ((af::Environment::VISOR() == false) && (m_listwork == false))
 		getUserJobsOrder();
+}
+
+
+void ListJobs::jobsHeightRecalculate()
+{
+	for( int i = 0; i < m_model->count(); i++)
+	{
+		Item * item = m_model->item(i);
+		if (item->getType() != Item::TJob)
+			continue;
+		ItemJob * job = static_cast<ItemJob*>(item);
+		job->resizeThumbnails();
+	}
+
+	itemsHeightCalc();
+	revertModel();
+	repaintItems();
 }
 
 void ListJobs::getUserJobsOrder()
@@ -530,58 +662,50 @@ void ListJobs::getUserJobsOrder()
 
 void ListJobs::calcTotals()
 {
+	int numjobs = count();
 	int percent = 0;
-	int blocksrun = 0;
-	int blocksdone = 0;
 	int done = 0;
 	int running = 0;
 	int error = 0;
+	int blocksrun = 0;
 
-	int numjobs = count();
-	if( numjobs == 0)
+	if (numjobs == 0)
 	{
 		m_parentWindow->setWindowTitle("Jobs: (none)");
 		return;
 	}
-	else
+
+	for (int i = 0; i < numjobs; i++)
 	{
-		for( int i = 0; i < numjobs; i++)
+		ItemJob * itemjob = static_cast<ItemJob*>(m_model->item(i));
+		if (itemjob->state & AFJOB::STATE_DONE_MASK)
 		{
-			ItemJob * itemjob = (ItemJob*)(m_model->item(i));
-			if( itemjob->state & AFJOB::STATE_DONE_MASK )
-			{
-				done++;
-				for( int b = 0; b < itemjob->getBlocksNum(); b++)
-				{
-					blocksdone++;
-				}
-			}
-			else
-			{
-				for( int b = 0; b < itemjob->getBlocksNum(); b++)
-				{
-					percent += itemjob->getBlockPercent( b);
-					blocksrun++;
-				}
-			}
-			if( itemjob->state & AFJOB::STATE_RUNNING_MASK) running ++;
-			if( itemjob->state & AFJOB::STATE_ERROR_MASK  ) error   ++;
+			done++;
 		}
+		else
+		{
+			for (int b = 0; b < itemjob->getBlocksNum(); b++)
+			{
+				percent += itemjob->getBlockPercent(b);
+				blocksrun++;
+			}
+		}
+		if (itemjob->state & AFJOB::STATE_RUNNING_MASK) running ++;
+		if (itemjob->state & AFJOB::STATE_ERROR_MASK  ) error   ++;
 	}
 
-	if( af::Environment::VISOR())
+	if (blocksrun)
 	{
-		m_parentWindow->setWindowTitle(QString("J[%1]: R%2/%3D/%4E")
-			.arg( numjobs).arg( running).arg( done).arg( error));
+		QString title = QString("Jobs:%1").arg(numjobs);
+		if (error)
+			title += QString(" ERROR:%1").arg(error);
+		title += QString(" Run:%1 %2%").arg(running).arg(percent / blocksrun);
+		if (done)
+			title += QString(" Done:%1").arg(done);
+		m_parentWindow->setWindowTitle(title);
 	}
 	else
-	{
-		if( blocksrun )
-			m_parentWindow->setWindowTitle(QString("J[%1]: R%2/%3D/%4E B%5-%6%")
-				.arg( numjobs).arg( running).arg( done).arg( error).arg( blocksrun).arg( percent / blocksrun));
-		else
-			m_parentWindow->setWindowTitle(QString("J[%1]: Done").arg( numjobs));
-	}
+		m_parentWindow->setWindowTitle(QString("Jobs: %1 Done").arg(numjobs));
 }
 
 void ListJobs::actMoveUp()     { moveJobs("move_jobs_up"    ); }
@@ -594,7 +718,8 @@ void ListJobs::moveJobs( const std::string & i_operation)
 	std::vector<int> uids;
 	uids.push_back( MonitorHost::getUid());
 	af::jsonActionOperationStart( str, "users", i_operation, "", uids);
-	std::vector<int> jids = getSelectedIds();
+	Item::EType type = Item::TJob;
+	std::vector<int> jids = getSelectedIds(type);
 	str << ",\n\"jids\":[";
 	for( int i = 0; i < jids.size(); i++)
 	{
@@ -607,18 +732,19 @@ void ListJobs::moveJobs( const std::string & i_operation)
 	displayInfo( afqt::stoq( i_operation));
 }
 
-void ListJobs::actStart()           { operation("start"            );}
-void ListJobs::actStop()            { operation("stop"             );}
-void ListJobs::actRestart()         { operation("restart"          );}
-void ListJobs::actRestartErrors()   { operation("restart_errors"   );}
-void ListJobs::actRestartWarnings() { operation("restart_warnings" );}
-void ListJobs::actRestartRunning()  { operation("restart_running"  );}
-void ListJobs::actRestartSkipped()  { operation("restart_skipped"  );}
-void ListJobs::actRestartDone()     { operation("restart_done"     );}
-void ListJobs::actResetErrorHosts() { operation("reset_error_hosts");}
-void ListJobs::actPause()           { operation("pause"            );}
-void ListJobs::actRestartPause()    { operation("restart_pause"    );}
-void ListJobs::actDelete()          { operation("delete"           );}
+void ListJobs::actStart()           { operation(Item::TJob, "start"            );}
+void ListJobs::actStop()            { operation(Item::TJob, "stop"             );}
+void ListJobs::actRestart()         { operation(Item::TJob, "restart"          );}
+void ListJobs::actRestartErrors()   { operation(Item::TJob, "restart_errors"   );}
+void ListJobs::actRestartWarnings() { operation(Item::TJob, "restart_warnings" );}
+void ListJobs::actRestartRunning()  { operation(Item::TJob, "restart_running"  );}
+void ListJobs::actRestartSkipped()  { operation(Item::TJob, "restart_skipped"  );}
+void ListJobs::actRestartDone()     { operation(Item::TJob, "restart_done"     );}
+void ListJobs::actResetErrorHosts() { operation(Item::TJob, "reset_error_hosts");}
+void ListJobs::actPause()           { operation(Item::TJob, "pause"            );}
+void ListJobs::actRestartPause()    { operation(Item::TJob, "restart_pause"    );}
+void ListJobs::actDelete()          { operation(Item::TAny, "delete"           );}
+void ListJobs::actResetTryingNextTasks(){operation(Item::TJob, "reset_trying_next_tasks");}
 
 void ListJobs::actDeleteDone()
 {
@@ -643,14 +769,14 @@ void ListJobs::actDeleteDone()
 	displayInfo("Delete all done jobs.");
 }
 
-void ListJobs::actRequestLog() { getItemInfo("log"); }
-void ListJobs::actRequestErrorHostsList() { getItemInfo("error_hosts"); }
+void ListJobs::actRequestLog() { getItemInfo(Item::TAny, "log"); }
+void ListJobs::actRequestErrorHostsList() { getItemInfo(Item::TAny, "error_hosts"); }
 
-void ListJobs::actSetHidden()   { setParameter("hidden", "true",  false); }
-void ListJobs::actUnsetHidden() { setParameter("hidden", "false", false); }
+void ListJobs::actSetHidden()   {setParameter(Item::TJob, "hidden", "true" );}
+void ListJobs::actUnsetHidden() {setParameter(Item::TJob, "hidden", "false");}
 
-void ListJobs::actPreviewApproval()   { setParameter("ppa", "true",  false); }
-void ListJobs::actNoPreviewApproval() { setParameter("ppa", "false", false); }
+void ListJobs::actPreviewApproval()   {setParameter(Item::TJob, "ppa", "true" );}
+void ListJobs::actNoPreviewApproval() {setParameter(Item::TJob, "ppa", "false");}
 
 void ListJobs::actSetUser()
 {
@@ -662,32 +788,7 @@ void ListJobs::actSetUser()
 	QString text = QInputDialog::getText(this, "Change Owner", "Enter New User Name", QLineEdit::Normal, current, &ok);
 	if( !ok) return;
 
-	setParameter("user_name", afqt::qtos( text));
-}
-
-void ListJobs::actWaitTime()
-{
-	static const QString format("yyyy.MM.dd HH:mm:ss");
-
-	ItemJob* jobitem = (ItemJob*)getCurrentItem();
-	if( jobitem == NULL ) return;
-
-	uint32_t waittime = jobitem->time_wait;
-	if( waittime < time( NULL)) waittime = time( NULL);
-	QString current = QDateTime::fromTime_t( waittime).toString( format);
-	bool ok;
-	QString waittime_str = QInputDialog::getText(this, "Set Wait Time", format, QLineEdit::Normal, current, &ok);
-	if( !ok) return;
-
-	waittime = QDateTime::fromString( waittime_str, format).toTime_t();
-//printf("waittime_str=\"%s\", waittime=%d\n", waittime_str.toUtf8().data(), waittime);
-	if( waittime == unsigned(-1) )
-	{
-		displayError( "Time format : " + format);
-		return;
-	}
-
-	setParameter("time_wait", waittime);
+	setParameter(Item::TJob, "user_name", afqt::qtos(QString("\"%1\"").arg(text)));
 }
 
 void ListJobs::actChangeBranch()
@@ -698,111 +799,7 @@ void ListJobs::actChangeBranch()
 	bool ok;
 	QString branch = QInputDialog::getText(this, "Change Branch", "Branch", QLineEdit::Normal, current, &ok);
 	if( !ok) return;
-	setParameter("branch", afqt::qtos( branch));
-}
-
-void ListJobs::actMaxRunningTasks()
-{
-	ItemJob* jobitem = (ItemJob*)getCurrentItem();
-	if( jobitem == NULL ) return;
-	int current = jobitem->maxrunningtasks;
-
-	bool ok;
-	int max = QInputDialog::getInt(this, "Change Maximum Running Tasks", "Enter Number", current, -1, 999999, 1, &ok);
-	if( !ok) return;
-
-	setParameter("max_running_tasks", max);
-}
-
-void ListJobs::actMaxRunTasksPerHost()
-{
-	ItemJob* jobitem = (ItemJob*)getCurrentItem();
-	if( jobitem == NULL ) return;
-	int current = jobitem->maxruntasksperhost;
-
-	bool ok;
-	int max = QInputDialog::getInt(this, "Change Maximum Running Tasks Per Host", "Enter Number", current, -1, 999999, 1, &ok);
-	if( !ok) return;
-
-	setParameter("max_running_tasks_per_host", max);
-}
-
-void ListJobs::actHostsMask()
-{
-	ItemJob* jobitem = (ItemJob*)getCurrentItem();
-	if( jobitem == NULL ) return;
-	QString current = jobitem->hostsmask;
-
-	bool ok;
-	QString mask = QInputDialog::getText(this, "Change Hosts Mask", "Enter New Mask", QLineEdit::Normal, current, &ok);
-	if( !ok) return;
-
-	setParameterRE("hosts_mask", afqt::qtos( mask));
-}
-
-void ListJobs::actHostsMaskExclude()
-{
-	ItemJob* jobitem = (ItemJob*)getCurrentItem();
-	if( jobitem == NULL ) return;
-	QString current = jobitem->hostsmask_exclude;
-
-	bool ok;
-	QString mask = QInputDialog::getText(this, "Change Exclude Mask", "Enter New Mask", QLineEdit::Normal, current, &ok);
-	if( !ok) return;
-
-	setParameterRE("hosts_mask_exclude", afqt::qtos( mask));
-}
-
-void ListJobs::actDependMask()
-{
-	ItemJob* jobitem = (ItemJob*)getCurrentItem();
-	if( jobitem == NULL ) return;
-	QString current = jobitem->dependmask;
-
-	bool ok;
-	QString mask = QInputDialog::getText(this, "Change Depend Mask", "Enter New Mask", QLineEdit::Normal, current, &ok);
-	if( !ok) return;
-
-	setParameterRE("depend_mask", afqt::qtos( mask));
-}
-
-void ListJobs::actDependMaskGlobal()
-{
-	ItemJob* jobitem = (ItemJob*)getCurrentItem();
-	if( jobitem == NULL ) return;
-	QString current = jobitem->dependmask_global;
-
-	bool ok;
-	QString mask = QInputDialog::getText(this, "Change Depend Mask", "Enter New Mask", QLineEdit::Normal, current, &ok);
-	if( !ok) return;
-
-	setParameterRE("depend_mask_global", afqt::qtos( mask));
-}
-
-void ListJobs::actNeedOS()
-{
-	ItemJob* jobitem = (ItemJob*)getCurrentItem();
-	if( jobitem == NULL ) return;
-	QString current = jobitem->need_os;
-
-	bool ok;
-	QString mask = QInputDialog::getText(this, "Change OS Needed", "Enter New Mask", QLineEdit::Normal, current, &ok);
-	if( !ok) return;
-
-	setParameterRE("need_os", afqt::qtos( mask));
-}
-
-void ListJobs::actNeedProperties()
-{
-	ItemJob* jobitem = (ItemJob*)getCurrentItem();
-	if( jobitem == NULL ) return;
-	QString current = jobitem->need_properties;
-
-	bool ok;
-	QString mask = QInputDialog::getText(this, "Change Properties Needed", "Enter New Mask", QLineEdit::Normal, current, &ok);
-	if( !ok) return;
-
-	setParameterRE("need_properties", afqt::qtos( mask));
+	setParameter(Item::TJob, "branch", afqt::qtos(QString("\"%1\"").arg(branch)));
 }
 
 void ListJobs::actPostCommand()
@@ -815,27 +812,16 @@ void ListJobs::actPostCommand()
 	QString cmd = QInputDialog::getText(this, "Change Post Command", "Enter Command", QLineEdit::Normal, current, &ok);
 	if( !ok) return;
 
-	setParameter("command_post", afqt::qtos( cmd));
+	setParameter(Item::TJob, "command_post", afqt::qtos( cmd));
 }
 
-void ListJobs::actLifeTime()
+void ListJobs::v_doubleClicked(Item * i_item)
 {
-	ItemJob* jobitem = (ItemJob*)getCurrentItem();
-	if( jobitem == NULL ) return;
-	double cur = double( jobitem->lifetime ) / (60.0*60.0);
+	if (i_item == NULL)
+		return;
 
-	bool ok;
-	double hours = QInputDialog::getDouble( this, "Life Time", "Enter number of hours (0=infinite)", cur, -1, 365*24, 3, &ok);
-	if( !ok) return;
-
-	int seconds = hours * 60.0 * 60.0;
-	if( seconds < -1 ) seconds = -1;
-	setParameter("time_life", seconds);
-}
-
-void ListJobs::doubleClicked( Item * item)
-{
-	if( item ) Watch::watchJodTasksWindowAdd( item->getId(), item->getName());
+	if (i_item->getType() == Item::TJob)
+		Watch::watchJobTasksWindowAdd(i_item->getId(), i_item->getName());
 }
 
 void ListJobs::actListenJob()
@@ -867,20 +853,44 @@ void ListJobs::actOpenRULES()
 	Watch::startProcess( cmd);
 }
 
-void ListJobs::blockAction( int id_block, QString i_action)
+void ListJobs::slot_CollapseJobs() {collapseJobs(true );}
+void ListJobs::slot_ExpandJobs()   {collapseJobs(false);}
+void ListJobs::collapseJobs(bool i_collapse)
+{
+	afqt::QEnvironment::clearCollapsedJobSerials();
+
+	for( int i = 0; i < m_model->count(); i++)
+	{
+		Item * item = m_model->item(i);
+		if (item->getType() != Item::TJob)
+			continue;
+
+		ItemJob * item_job = static_cast<ItemJob*>(item);
+		item_job->setItemCollapsed(i_collapse);
+		m_view->emitSizeHintChanged(m_model->index(i));
+	}
+}
+
+void ListJobs::slot_BlockAction(int i_bnum, QString i_json)
 {
 	ItemJob* jobitem = (ItemJob*)getCurrentItem();
-	if( jobitem == NULL ) return;
+	if (jobitem == NULL) return;
 
 	std::ostringstream str;
-	af::jsonActionStart( str, "jobs", "", getSelectedIds());
-	str << ",\n\"block_ids\":[" << id_block << ']';
+	Item::EType type = Item::TJob;
+	std::vector<int> ids(getSelectedIds(type));
+	af::jsonActionStart(str, "jobs", "", ids);
 
-	if( jobitem->blockAction( str, id_block, i_action, this))
-	{
-		af::jsonActionFinish( str);
-		Watch::sendMsg( af::jsonMsg( str));
-	}
+	if (m_all_blocks_menu_shown)
+		str << ",\n\"block_ids\":[-1]";
+	else
+		str << ",\n\"block_ids\":[" << i_bnum << "]";
+
+	str << ",\n" << afqt::qtos(i_json);
+
+	af::jsonActionFinish(str);
+
+	Watch::sendMsg(af::jsonMsg(str));
 }
 
 bool ListJobs::v_filesReceived( const af::MCTaskUp & i_taskup )

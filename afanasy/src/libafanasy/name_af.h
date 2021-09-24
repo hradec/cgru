@@ -65,8 +65,6 @@ namespace af
 	class Address;
 	class AddressesList;
 	class Passwd;
-	class Farm;
-	class Host;
 	class HostRes;
 	class Parser;
 	class PyClass;
@@ -87,6 +85,8 @@ namespace af
 	class MCTaskUp;
 	class MCJobsWeight;
 
+	class Farm;
+	class Work;
 	class Node;
 
 	class Client;
@@ -109,13 +109,6 @@ namespace af
 	{
 		VerboseOff,
 		VerboseOn
-	};
-
-	enum InitFlags
-	{
-		NoFlags      = 0,
-		InitVerbose  = 1,
-		InitFarm     = 1 << 1,
 	};
 
 	enum Direction
@@ -143,7 +136,8 @@ namespace af
 	const std::string getenv( const std::string & i_name);
 	const std::string getenv( const char * i_name);
 	const std::string state2str( int state);
-	const std::string toKMG(long long i_number);
+	const std::string toKMG(long long i_number, int i_base = 1000, const std::string & i_separator = "");
+	const std::string toLower(const std::string & i_str);
 	const std::string strStrip( const std::string & i_str, const std::string & i_characters = " \n");
 	const std::string strStripLeft( const std::string & i_str, const std::string & i_characters = " \n");
 	const std::string strStripRight( const std::string & i_str, const std::string & i_characters = " \n");
@@ -186,17 +180,11 @@ namespace af
 	int weigh( const std::map<std::string, std::string> & i_map);
 
 
-	bool  init( uint32_t flags );
-	void  destroy();
-
-	bool  loadFarm( VerboseMode i_verbose = VerboseOff);
-	bool  loadFarm( const std::string & filename, VerboseMode i_verbose = VerboseOff);
-	Farm * farm();
-
-
 //
 // Paths / Files related functions name_affile.cpp:
 //
+	const std::string pathBase(const std::string & i_path);
+
 	const std::string pathFilterFileName( const std::string & i_filename);
 
 	void pathFilter( std::string & path);
@@ -280,10 +268,38 @@ namespace af
 	/// Send a message to all its addresses and receive an answer if needed
 	Msg * sendToServer( Msg * i_msg, bool & o_ok, VerboseMode i_verbose);
 
+	// Read/Write binary data
+	void rw_bool     ( bool     & boolean,  Msg * msg);
+	void rw_int8_t   ( int8_t   & integer,  Msg * msg);
+	void rw_uint8_t  ( uint8_t  & integer,  Msg * msg);
+	void rw_int16_t  ( int16_t  & integer,  Msg * msg);
+	void rw_uint16_t ( uint16_t & integer,  Msg * msg);
+	void rw_int32_t  ( int32_t  & integer,  Msg * msg);
+	void rw_uint32_t ( uint32_t & integer,  Msg * msg);
+	void rw_int64_t  ( int64_t  & integer,  Msg * msg);
+
+	void rw_Int32_List( std::list   < int32_t > &list, Msg * msg);
+	void rw_Int32_Vect( std::vector < int32_t > &vect, Msg * msg);
+
+	void rw_String(       std::string & string, Msg * msg);
+	void  w_String( const std::string & string, Msg * msg);
+
+	void rw_StringList(       std::list<std::string> & stringList, Msg * msg);
+	void  w_StringList( const std::list<std::string> & stringList, Msg * msg);
+	void rw_StringVect(     std::vector<std::string> & stringVect, Msg * msg);
+	void rw_StringMap( std::map< std::string, std::string > & stringMap, Msg * msg);
+	void rw_IntMap(std::map<std::string, int32_t> & io_map, Msg * io_msg);
+
+	void rw_RegExp( RegExp & regExp, Msg * msg);
+
+	void rw_data(       char * data, Msg * msg, int size);
+	void  w_data( const char * data, Msg * msg, int size);
+
 
 	// Python:
 	bool PyGetString( PyObject * i_obj, std::string & o_str, const char * i_err_info = NULL);
 	bool PyGetStringList( PyObject * i_obj, std::vector<std::string> & o_list, const char * i_err_info = NULL);
+	bool PyGetDict(PyObject * i_obj, std::map<std::string, std::string> & o_dict, const char * i_err_info = NULL);
 
 	bool PyGetAttrBool( PyObject * i_obj, const char * i_name, bool        & o_bool, const std::string & i_err_info);
 	bool PyGetAttrInt(  PyObject * i_obj, const char * i_name, int         & o_int,  const std::string & i_err_info);
@@ -315,7 +331,9 @@ namespace af
 	void jw_stringmap( const char * i_name, const std::map<std::string,std::string> & i_map, std::ostringstream & o_str);
 	void jw_int32list( const char * i_name, const std::list<int32_t> & i_list, std::ostringstream & o_str);
 	void jw_int32vec( const char * i_name, const std::vector<int32_t> & i_vec, std::ostringstream & o_str);
-	void jw_state( const int64_t & i_state, std::ostringstream & o_str, bool i_render = false);
+	void jw_stateJob(   const int64_t & i_state, std::ostringstream & o_str);
+	void jw_statePool(  const int64_t & i_state, std::ostringstream & o_str);
+	void jw_stateRender(const int64_t & i_state, std::ostringstream & o_str);
 
 	af::Msg * jsonMsg( const std::string & i_str);
 	af::Msg * jsonMsg( const std::ostringstream & i_stream);
@@ -324,6 +342,7 @@ namespace af
 	af::Msg * jsonMsg( const std::string & i_type, const std::string & i_name, char * i_data, int i_size);
 	af::Msg * jsonMsgInfo( const std::string & i_kind, const std::string & i_info);
 	af::Msg * jsonMsgError( const std::string & i_str);
+	af::Msg * jsonMsgObject(const std::string & i_str);
 	af::Msg * jsonMsgStatus( bool i_error, const std::string & i_type, const std::string & i_msg);
 
 	void jsonActionStart(  std::ostringstream & i_str, const std::string & i_type,

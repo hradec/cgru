@@ -7,7 +7,7 @@
 Plotter::Plotter( int NumGraphs, int Scale, int NumLinesWidth):
 	height(0),
 	label("%1"),
-	label_value( 1),
+	label_value(0),
 	autoscale( false),
 	autoscale_lines( 32),
 	autoscale_maxscale( 1<<30),
@@ -176,21 +176,32 @@ void Plotter::addValue( int grp, int val, bool store)
 			loop ++;
 		}
 
-		// Append label text by autoscale value:
-		if( label.contains("%1"))
-		{
-			float scale_val = float(scale) / (label_value != 0 ? label_value : 1);
-			QString scale_str = QString("%1").arg( scale_val);
-			if( scale_str.indexOf('0') == 0) scale_str = scale_str.remove( 0, 1);
-			label_text = label.arg( scale_str);
-		}
-
 		// Calculate blue backgroud color:
 		int value = scale;
 		bgc_b = 128;
 		while( value < autoscale_maxbgc ) { value *= 10; bgc_b = bgc_b >> 1;}
 		if( bgc_b <	0 ) bgc_b = 0;
 		if( bgc_b > 255 ) bgc_b = 255;
+	}
+
+	// Append value to label
+	if (label_value)
+	{
+		float scale_val = float(scale) / float(label_value);
+
+		int precision = 3;
+		if (scale_val > 10)
+			precision = 0;
+		else if (scale_val > 2)
+			precision = 1;
+		else if (scale_val > 1)
+			precision = 2;
+
+		QString scale_str = QString("%1").arg(scale_val, 0, 'f', precision);
+		if (scale_str.indexOf('0') == 0)
+			scale_str = scale_str.remove(0, 1);
+
+		label_text = label.arg( scale_str);
 	}
 }
 
@@ -243,7 +254,6 @@ void Plotter::paint( QPainter * painter, int x, int y, int w, int h) const
 		painter->setPen(  afqt::QEnvironment::clr_itemrenderpltclr.c);
 	painter->setFont( label_font);
 
-//	if( autoscale == false ) label_text = label;//.contains("%1") ? label.arg( label_value) : label;
 	painter->drawText( x+1, y+1, w, h, Qt::AlignLeft | Qt::AlignTop, label_text.isEmpty() ? label : label_text);
 
 	x -= 1; y -= 1; w += 2; h +=2;

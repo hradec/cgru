@@ -19,15 +19,15 @@ case ${DISTRIBUTIVE} in
 	Fedora )
 		export DEPENDS_AFANASY="libpqxx"
 		export DEPENDS_QTGUI="qt5-qtmultimedia"
-		export DEPENDS_CGRU="python3-PyQt4 OpenEXR ImageMagick"
+		export DEPENDS_CGRU="python3-pyside2 OpenEXR ImageMagick"
 		;;
 	openSUSE )
 		export DEPENDS_AFANASY="libpq5"
 		export DEPENDS_CGRU="python3-qt5 openexr ImageMagick"
 		;;
 	CentOS )
-		export DEPENDS_AFANASY="postgresql-libs"
-		export DEPENDS_CGRU="PyQt4 OpenEXR ImageMagick"
+		export DEPENDS_AFANASY="libpq"
+		export DEPENDS_CGRU="OpenEXR-libs"
 		;;
 	AltLinux )
 		export DEPENDS_AFANASY="libpqxx"

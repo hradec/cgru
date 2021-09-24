@@ -1,9 +1,9 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 import collections
 import errno
 import json
+import getpass
 import os
 import socket
 import stat
@@ -15,37 +15,37 @@ import cgruutils
 VARS = dict()
 
 
-def checkConfigFile(path):
+def checkConfigFile(i_path, i_verbose):
     status = True
-    if not os.path.isfile(path):
+    if not os.path.isfile(i_path):
         try:
-            cfile = open(path, 'w')
+            cfile = open(i_path, 'w')
         except Exception as err:
             if err.errno == errno.EPERM or err.errno == errno.EACCES:
-                print('Warning! Permission error while opening %s' % path)
+                if i_verbose: print('Warning! Permission error while opening %s' % i_path)
             elif err.errno is errno.EROFS:
-                print('Warning! Could not edit %s, read-only file system' % path)
+                if i_verbose: print('Warning! Could not edit %s, read-only file system' % i_path)
             else:
-                print('Warning! Unexpected error while opening %s.' % path)
-                print('Error: %s' % err)
+                if i_verbose: print('Warning! Unexpected error while opening %s.' % i_path)
+                if i_verbose: print('Error: %s' % err)
             status = False
         else:
             cfile.write('{"cgru_config":{\n')
             cfile.write(
-                '"":"Created by CGRU Keeper at %s",\n' % time.ctime())
+                '"":"Created by CGRU Config at %s",\n' % time.ctime())
             cfile.write('"":""\n')
             cfile.write('}}\n')
             cfile.close()
 
     if status:
         try:
-            os.chmod(path, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+            os.chmod(i_path, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
         except Exception as err:
             if err.errno == errno.EPERM or err.errno == errno.EACCES:
-                print('Warning! Could not modify permissions for %s, permission denied.' % path)
+                if i_verbose: print('Warning! Could not modify permissions for %s, permission denied.' % i_path)
             else:
-                print('Warning! Unexpected error while modifying the permissions for %s.' % path)
-                print('Error: %s' % err)
+                if i_verbose: print('Warning! Unexpected error while modifying the permissions for %s.' % i_path)
+                if i_verbose: print('Error: %s' % err)
     return status
 
 
@@ -61,6 +61,7 @@ class Config:
         if configfiles is None:
             self.recursion = True
             self.Vars['filenames'] = []
+            configfiles = []
 
             self.Vars['platform'] = ['unix']
             if sys.platform[:3] == 'win':
@@ -80,6 +81,8 @@ class Config:
                     raise KeyError('CGRU_LOCATION')
             except KeyError as e:
                 raise KeyError('Environment variable CGRU_LOCATION not set.')
+
+            configfiles.append(os.path.join(cgrulocation, 'config_default.json'))
 
             # Definitions which always must preset:
             self.Vars['CGRU_LOCATION'] = cgrulocation
@@ -109,7 +112,7 @@ class Config:
                     os.getenv(
                         'USER',
                         os.getenv(
-                            'USERNAME'
+                            'USERNAME', getpass.getuser()
                         )
                     )
                 )
@@ -131,7 +134,7 @@ class Config:
 
             home = os.getenv('APPDATA', os.getenv('HOME'))
             if home is None:
-                home = username
+                home = os.path.join(cgrulocation, 'home', username)
 
             self.Vars['HOME'] = home
 
@@ -143,20 +146,21 @@ class Config:
             self.Vars['config_file_home'] = \
                 os.path.join(self.Vars['HOME_CGRU'], 'config.json')
 
+            customconfig = os.environ.get('CGRU_CUSTOM_CONFIG', None)
+            if customconfig is not None and os.path.isfile(customconfig):
+                configfiles.append(customconfig)
+
             if sys.platform.find('win') == 0 or os.geteuid() != 0:
                 if not os.path.exists( self.Vars['HOME_CGRU']):
                     try:
                         os.makedirs(self.Vars['HOME_CGRU'])
                     except:
                         pass
-                # Create cgru home config file if not preset
-                checkConfigFile(self.Vars['config_file_home'])
 
-            configfiles = []
-            configfiles.append(
-                os.path.join(cgrulocation, 'config_default.json')
-            )
-            configfiles.append(self.Vars['config_file_home'])
+                if os.path.exists(self.Vars['HOME_CGRU']):
+                    # Create cgru home config file if not preset
+                    if checkConfigFile(self.Vars['config_file_home'], Verbose):
+                        configfiles.append(self.Vars['config_file_home'])
 
         for filename in configfiles:
             self.load(filename)
@@ -250,6 +254,11 @@ if len(VARS) == 0:
 def reconfigure():
     VARS = dict()
     Config()
+
+def getVar(i_var):
+    if not i_var in VARS:
+        return None
+    return VARS[i_var]
 
 def writeVars(variables, configfile=VARS['config_file_home']):
     with open(configfile, 'r') as file_:

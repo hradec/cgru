@@ -12,7 +12,7 @@ public:
 	ParserHost( af::Service * i_service);
 	~ParserHost();
 
-	void read( const std::string & i_mode, std::string & output, int pid);
+	void read(const std::string & i_mode, int i_pid, std::string & io_output, const std::string & i_resources);
 
 	inline int getPercent()           const { return m_percent;         }
 	inline int getFrame()             const { return m_frame;           }
@@ -22,6 +22,7 @@ public:
 	inline int isBadResult()          const { return m_badresult;       }
 	inline int isFinishedSuccess()    const { return m_finishedsuccess; }
 	inline std::string getActivity()  const { return m_activity;        }
+	inline std::string getResources() const { return m_resources;       }
 	inline std::string getReport()    const { return m_report;          }
 	inline char* getData( int *size ) const { *size = m_datasize; return m_data;}
 
@@ -36,6 +37,7 @@ private:
 	bool m_badresult;
 	bool m_finishedsuccess;
 	std::string m_activity;
+	std::string m_resources;
 	std::string m_report;
 
 	char*              m_data;
@@ -48,5 +50,5 @@ private:
 	int                m_overload_string_length;
 
 private:
-	void parse( const std::string & i_mode, std::string & output, int pid);
+	void parse(const std::string & i_mode, int i_pid, std::string & io_output, const std::string & i_resources);
 };

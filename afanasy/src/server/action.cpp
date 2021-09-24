@@ -20,35 +20,39 @@
 
 #include "afcommon.h"
 
-Action::Action(const af::Msg *i_msg, ThreadArgs *i_args)
-	: without_answer(false),
-	  branches(i_args->branches),
-	  jobs(i_args->jobs),
-	  monitors(i_args->monitors),
-	  renders(i_args->renders),
-	  users(i_args->users),
-	  m_buffer(NULL),
-	  m_valid(false)
+const std::string Action::ms_answer_type_str[] = {"object","log","error","info"};
+
+Action::Action(const af::Msg *i_msg, ThreadArgs *i_args):
+	without_answer(false),
+	m_answer_type(ATLog),
+	branches(i_args->branches),
+	jobs(i_args->jobs),
+	monitors(i_args->monitors),
+	pools(i_args->pools),
+	renders(i_args->renders),
+	users(i_args->users),
+	m_buffer(NULL),
+	m_valid(false)
 {
 	std::string error;
 	m_buffer = af::jsonParseMsg(m_document, i_msg, &error);
 	if (m_buffer == NULL)
 	{
-		AFCommon::QueueLogError(error);
+		AFCommon::QueueLogError(error + ": " + i_msg->v_generateInfoString());
 		return;
 	}
 
 	data = &m_document["action"];
 	if (false == data->IsObject())
 	{
-		AFCommon::QueueLogError("JSON action is not an object.");
+		AFCommon::QueueLogError("JSON action is not an object: " + i_msg->v_generateInfoString());
 		return;
 	}
 
 	af::jr_string("type", type, *data);
 	if (type.empty())
 	{
-		AFCommon::QueueLogError("JSON action type is not set.");
+		AFCommon::QueueLogError("JSON action type is not set: " + i_msg->v_generateInfoString());
 		return;
 	}
 
@@ -58,7 +62,7 @@ Action::Action(const af::Msg *i_msg, ThreadArgs *i_args)
 		af::jr_string("mask", mask, *data);
 		if (mask.empty())
 		{
-			AFCommon::QueueLogError("JSON action should have nodes ids or mask to operate with.");
+			AFCommon::QueueLogError("JSON action should have nodes ids or mask to operate with: " + i_msg->v_generateInfoString());
 			return;
 		}
 	}
@@ -67,12 +71,12 @@ Action::Action(const af::Msg *i_msg, ThreadArgs *i_args)
 	af::jr_string("host_name", host_name, *data);
 	if (user_name.empty())
 	{
-		AFCommon::QueueLogError("Action should have a not empty \"user_name\" string.");
+		AFCommon::QueueLogError("Action should have a not empty \"user_name\" string: " + i_msg->v_generateInfoString());
 		return;
 	}
 	if (host_name.empty())
 	{
-		AFCommon::QueueLogError("Action should have a not empty \"host_name\" string.");
+		AFCommon::QueueLogError("Action should have a not empty \"host_name\" string: " + i_msg->v_generateInfoString());
 		return;
 	}
 	author = user_name + '@' + host_name;

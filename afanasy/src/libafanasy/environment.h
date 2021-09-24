@@ -94,15 +94,19 @@ public:
 
 	static inline const std::string & getHome()        { return home;          }
 	static inline const std::string & getHomeAfanasy() { return home_afanasy;  }
+	static inline const std::string & getIconsPath()   { return icons_path;    }
 	static inline const std::string & getCGRULocation(){ return cgrulocation;  } ///< Get CGRU root directory.
 	static inline const std::string & getAfRoot()      { return afroot;        } ///< Get Afanasy root directory.
-	static inline const std::string & getHTTPServeDir(){ return http_serve_dir;}
 	static inline const std::string & getServerName()  { return servername;    } ///< Get Afanasy server name.
 	static inline const int isIPv6Disabled()           { return ipv6_disable;  }
 	static inline const std::string & getUserName()    { return username;      } ///< Get current user name.
 	static inline const std::string & getHostName()    { return hostname;      } ///< Get Render host name.
 	static inline const std::string & getComputerName(){ return computername;  } ///< Get local computer name.
 	static inline const std::vector<std::string> & getPlatform() { return platform;} ///< Get platform name.
+
+	static inline const std::string & getHTTPServeDir()     {return http_serve_dir;      }
+	static inline const std::string & getHTTPSiteIndex()    {return http_site_index;     }
+	static inline const std::string & getHTTPDirecoryIndex(){return http_directory_index;}
 
 	static inline const Address & getServerAddress() { return serveraddress; }
 
@@ -112,13 +116,16 @@ public:
 	static inline const std::vector<std::string> & getAnnotations()     { return annotations;} ///< Get predefined annotations
 	static inline const std::vector<std::string> & getRenderCmds()      { return rendercmds; } ///< Get render commands
 	static inline const std::vector<std::string> & getRenderCmdsAdmin() { return rendercmds_admin; } ///< Get render commands for admin
+	static inline const std::vector<std::string> & getRenderLaunchCmds()     { return render_launch_cmds; }
+	static inline const std::vector<std::string> & getRenderLaunchCmdsExit() { return render_launch_cmds_exit; }
 
 	static inline int getMonitorZombieTime()             { return monitor_zombietime;           }
 
-	static inline int getWatchGetEventsSec()           { return watch_get_events_sec;      }
-	static inline int getWatchRefreshGuiSec()          { return watch_refresh_gui_sec;     }
-	static inline int getWatchConnectionLostTime()     { return watch_connection_lost_time;}
-	static inline int getWatchRenderIdleBarMax()       { return watch_render_idle_bar_max; }
+	static inline int  getWatchGetEventsSec()       { return watch_get_events_sec;      }
+	static inline int  getWatchRefreshGuiSec()      { return watch_refresh_gui_sec;     }
+	static inline int  getWatchConnectionLostTime() { return watch_connection_lost_time;}
+	static inline int  getWatchRenderIdleBarMax()   { return watch_render_idle_bar_max; }
+	static inline bool getWatchWorkUserVisible()    { return watch_work_user_visible;   }
 
 	static inline const char * getTimeFormat()         { return timeformat.c_str();       } ///< Get default time format.
 
@@ -132,10 +139,9 @@ public:
 	static inline int getMaxRunningTasksPerHost() { return max_run_tasks_per_host; } ///< Get default maximium running tasks per host.
 
 	static inline int getTaskDefaultCapacity()           { return task_default_capacity;        }
-	static inline int getTaskUpdateTimeout()             { return task_update_timeout;          }
-	static inline int getTaskStopTimeout()               { return task_stop_timeout;            }
 	static inline int getTaskLogLinesMax()               { return task_log_linesmax;            }
 	static inline int getTaskProgressChangeTimeout()     { return task_progress_change_timeout; }
+	static inline int getTaskReconnectTimeout()          { return task_reconnect_timeout;       }
 
 	static inline int getErrorsForgiveTime()             { return errors_forgivetime;           }
 	static inline int getErrorsAvoidHost()               { return errors_avoid_host;            }
@@ -150,16 +156,9 @@ public:
 
 	static inline int getWOLWakeInterval() { return wolwake_interval; }
 
-	static inline int getRenderDefaultCapacity()       { return render_default_capacity;     }
-	static inline int getRenderDefaultMaxTasks()       { return render_default_maxtasks;     }
 	static inline std::string & getCmdShell()          { return cmd_shell;}
  
-	static inline int getRenderHeartbeatSec()       { return render_heartbeat_sec;        }
-	static inline int getRenderUpResourcesPeriod()  { return render_up_resources_period;  }
 	static inline int getRenderNice()               { return render_nice;                 }
-	static inline int getRenderZombieTime()         { return render_zombietime;           }
-	static inline int getRenderExitNoTaskTime()     { return render_exit_no_task_time;    }
-	static inline int getRenderConnectionLostTime() { return render_connection_lost_time; }
 
 	static inline bool hasRULES() { return rules_url.size(); }
 	static inline std::vector<std::string> & getRenderWindowsMustDie() { return render_windowsmustdie; }
@@ -174,6 +173,10 @@ public:
 	static inline const std::string & getRenderIOStatDevice()  { return render_iostat_device;   }
 	static inline const std::vector<std::string> & getRenderResClasses() { return render_resclasses;}
 
+	static inline int getRenderOverflowMem()  {return render_overflow_mem; }
+	static inline int getRenderOverflowSwap() {return render_overflow_swap;}
+	static inline int getRenderOverflowHDD()  {return render_overflow_hdd; }
+
 	static inline int getAfNodeLogLinesMax() { return afnode_log_lines_max; }
 
 	static inline const std::string & getStoreFolder()        { return store_folder;         }
@@ -181,6 +184,7 @@ public:
 	static inline const std::string & getStoreFolderJobs()    { return store_folder_jobs;    }
 	static inline const std::string & getStoreFolderRenders() { return store_folder_renders; }
 	static inline const std::string & getStoreFolderUsers()   { return store_folder_users;   }
+	static inline const std::string & getStoreFolderPools()   { return store_folder_pools;   }
 
 	static inline const std::string & get_DB_ConnInfo()        { return db_conninfo;     } ///< Get database connection information.
 	static inline const std::string & get_DB_StringQuotes()    { return db_stringquotes; } ///< Get database string quotes.
@@ -247,10 +251,15 @@ private:
 
 	static std::string executable_path;
 	static std::string cgrulocation;    ///< CGRU root directory.
+	static std::string customconfig;    ///< Path to custom config.
 	static std::string afroot;          ///< Afanasy root directory.
 	static std::string home;            ///< User home directory.
 	static std::string home_afanasy;    ///< Afanasy home settings.
-	static std::string http_serve_dir;  ///< Afanasy HTTP server serve directory.
+	static std::string icons_path;      ///< Base path to custom icons.
+
+	static std::string http_serve_dir;       ///< Afanasy HTTP server serve directory.
+	static std::string http_site_index;      ///< Afanasy HTTP server response on an empty GET request.
+	static std::string http_directory_index; ///< Afanasy HTTP server response on a directory GET request.
 
 	static std::string version_revision;///< Sources version, will be compiled in binaries
 	static std::string version_cgru;    ///< CGRU version, will be get from environment on applications startup
@@ -299,29 +308,25 @@ private:
 	static std::vector<std::string> annotations;      ///< Predefined annotations
 	static std::vector<std::string> rendercmds;       ///< Render commannds
 	static std::vector<std::string> rendercmds_admin; ///< Render commannds for admin only
-	static int watch_get_events_sec;
-	static int watch_refresh_gui_sec;
-	static int watch_connection_lost_time;
-	static int watch_render_idle_bar_max;
+	static std::vector<std::string> render_launch_cmds;
+	static std::vector<std::string> render_launch_cmds_exit;
+
+	static int  watch_get_events_sec;
+	static int  watch_refresh_gui_sec;
+	static int  watch_connection_lost_time;
+	static int  watch_render_idle_bar_max;
+	static bool watch_work_user_visible;
 
 	static int monitor_zombietime;
 
 	static std::string timeformat;    ///< Default time format.
 
-	static int task_update_timeout;
-	static int task_stop_timeout;
 	static int task_default_capacity;
 	static int task_log_linesmax;
 	static int task_progress_change_timeout; ///< If task progress did not change within this time, consider that it is erroneous
+	static int task_reconnect_timeout;
 
-	static int render_heartbeat_sec;
-	static int render_up_resources_period;
-	static int render_default_capacity;
-	static int render_default_maxtasks;
 	static int render_nice;       ///< Render task process nice factor.
-	static int render_zombietime;
-	static int render_exit_no_task_time;
-	static int render_connection_lost_time;
 	static std::vector<std::string> render_windowsmustdie;
 
 	static std::string cmd_shell;
@@ -333,6 +338,10 @@ private:
 	static std::string render_iostat_device;
 	static std::vector<std::string> render_resclasses;
 	static std::string render_networkif;
+
+	static int render_overflow_mem;
+	static int render_overflow_swap;
+	static int render_overflow_hdd;
 
 	static int errors_avoid_host;
 	static int task_error_retries;
@@ -353,6 +362,7 @@ private:
 	static std::string store_folder_jobs;
 	static std::string store_folder_renders;
 	static std::string store_folder_users;
+	static std::string store_folder_pools;
 
 	static std::string db_conninfo;       ///< Database connection info
 	static std::string db_stringquotes;   ///< Database string quotes

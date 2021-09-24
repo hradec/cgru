@@ -90,6 +90,7 @@ void MonitorAf::v_action( Action & i_action)
 		if( optype == "exit")
 		{
 			m_e.m_instruction = "exit";
+			i_action.answerLog("Instruction 'exit' set.");
 			return;
 		}
 		else if( optype == "deregister")
@@ -103,16 +104,24 @@ void MonitorAf::v_action( Action & i_action)
 			std::string opclass, opstatus;
 			af::jr_string("class", opclass, operation);
 			af::jr_string("status", opstatus, operation);
-			bool subscribe = false;
 			std::vector<int32_t> eids;
 			std::vector<int32_t> uids;
-			if( opstatus == "subscribe")
+
+			bool subscribe = false;
+			std::string answer = "Unsubscribed from ";
+			if (opstatus == "subscribe")
+			{
 				subscribe = true;
+				answer = "Subscribed on ";
+			}
+			answer += "'" + opclass + "'";
+			i_action.answerLog(answer);
 
 			if( opclass == "perm")
 			{
 				int32_t new_uid = -1;
 				af::jr_int32("uid", new_uid, operation);
+				i_action.answerLog("Permissions set.");
 				if( new_uid >= 0 )
 					m_uid = new_uid;
 			}
@@ -136,6 +145,12 @@ void MonitorAf::v_action( Action & i_action)
 				eids.push_back( af::Monitor::EVT_renders_add);
 				eids.push_back( af::Monitor::EVT_renders_change);
 				eids.push_back( af::Monitor::EVT_renders_del);
+			}
+			else if( opclass == "pools")
+			{
+				eids.push_back( af::Monitor::EVT_pools_add);
+				eids.push_back( af::Monitor::EVT_pools_change);
+				eids.push_back( af::Monitor::EVT_pools_del);
 			}
 			else if( opclass == "users")
 			{
@@ -173,7 +188,8 @@ void MonitorAf::v_action( Action & i_action)
 			}
 			else
 			{
-				appendLog("Unknown operation \"" + optype + "\" class \"" + opclass + "\" status \"" + opstatus + "\" by " + i_action.author);
+				appendLog("Unknown operation '" + optype + "' class '" + opclass + "' status '" + opstatus + "' by " + i_action.author);
+				i_action.answerError("Unknown operation '" + optype + "' class '" + opclass + "'.");
 				return;
 			}
 			if( eids.size())
@@ -182,7 +198,7 @@ void MonitorAf::v_action( Action & i_action)
 				setEvents( eids, subscribe);
 			}
 			m_monitors->addEvent( af::Monitor::EVT_monitors_change, getId());
-			appendLog("Operation \"" + optype + "\" class \"" + opclass + "\" status \"" + opstatus + "\" by " + i_action.author);
+			appendLog("Operation '" + optype + "' class '" + opclass + "' status '" + opstatus + "' by " + i_action.author);
 			m_time_activity = time( NULL);
 			return;
 		}
@@ -192,13 +208,15 @@ void MonitorAf::v_action( Action & i_action)
 			af::jr_string("text", text, operation);
 			text += "\n - " + i_action.author;
 			sendMessage( text);
+			i_action.answerLog("Message sent.");
 		}
 		else
 		{
-			appendLog("Unknown operation \"" + optype + "\" by " + i_action.author);
+			appendLog("Unknown operation '" + optype + "' by " + i_action.author);
+			i_action.answerError("Unknown operation '" + optype + "'.");
 			return;
 		}
-		appendLog("Operation \"" + optype + "\" by " + i_action.author);
+		appendLog("Operation '" + optype + "' by " + i_action.author);
 	}
 }
 

@@ -58,7 +58,8 @@ public:
 		FSkipThumbnails = 1ULL << 5,
 		FSkipExistingFiles = 1ULL << 6,
 		FCheckRenderedFiles = 1ULL << 7,
-		FSlaveLostIgnore = 1ULL << 8
+		FSlaveLostIgnore = 1ULL << 8,
+		FAppendedTasks = 1ULL << 9
 	};
 
 	static const char DataMode_Progress[];
@@ -88,7 +89,7 @@ public:
 	TaskExec *genTask(int num) const;
 
 	bool genNumbers(long long &start, long long &end, int num,
-		long long *frames_num = NULL) const; ///< Generate fisrt and last frame numbers for \c num task.
+		long long *frames_num = NULL) const; ///< Generate first and last frame numbers for \c num task.
 	int calcTaskNumber(long long i_frame, bool &o_valid_range) const;
 	int getReadyTaskNumber(TaskProgress **i_tp, const int64_t &i_job_flags, const Render *i_render);
 	const std::string genTaskName(int num, long long *fstart = NULL, long long *fend = NULL) const;
@@ -118,6 +119,18 @@ public:
 	{
 		return m_flags & FDependSubTask;
 	} ///< Other block can depend this block sub task
+	inline bool hasAppendedTasks() const
+	{
+		return m_flags & FAppendedTasks;
+	} ///< Wether the block has appended tasks
+
+	inline void setHasAppendedTasks()
+	{
+		m_flags |= FAppendedTasks;
+	} ///< Set flag on the block signaling that it has tasks appended
+
+	inline bool isSkippingExistingFiles() const {return m_flags & FSkipExistingFiles;}
+	inline bool isCheckingRenderedFiles() const {return m_flags & FCheckRenderedFiles;}
 
 	inline bool isSequential() const { return m_sequential == 1; }
 	inline bool notSequential() const { return m_sequential != 1; }
@@ -145,6 +158,7 @@ public:
 	{
 		return m_environment;
 	}
+	inline const std::map<std::string, int32_t> & getTickets() const { return m_tickets;}
 
 	inline bool hasDependMask() const { return m_depend_mask.notEmpty(); } ///< Whether depend mask is set.
 	inline bool hasTasksDependMask() const
@@ -189,7 +203,9 @@ public:
 	{
 		return m_hosts_mask_exclude.match(str);
 	}
+
 	inline bool checkNeedProperties(const std::string &str) const { return m_need_properties.match(str); }
+	inline bool checkNeedPower(int i_val) const {if (m_need_power <= 0) return true; return m_need_power <= i_val;}
 
 	inline int getCapacity() const { return m_capacity; }
 	inline int getNeedMemory() const { return m_need_memory; }
@@ -240,8 +256,8 @@ public:
 	inline int32_t getRunningTasksNumber() const { return m_running_tasks_counter; }
 	inline int64_t getRunningCapacityTotal() const { return m_running_capacity_counter; }
 
-	void addSolveCounts(TaskExec *i_exec);
-	void remSolveCounts(TaskExec *i_exec);
+	void addSolveCounts(TaskExec * i_exec, Render * i_render);
+	void remSolveCounts(TaskExec * i_exec, Render * i_render);
 
 	bool updateProgress(JobProgress *progress);
 	inline const char *getProgressBar() const { return p_progressbar; }
@@ -269,6 +285,7 @@ public:
 	void jsonWrite(std::ostringstream &o_str, const std::string &i_datamode) const;
 	void jsonWriteTasks(std::ostringstream &o_str) const;
 	void jsonReadTasks(const JSON &i_object);
+	void jsonReadAndAppendTasks(const JSON &i_object); ///< Append new tasks from JSON object
 
 	/// Generate progress bits info string.
 	void generateProgressStream(std::ostringstream &o_str) const;
@@ -282,6 +299,11 @@ public:
 	void setTimeDone(long long value);
 
 	const TaskData * getTaskData(int i_num_task) const;
+
+	void editTicket(std::string & i_name, int32_t & i_count);
+
+	inline const std::string & getSrvInfo() const {return m_srv_info;}
+	inline void setSrvInfo(const std::string & i_str) {m_srv_info = i_str;}
 
 protected:
 	/// Read or write block.
@@ -331,6 +353,8 @@ protected:
 	std::string m_working_directory;				  ///< Block tasks working directory.
 	std::map<std::string, std::string> m_environment; ///< Block tasks extra environment.
 
+	std::map<std::string, int32_t> m_tickets;
+
 	std::string m_command_pre;  ///< Pre command.
 	std::string m_command_post; ///< Post command.
 
@@ -370,6 +394,10 @@ protected:
 
 	int64_t m_time_started;
 	int64_t m_time_done;
+
+	// Some info that server can show to user.
+	// Here it used to show running host.
+	std::string m_srv_info;
 
 private:
 	void initDefaults(); ///< Initialize default values

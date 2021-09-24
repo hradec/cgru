@@ -31,9 +31,9 @@ var g_navigating_path = null;
 var g_arguments = null;
 
 var g_navig_infos = {
-	all /******/: ['annotation', 'size', 'artists', 'tags', 'duration', 'price', 'frames', 'percent'],
-	default /**/: ['annotation', 'artists', 'percent'],
-	current /**/: []
+	all     : ['annotation', 'size', 'flags', 'artists', 'tags', 'tasks','tasks_only_my', 'duration', 'price', 'frames', 'percent'],
+	default : ['annotation', 'flags', 'tags', 'artists', 'tasks', 'percent'],
+	current : []
 };
 
 function cgru_params_OnChange(i_param, i_value)
@@ -48,7 +48,12 @@ function g_Init()
 	cgru_Init();
 	u_Init();
 	c_Init();
-	n_Request({"send": {"start": {}}, "func": g_Init_Server, "info": 'start'});
+	n_Init();
+	activity_Init();
+
+	n_Request({"send": {"start": {}}, "func": g_Init_Server, "info": 'start', "force_log": true});
+
+	window.onbeforeunload = g_OnClose;
 }
 
 function g_Init_Server(i_data)
@@ -64,9 +69,11 @@ function g_Init_Server(i_data)
 	if (SERVER.version)
 		$('version').innerHTML = c_Strip(SERVER.version);
 
+	if (SERVER.upload_max_filesize)
+		RULES_TOP.upload_max_filesize = SERVER.upload_max_filesize;
+
 	var url = decodeURI(document.location.href);
 
-	n_log_responses = false;
 	n_Request({"send": {"initialize": {'url': url}}, "func": g_Init_Config, "info": 'init'});
 }
 
@@ -103,6 +110,7 @@ function g_Init_Config(i_data)
 
 	nw_Init();
 	bm_Init();
+	st_Init();
 
 	n_WalkDir({"paths": ['.'], "wfunc": g_Init_Rules, "info": 'walk config', "rufiles": ['rules']});
 }
@@ -119,11 +127,12 @@ function g_Init_Rules(i_data)
 	u_InitConfigured();
 	nw_InitConfigured();
 	bm_InitConfigured();
+	up_InitConfigured();
 
 	$('afanasy_webgui').href = 'http://' + cgru_Config.af_servername + ':' + cgru_Config.af_serverport;
 	$('rules_label').textContent = RULES_TOP.company + '-RULES';
 
-	$('panel_logo_img').src = RULES_TOP.panel_logo_img;
+	$('panel_logo').style.backgroundImage = 'url(' + RULES_TOP.panel_logo_img + ')';
 
 	u_el.navig.m_folder = '/';
 	u_el.navig.m_path = '/';
@@ -136,6 +145,11 @@ function g_Init_Rules(i_data)
 	g_PathChanged();
 
 	$('navigate_root').href = document.location.href.replace(/#.*/, '');
+}
+
+function g_OnClose()
+{
+	st_OnClose();
 }
 
 /* ---------------- [ path functions ] ------------------------------------------------------------------- */
@@ -159,8 +173,21 @@ function g_CurPathDummy()
 
 function g_OnKeyDown(e)
 {
-	if (e.keyCode == 27)
-		cgru_EscapePopus();  // ESC
+	if (e.keyCode == 27)  // ESC
+	{
+		// Close all cgru popups
+		cgru_EscapePopus();
+
+		// Close comments images processing
+		if (ec_process_image && (ec_process_image.uploading != true))
+			ec_ProcessImageClose();
+	}
+	else if (e.keyCode == 13) // ENTER
+	{
+		// Close comments images processing
+		if (ec_process_image && (ec_process_image.uploading != true))
+			ec_ProcessImageUpload();
+	}
 }
 
 function g_GO(i_path)
@@ -453,6 +480,9 @@ function g_Goto(i_folder, i_path, i_walk)
 	if (g_elCurFolder == u_el.navig)
 		g_OpenFolder(g_elCurFolder);
 
+	if (g_elCurFolder.m_elGroup)
+		g_GroupShowFolders(g_elCurFolder.m_elGroup);
+
 	return true;
 }
 
@@ -472,6 +502,7 @@ function g_OpenFolder(i_elFolder)
 		return;
 
 	i_elFolder.m_elFolders = [];
+	i_elFolder.m_elGroups = [];
 
 	if (i_elFolder.m_dir == null)
 	{
@@ -504,15 +535,15 @@ function g_OpenFolderDo(i_data, i_args)
 	if (el.m_dir.folders == null)
 		return;
 
-	for (var i = 0; i < el.m_dir.folders.length; i++)
+	for (let i = 0; i < el.m_dir.folders.length; i++)
 	{
-		var fobject = el.m_dir.folders[i];
+		let fobject = el.m_dir.folders[i];
 
 		// Skip hidden folders
 		if (fobject.name.charAt(0) == '.')
 			continue;
 
-		var elFolder = g_AppendFolder(el, fobject);
+		let elFolder = g_AppendFolder(el, fobject);
 
 		// This can happen if the parent of the current folder was closed and than opened
 		// without current folder change
@@ -522,8 +553,143 @@ function g_OpenFolderDo(i_data, i_args)
 			elFolder.classList.add('current');
 		}
 	}
+
+	if (el.m_elGroup)
+		g_GroupShowFolders(el.m_elGroup);
+
+	if (null == RULES.group_folders_levels)
+		return;
+
+	if (RULES.group_folders_levels.indexOf(el.m_path.split('/').length) == -1)
+		return;
+
+	// Group folders:
+	let prefix = null;
+	let elPrevFolder = null;
+	let elFolders = [];
+	for (let i = 0; i < el.m_elFolders.length; i++)
+	{
+		let elFolder = el.m_elFolders[i];
+		let name = elFolder.m_folder;
+		let parts = name.split('_');
+
+		if ((name.length < 3) || (name.indexOf('_') < 1) || (parts.length < 2) || (parts[0] != prefix))
+		{
+			if (elFolders.length > 1)
+			{
+				elPrevFolder = g_GroupCreate(elFolders, el, elPrevFolder, prefix);
+				elFolders = [];
+				prefix = null;
+			}
+		}
+
+		// Name is not suitable for grouping
+		if ((name.length < 3) || (name.indexOf('_') < 1) || (parts.length < 2))
+		{
+			prefix = null;
+			elPrevFolder = null;
+			elFolders = [];
+			continue;
+		}
+
+		// Some new prefix found
+		if (parts[0] != prefix)
+		{
+			prefix = parts[0];
+			elFolders = [];
+			elPrevFolder = elFolder;
+		}
+
+		elFolders.push(elFolder);
+	}
+
+	if (elFolders.length > 1)
+		g_GroupCreate(elFolders, el, elPrevFolder, prefix);
 }
 
+function g_GroupCreate(i_elFolders, i_elParent, i_elPrevFolder, i_prefix)
+{
+	let elGroup = document.createElement('div');
+	elGroup.classList.add('group');
+	elGroup.m_elFolders = [];
+	elGroup.m_hidden_folders = false;
+
+	i_elParent.m_elFBody.insertBefore(elGroup, i_elPrevFolder);
+	i_elParent.m_elGroups.push(elGroup);
+
+	let elName = document.createElement('div');
+	elGroup.appendChild(elName);
+	elName.classList.add('name');
+	elName.textContent = i_prefix;
+
+	let elFBody = document.createElement('div');
+	elGroup.appendChild(elFBody);
+	elFBody.classList.add('fbody');
+	elGroup.m_elFBody = elFBody;
+
+	for (let i = 0; i < i_elFolders.length; i++)
+	{
+		let elFolder = i_elFolders[i];
+		elFolder.m_elGroup = elGroup;
+		elFBody.appendChild(elFolder);
+		elGroup.m_elFolders.push(elFolder);
+	}
+
+	c_Log('Group "' + i_elParent.m_path + ': ' + i_prefix + '" created"');
+
+	g_GroupHideFolders(elGroup);
+
+	elGroup.onclick = g_GroupShowHideFolders;
+	elGroup.oncontextmenu = g_GroupShowHideFolders;
+
+	return elGroup;
+}
+
+function g_GroupHideFolders(i_elGroup)
+{
+	if (true == i_elGroup.m_hidden_folders)
+		return;
+
+	for (let i = 0; i < i_elGroup.m_elFolders.length; i++)
+	{
+		let elFolder = i_elGroup.m_elFolders[i];
+		elFolder.style.display = 'none';
+	}
+
+	i_elGroup.classList.add('closed');
+	i_elGroup.classList.remove('opened');
+	i_elGroup.m_hidden_folders = true;
+}
+
+function g_GroupShowFolders(i_elGroup)
+{
+	if (false == i_elGroup.m_hidden_folders)
+		return;
+
+	for (let i = 0; i < i_elGroup.m_elFolders.length; i++)
+	{
+		let elFolder = i_elGroup.m_elFolders[i];
+		elFolder.style.display = 'block';
+	}
+
+	i_elGroup.classList.remove('closed');
+	i_elGroup.classList.add('opened');
+	i_elGroup.m_hidden_folders = false;
+}
+
+function g_GroupShowHideFolders(i_evt)
+{
+	i_evt.stopPropagation();
+
+	let elGroup = i_evt.currentTarget;
+
+	if (elGroup.m_hidden_folders)
+		g_GroupShowFolders(elGroup);
+	else
+		g_GroupHideFolders(elGroup);
+
+	return false;
+}
 
 function g_WaitingSet()
 {
@@ -564,7 +730,7 @@ function g_AppendFolder(i_elParent, i_fobject)
 	var elName = document.createElement('a');
 	elFBody.appendChild(elName);
 	elName.classList.add('fname');
-	elName.textContent = folder;
+	elName.innerHTML = c_HighlightBadChars(folder);
 
 	var elPercent = document.createElement('div');
 	elFBody.appendChild(elPercent);
@@ -613,6 +779,18 @@ function g_AppendFolder(i_elParent, i_fobject)
 	elFolder.m_elArtists = elArtists;
 	elArtists.classList.add('artists');
 	elArtists.classList.add('info');
+
+	var elFlags = document.createElement('div');
+	elFBody.appendChild(elFlags);
+	elFolder.m_elFlags = elFlags;
+	elFlags.classList.add('flags');
+	elFlags.classList.add('info');
+
+	var elTasks = document.createElement('div');
+	elFBody.appendChild(elTasks);
+	elFolder.m_elTasks = elTasks;
+	elTasks.classList.add('tasks');
+	elTasks.classList.add('info');
 
 	elFolder.m_elProgress = document.createElement('div');
 	elFBody.appendChild(elFolder.m_elProgress);
@@ -752,16 +930,26 @@ function g_FolderSetStatusPath(i_status, i_path, i_up_params)
 
 function g_FolderSetStatus(i_status, i_elFolder, i_up_params)
 {
-	// console.log('GFS:'+JSON.stringify(i_status));
-	// return;
 	if (i_elFolder == null)
 		i_elFolder = g_elCurFolder;
 	if (i_elFolder.m_fobject.status == null)
 		i_elFolder.m_fobject.status = {};
 
 	if (i_up_params)
-		for (var parm in i_up_params)
-			i_elFolder.m_fobject.status[parm] = i_status[parm];
+		// Update only specified parameters:
+		for (let parm in i_up_params)
+		{
+			if (parm == 'tasks')
+			{
+				// On tasks, update each task
+				if (null == i_elFolder.m_fobject.status.tasks)
+					i_elFolder.m_fobject.status.tasks = {};
+				for (let t in i_status.tasks)
+					i_elFolder.m_fobject.status.tasks[t] = i_status.tasks[t];
+			}
+			else
+				i_elFolder.m_fobject.status[parm] = i_status[parm];
+		}
 	else
 		i_elFolder.m_fobject.status = i_status;
 
@@ -777,6 +965,10 @@ function g_FolderSetStatus(i_status, i_elFolder, i_up_params)
 		st_SetElPrice(i_status, i_elFolder.m_elPrice);
 	if ((i_up_params == null) || i_up_params.tags)
 		st_SetElTags(i_status, i_elFolder.m_elTags, true);
+	if ((i_up_params == null) || i_up_params.flags)
+		st_SetElFlags(i_status, i_elFolder.m_elFlags, true);
+	if ((i_up_params == null) || i_up_params.tasks)
+		task_DrawBadges(i_status, i_elFolder.m_elTasks, {'update':(i_up_params && i_up_params.tasks)});
 
 	if (i_elFolder.m_fobject.auxiliary)
 	{
@@ -837,10 +1029,27 @@ function g_CloseFolder(i_elFolder)
 		return;
 
 	if (i_elFolder.m_elFolders && i_elFolder.m_elFolders.length)
-		for (var i = 0; i < i_elFolder.m_elFolders.length; i++)
-			i_elFolder.m_elFBody.removeChild(i_elFolder.m_elFolders[i]);
+	{
+		for (let i = 0; i < i_elFolder.m_elFolders.length; i++)
+		{
+			let elFolder = i_elFolder.m_elFolders[i];
+			elFolder.parentNode.removeChild(elFolder);
+		}
+
+		for (let i = 0; i < i_elFolder.m_elGroups.length; i++)
+		{
+			let elGroup = i_elFolder.m_elGroups[i];
+
+			// For now parent folder remove all child foders from any parent
+			//for (let f = 0; f < elGroup.m_elFolders.length; f++)
+			//	elGroup.removeChild(elGroup.m_elFolders[f]);
+
+			elGroup.parentNode.removeChild(elGroup);
+		}
+	}
 
 	i_elFolder.m_elFolders = [];
+	i_elFolder.m_elGroups = [];
 	i_elFolder.classList.remove('opened');
 }
 

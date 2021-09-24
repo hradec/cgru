@@ -67,6 +67,36 @@ width: 40px; height: 20px;
 margin: 3px 4px;
 float: left;
 }
+
+#activity {
+float: right;
+padding: 2px 8px;
+}
+#activity > div {
+cursor: pointer;
+float: left;
+margin: 0px 4px;
+box-shadow: 0 0 4px rgba(0,0,0,.5), 0 0 4px rgba(255,255,255,.5) inset;
+border: 2px solid rgba(98,98,98,.5);
+border-radius: 6px;
+}
+#activity > div:hover {
+border: 2px solid rgba(98,255,98,.5);
+}
+#activity > div.pinned {
+border: 2px solid rgb(100,255,255);
+box-shadow: 0 0 6px rgb(100,255,255), 0 0 4px rgba(255,255,255,.5) inset;
+}
+#activity > div .name {padding: 2px 6px;}
+#activity > div .button.delete {_display: none; width: 10px; height: 10px; margin: 2px;}
+#activity > div.pinned .button.delete {display: block;}
+#activity > div.pinned.selected .button.delete {_display: none;}
+#activity > div.selected .button.delete {display: none;}
+#activity > div.filter {
+border: 2px solid rgb(255,255,120);
+box-shadow: 0 0 8px rgb(255,255,120), 0 0 4px rgba(255,255,255,.5) inset;
+}
+
 #profile_settings {
 display: none;
 float: right;
@@ -123,11 +153,6 @@ opacity: 0.1;
 box-shadow: 0px 0px 5px #FA6;
 }
 #footer #cycle.active { opacity: 1.0; }
-#footer #cycle.timeout {
--o-transition: all 1s ease-out;
--moz-transition: all 1s ease-out;
--webkit-transition: all 1s ease-out;
-}
 #footer #log_ctrl {
 display: none;
 float: right;
@@ -146,7 +171,12 @@ padding: 2px 8px;
 
 #panel_logo {
 float: right;
+width: 140px; height: 34px;
 margin: 2px 10px;
+background-position: center;
+background-size: 100%;
+background-repeat: no-repeat;
+_border: 1px solid #F00;
 }
 
 #navig_div, #sidepanel_div {
@@ -166,7 +196,7 @@ width: 2px;
 #navig_panel .button {
 font-size: 12px;
 padding: 0px;
-margin: 3px;
+margin: 2px;
 float: left;
 width: 40px;
 text-align: center;
@@ -183,13 +213,10 @@ font-weight: normal;
 border-right: 0;
 }
 #navig.waiting .folder { cursor: wait; }
-#navig .folder.opened > .fbody {
-padding-top: 4px;
-padding-bottom: 4px;
-font-weight: bold;
-}
+#navig .folder.opened > .fbody {padding-top: 4px; padding-bottom: 4px;}
+#navig .folder.opened > .fbody > .fname {font-weight: bold;}
 #navig .folder.hidden { display: none; }
-#navig .folder .fbody {
+#navig .folder > .fbody {
 padding: 0px 0px 0px 16px;
 border: 2px solid rgba(98,98,98,.5);
 border-right: 0;
@@ -210,6 +237,7 @@ border-right: 0;
 #navig .folder .price    { font-weight: bold; background-color: rgba( 255,255,  0,.1); padding: 0px 4px; }
 #navig .folder .frames { width:50px; }
 #navig .folder .annotation { }
+#navig .folder .flags { font-weight: bold; }
 #navig .folder .tags { font-style: italic; }
 #navig .folder .percent {
 font: 12px monospace;
@@ -218,6 +246,29 @@ width: 30px; height: 14px;
 border: 1px solid rgba(0,0,0,.3);
 /*border-radius: 4px;*/
 }
+#navig .folder .tasks {}
+
+#navig .group {
+clear: both;
+position: relative;
+cursor: pointer;
+border: 1px solid rgba(20,200,2000,.7);
+border-right: 0;
+border-radius: 8px 0px 0px 8px;
+margin:  1px 0px 1px -10px;
+padding: 1px 0px 1px   0px;
+}
+#navig .group > .fbody {
+padding: 0px 0px 0px 10px;
+}
+#navig .group.opened {
+border-radius: 20px 0px 0px 8px;
+}
+#navig .group .name {text-align: center; font-style: italic;}
+#navig .group.opened > .name {font-weight: bold;}
+
+#navig.navig_show_flags      .folder .flags      { display: inline; }
+#navig.navig_show_tasks      .folder .tasks      { display: inline; }
 #navig.navig_show_tags       .folder .tags       { display: inline; }
 #navig.navig_show_artists    .folder .artists    { display: inline; }
 #navig.navig_show_annotation .folder .annotation { display: inline; }
@@ -226,6 +277,7 @@ border: 1px solid rgba(0,0,0,.3);
 #navig.navig_show_duration   .folder .duration   { display: inline; }
 #navig.navig_show_price      .folder .price      { display: inline; }
 #navig.navig_show_percent    .folder .percent    { display: inline; }
+#navig.navig_show_tasks_only_my .folder .tasks .notmy { display: none; }
 
 /* ========================================== */
 /* ============== GLOBALS: ================== */
@@ -250,6 +302,9 @@ a.link_auto { text-decoration: none; }
 -moz-user-select: none;
 -webkit-user-select: none;
 }
+
+.right {float: right;}
+.left  {float: left; }
 
 .button {
 -moz-user-select: none;
@@ -304,6 +359,8 @@ border-radius: 3px;
 padding: 4px;
 }
 
+#status.updating {border: 2px solid #FFFF00; box-shadow: 0 0 4px #FFFF00 inset, 0 0 4px #FFFF00;}
+
 #content > .view {
 position: relative;
 margin: 3px 0px;
@@ -328,9 +385,16 @@ min-height: 19px;
 }
 .editing.error { background: #FBA; }
 .editing.disabled { background: #BBB; }
+.editing.drag {border: 1px solid rgba(255,255,255,.5);}
 
 .waiting { cursor: wait; }
 .waiting * { cursor: wait; }
+
+.fading {
+-o-transition: all 1s ease-out;
+-moz-transition: all 1s ease-out;
+-webkit-transition: all 1s ease-out;
+}
 
 .thumbnail { box-shadow: 0 0 2px rgba(255,255,255,.5); border-radius: 4px; border: 1px solid rgba(98,98,98,.5); }
 
@@ -344,6 +408,11 @@ border: 1px solid rgba(98,98,98,.5);
 margin:1px 4px;
 padding:0 4px;
 /*background-color: rgba(0,0,255,.1);*/
+}
+.tag.highlighted, .flag.highlighted, .artists.highlighted {
+border: 4px solid #7FF;
+border-radius: 4:px;
+box-shadow: 0 0 8px #7FF, 0 0 4px #8FF inset;
 }
 .flag {
 -moz-user-select: none;
@@ -375,9 +444,22 @@ background-position: left;
 /*border-radius: 2px;*/
 /*padding: 0 2px;*/ }
 .artists .role { padding: 2px 4px; margin: 1px; border-bottom: 1px solid rgba(98,98,98,.5); }
-.artists .role .label { float: left; padding: 0px 6px; font-style: italic; }
+.artists .role .label { float: left; padding: 0px 6px; font-style: italic; font-weight: bold }
+.artists .role_tag { padding: 4px; }
+.artists .role_tag .label { font-weight: normal; }
 #search_artists .role .label { cursor: pointer; }
+#search_artists .tag { margin: 4px; }
 .tags { font-style:italic;}
+
+.new_line {
+border-bottom: 1px solid rgba(98,98,98,.5);
+margin: 6px;
+height: 6px;
+clear:both;
+float:none;
+}
+
+.file_bad_char { color: #FF0000; font-weight: bold; }
 
 .progress, .progressbar { /*border-radius: 3px;*/ box-shadow: 0 0 1px #000 inset; }
 .progress { position: relative; background-color: rgba(0,0,0,.5); }
@@ -390,6 +472,22 @@ background-position: left;
 
 .gui_size_handle { cursor: col-resize; border: 2px solid rgba(98,98,98,.5);}
 .gui_size_handle:hover { border: 2px solid #555555;}
+
+
+.task_badge {
+position: relative;
+float: left;
+margin: 1px 2px;
+border: 2px solid rgba(98, 98, 98, 0.5);
+border-radius: 4px;
+}
+.task_badge div {float: left;}
+.task_badge .name {padding: 2px;}
+.task_badge .artist {margin: 0px; padding-top: 2px;; padding-bottom: 2px;}
+.task_badge .progress {clear: both; width: 100%}
+.task_badge .progressbar {height: 6px;}
+.task_badge.activity_filtered {display:none;}
+
 
 /* ========================================================= */
 /* =============== SIDE PANEL: ============================= */
@@ -453,9 +551,9 @@ padding-bottom: 2px;
 #news .news.assigned.cur_path { background: rgba(   0, 255, 150, .2); }
 #news .news_label { font-size: 12px; margin: 4px 0 0 0; }
 #news .news .status {float: right; font-size: 10px;}
-#news .news .status .flag {float: none;}
+#news .news .status .flag {_float: none;}
 #news .news .bar {
-position: absolute;
+_position: absolute;
 bottom: 4px;
 left: 0px;
 height: 4px;
@@ -504,23 +602,27 @@ display: none;
 }
 #bookmarks .project .label {
 text-align: center;
-font-size: 14px;
+font-size: 16px;
+padding: 0px 4px 0px 4px;
+margin: 0px 4px 0px 4px;
 cursor: pointer;
 }
 #bookmarks .project .label:hover {
 text-shadow: 0 0 2px rgba( 100, 255, 255, .5);
 }
-#bookmarks .project.closed .label {
+#bookmarks .project.closed .label, #bookmarks .project .scene.closed .label {
 font-style: italic;
 }
-#bookmarks .project .bm_folder_label {
-font-size: 10px;
+#bookmarks .project.closed .scene, #bookmarks .project .scene.closed .bookmark {
+display: none;
+}
+#bookmarks .project .scene .label {
+text-align: left;
+font-size: 14px;
 padding: 6px 4px 0px 4px;
+margin: 0px 4px 0px 4px;
 font-weight: bold;
 opacity: .7;
-}
-#bookmarks .project.closed .bm_folder_label {
-display: none;
 }
 #bookmarks .bookmark {
 position: relative;
@@ -539,7 +641,7 @@ float: right;
 font-size: 10px;
 }
 #bookmarks .bookmark .bar {
-position: absolute;
+_position: absolute;
 bottom: 1px;
 left: 0px;
 height: 4px;
@@ -567,10 +669,12 @@ padding-bottom: 4px;
 position: relative;
 }
 #recent .recent > div { margin: 2px 4px; }
+#recent .recent .title {}
 #recent .recent .status {float: right; font-size: 10px;}
-#recent .recent .status .flag {float: none;}
+#recent .recent .status .flag {_float: none;}
+#recent .recent .link {_clear: both;}
 #recent .recent .bar {
-position: absolute;
+_position: absolute;
 bottom: 0px;
 left: 0px;
 height: 4px;
@@ -587,7 +691,8 @@ border-right: 0;
 border-radius: 0 0 0 4px;
 }
 #recent .user { float: left; margin-right: 4px;}
-
+#recent .tasks {clear: both;}
+#recent .task_badge {float: left;}
 
 /* ============= PLAYLIST: =============== */
 .playlist_ctrl { padding-left: 6px; }
@@ -646,7 +751,7 @@ overflow-y: scroll;
 #annotations .name { float: left; }
 #annotations .text { float: right; }
 
-#status_percentage, #status_annotation, #status_artists, #status_tags, #status_finish
+#status_percentage, #status_annotation, #status_artists, #status_flags, #status_tags, #status_finish
 { margin: 0px 5px; float:left;}
 #status_progress { clear: both; border-radius: 2px; }
 #status_progressbar { height: 10px; /*border-radius: 4px;*/ }
@@ -655,17 +760,17 @@ overflow-y: scroll;
 #status_framesnum_div.updated { border: 1px solid #FFFF00; }
 #status_framesnum { font: 16px monospace; padding: 1px 6px; float: left; }
 
-#status_tasks_div, #status_reports_div {
+#status_tasks_div_old, #status_reports_div {
 margin: 4px 8px;
 padding: 4px 8px;
 border: 1px solid rgba(98,98,98,.5);
 border-radius: 8px;
 }
-#status_tasks_div { float: left; }
+#status_tasks_div_old { float: left; }
 #status_reports_div { float:right; }
 
-#status_tasks .task { margin: 2px; border: 1px solid rgba(98,98,98,.5); }
-#status_tasks .task > div { float: left; margin: 2px 4px; }
+#status_tasks_old .task { margin: 2px; border: 1px solid rgba(98,98,98,.5); }
+#status_tasks_old .task > div { float: left; margin: 2px 4px; }
 
 .status_edit { clear: both; }
 .status_edit .buttons_div { float: right; }
@@ -680,8 +785,6 @@ border-radius: 8px;
 .status_edit_div .finish_div .label { cursor: pointer;}
 .status_edit_div .finish_div .editing { text-align: center;}
 .status_edit .color { clear:both;}
-.status_edit .list { padding: 4px; margin: 4px; border-top: 1px solid rgba(98,98,98,.5); }
-.status_edit .list .button { margin:0 4px; padding:0 4px; width: 50px; float: left; }
 .status_edit .edit_tasks .task_add { float: left; }
 .status_edit .edit_tasks .tasks_multiedit_message { float: right; background-color: #F33; padding: 2px 6px; margin: 2px 6px; border-radius: 2px; }
 .status_edit .edit_tasks { border-top: 1px solid rgba(98,98,98,.5); margin-top: 8px; padding-top: 4px; }
@@ -692,8 +795,74 @@ border-radius: 8px;
 .status_edit .edit_tasks .task .dur_label { float: left; padding: 2px 6px; }
 .status_edit .edit_tasks .task .duration { width: 60px; float: left; }
 .status_edit .edit_tasks .tags { clear: both; }
-.status_edit .tag { cursor: pointer; }
-.status_edit .flag { border-width: 4px; padding: 0px 2px; }
+
+#status_tasks_div     {clear: both;}
+#status_tasks_buttons {float: right; margin: 1px 12px; padding: 1px 12px;}
+#status_tasks_buttons .button {float: right; margin: 1px 12px; padding: 1px 12px;}
+#status_tasks_label   {float: left; margin: 6px 12px; padding: 1px 12px;}
+#status_tasks         {clear: both; margin: 4px;}
+#status_tasks .task {
+margin: 8px 4px;
+padding: 8px 4px 0px 4px;
+border-radius: 4px;
+border: 2px solid rgba(98,98,98,.5);
+}
+#status_tasks .task.selected {
+border: 2px solid rgba(100,255,255,1);
+box-shadow: 0 0 4px rgba(100,255,255,1), 0 0 4px rgba(100,255,255,1) inset;
+}
+#status_tasks .task.deleted            {display: none;}
+#status_tasks .task .show_div          {clear: both;}
+#status_tasks .task .show_div .artists {float: left;}
+#status_tasks .task .show_div .flags   {float: left;}
+#status_tasks .task .show_div .percent {float: right;}
+#status_tasks .task .edit_div          {clear: both;}
+#status_tasks .task .edit_div .tags    {float: left;}
+#status_tasks .task .edit_div .percent {float: right; width: 64px;}
+#status_tasks .task .edit_div .percent .label {float: right; padding: 2px; margin: 2px; margin-right: 8px;}
+#status_tasks .task .progress          {clear: both; border-radius: 4px;}
+#status_tasks .task .progressbar       {height: 6px; border-radius: 2px;}
+#status_tasks .task .info              {font-style: italic; font-size: 10px;}
+#status_tasks .task .show_div .name {
+float: left;
+cursor: pointer;
+margin: 1px 4px;
+padding: 1px 4px;
+border: 1px solid rgba(98,98,98,.5);
+}
+#status_tasks .task .show_div .name:hover {
+border: 1px solid rgba( 100, 255, 255);
+box-shadow: 0 0 4px rgba(100,255,255,1), 0 0 4px rgba(100,255,255,1) inset;
+}
+
+.edit_tags_list { clear: both; padding: 4px; margin: 4px; border-top: 1px solid rgba(98,98,98,.5); }
+.edit_tags_list > .button { margin:0 4px; padding:0 4px; width: 50px; float: left; }
+.edit_tags_list .tag { cursor: pointer; margin: 4px; }
+.edit_tags_list .tag .button.delete { margin: 1px 1px 1px 6px; width: 10px; height: 10px;}
+.edit_tags_list .flag { border-width: 0px; margin: 7px; padding: 0px 2px; opacity: 0.5;}
+.edit_tags_list .flag.selected { border-width: 4px; margin: 3px; opacity: 1.0; _border-color: rgba( 100, 255, 255, 1.0) }
+.edit_tags_list .flag.half_selected { border-width: 0px; margin: 7px; opacity: 1.0; _border-color: rgba( 100, 255, 255, 1.0) }
+.edit_tags_list .editing { width: 96px; height: 18px;}
+.edit_tags_list .menu {
+clear: both;
+margin: 4px;
+border-radius: 12px;
+box-shadow: 0px 0px 5px rgba(0,0,0,0.5);
+}
+.edit_tags_list .menu .item {
+cursor: pointer;
+border: 1px solid rgba(98,98,98,.5);
+margin: 4px;
+_padding: 1px 4px; /*padding-left is used for an artist avatar*/
+border-radius: 8px;
+box-shadow: 0px 0px 3px #000, 0px 0px 5px rgba(255,255,255,.7) inset;
+background-color: rgba(255,255,255,0.2);
+opacity: 1.0;
+}
+.edit_tags_list .menu .item:hover {
+border: 1px solid #AFF;
+box-shadow: 0px 0px 6px #AFF, 0px 0px 6px #AFF inset;
+}
 
 table.statistics { border-collapse: collapse; }
 table.statistics th { font-weight: normal; font-style: italic; }
@@ -716,9 +885,9 @@ table.statistics .duration { text-align: center; border-left-width: 0; }
 	width: 60px;
 }
 .search_grp_ctrl .button {
-	font-size: 14px;
+	font-size: 12px;
 	width: 40px;
-	padding: 1px 2px;
+	height: 12px;
 }
 
 #search_artists_div .notartist { font-style: italic; border-style: dashed }
@@ -813,20 +982,40 @@ float: right;
 padding: 2px 6px;
 margin: 0px 4px;
 }
-.filesview .item .cgru_cmdexec.open { padding: 0; margin: 0px 2px; }
+.filesview .item .cgru_cmdexec.open {
+padding: 0;
+margin: 0px 2px;
+}
 .filesview .item .button {
 float: right;
 width: 18px; height: 18px;
 padding: 0px;
 margin: 0px 4px;
 }
-.filesview .item .anchor {
-float: left;
-width: 18px; height: 18px;
-margin: 2px;
+.filesview .item .anchor, .filesview .item .icon {
 background-size: 100%;
 background-repeat: no-repeat;
 background-position: center;
+cursor: pointer;
+}
+.filesview .item .anchor {
+float: right;
+width: 20px; height: 20px;
+margin: 0px;
+padding: 0px;
+background-image: url(icons/link.png);
+background-size: 80%;
+opacity: 0.7;
+}
+.filesview .item .icon {
+float: left;
+width: 18px; height: 18px;
+margin: 2px;
+opacity: 0.7;
+}
+.filesview .item .anchor:hover, .filesview .item .icon:hover {
+box-shadow: 0 0 2px #0FF, 0 0 2px #0FF inset;
+opacity: 0.9;
 }
 .filesview .item .thumbnail {
 border: 1px solid #000;
@@ -977,14 +1166,50 @@ width: 30px; height: 20px;
 border-radius: 2px;
 }
 /*.comment .uploads { margin:6px; padding:4px; border-radius: 6px; box-shadow: 0 0 4px #000 inset; }*/
-.comment .uploads .path { margin: 6px 4px; padding: 6px; border-radius: 2px; box-shadow: 0 0 2px #000 inset, 0 0 2px rgba(255,255,255,.5); }
+.comment .uploads .path { margin: 6px 4px; padding: 6px; border: 2px solid rgba(167,0,167,.5); border-radius: 2px;}
 .comment .uploads .path > a { margin: 3px 9px; }
 .comment .uploads .path .file { clear: both; margin: 2px 0px; padding: 2px 0px; border-top: 1px solid rgba(98,98,98,.5); }
 .comment .uploads .path .file .thumbnail { float: left; margin-right: 8px; }
-.comment .uploads .path .file .goto { /*display: block;*/ }
 .comment .uploads .path .file .size { float: right; margin: 0px 8px; }
-.comment .uploads .path .file .link { float: right; margin: 0px 8px; display: block; }
 .comment .uploads .cgru_cmdexec { float: left; padding: 2px 6px; font-size: 14px; }
+
+.comment .text.editing {border: 1px solid rgba(0,0,0,.5);}
+
+.inserted_image_div {
+text-align: center;
+margin: 8px;
+padding: 8px;
+}
+.inserted_image_info {
+border: 2px solid rgba(0,0,0,.3);
+border-bottom: 0;
+border-radius: 8px 8px 0 0;
+padding: 2px;
+}
+.inserted_image {
+border: 2px solid rgba(0,0,0,.3);
+border-radius: 4px;
+}
+
+.insert_image_root {
+position: absolute;
+top: 0; bottom: 0; right: 0; left: 0;
+background-color: rgba(200,100,200,.5);
+border: 10px solid rgba(200,100,200,.9);
+text-align: center;
+padding: 32px;
+}
+.insert_image_img {
+height: 50%;
+margin: 32px;
+}
+.insert_image_wnd {
+margin: 32px;
+padding: 32px;
+border: 4px solid #777777;
+border-radius: 6px;
+}
+.insert_image_wnd > div {margin: 8px; padding: 8px;}
 
 /* ================== GUEST =================== */
 .guest_attrs .caption { margin: 4px 8px; padding: 4px 8px; }

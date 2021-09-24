@@ -39,18 +39,39 @@ d_params.general = {
 	comments : {}
 };
 d_params.settings = {
-	audio_file /******/: {"label": 'Audio', "default": "REF/sound.flac", "tooltip": 'Sound file'},
-	af_depend_mask /**/: {"label": 'Depends', "tooltip": 'Afanasy job depend mask'},
-	af_hostsmask /****/: {'label': 'Hosts Mask'},
-	fffirst /*********/:
-		{"label": "F.F.First", "tooltip": 'First frame is "1"\nNo matter image file name number.'},
-	aspect_in /*******/: {"label": 'Aspect In'},
-	gamma /***********/: {}
+	audio_file     : {"label":'Audio', "default":"REF/sound.flac", "tooltip":'Sound file'},
+	af_depend_mask : {"label":'Depends', "tooltip":'Afanasy job depend mask'},
+	af_hostsmask   : {'label':'Hosts Mask'},
+	cacher_aspect  : {'width':'25%', 'lwidth':'160px', 'label':'Cacher Aspect',  'tooltip':'Cacher aspect (float aspect: 2.39)'},
+	cacher_opacity : {'width':'25%', 'lwidth':'160px', 'label':'Cacher Opacity', 'tooltip':'Cacher opacity (integer percentage: 100)'},
+	draw169        : {'width':'25%', 'lwidth':'160px', 'label':'Cacher 16x9',    'tooltip':'Cacher 16x9 opacity percentage.'},
+	draw235        : {'width':'25%', 'lwidth':'160px', 'label':'Cacher 2.35',    'tooltip':'Cacher 2.35 opacity percentage.'},
+	fffirst        : {"label":"F.F.First", "tooltip":'First frame is "1"\nNo matter image file name number.'},
+	aspect_in      : {"label":'Aspect In'},
+	gamma          : {}
 };
 
 function d_Make(i_path, i_outfolder)
 {
 	c_Log('Make Dailies: ' + i_path);
+
+	var out_path = c_PathDir(i_path);
+	if (ASSET && (ASSET.dailies))
+	{
+		out_path = ASSET.path + '/' + ASSET.dailies.path[0];
+
+		if (ASSET.dailies.folders)
+		{
+			for (let f in ASSET.dailies.folders)
+			{
+				if (i_path.toLowerCase().indexOf(f.toLowerCase()) !== -1)
+				{
+					out_path = ASSET.path + '/' + ASSET.dailies.folders[f];
+					break;
+				}
+			}
+		}
+	}
 
 	var params = {};
 
@@ -72,7 +93,7 @@ function d_Make(i_path, i_outfolder)
 		params.version = match[match.length - 1].substr(1);
 
 	params.input = i_path;
-	params.output = c_PathPM_Rules2Client(i_outfolder);
+	params.output = c_PathPM_Rules2Client(out_path);
 	params.activity = RULES.dailies.activity;
 
 	d_params.general.artist = {"width": '50%'};
@@ -139,7 +160,7 @@ function d_DailiesWalkReceived(i_data, i_args)
 		data = i_data.cmdexec[0].walk;
 
 	params.comments = '';
-	if (RULES.status.annotation && RULES.status.annotation.length)
+	if (RULES.status && RULES.status.annotation && RULES.status.annotation.length)
 		params.comments = RULES.status.annotation.trim();
 
 	//console.log(JSON.stringify(data));
@@ -215,6 +236,22 @@ function d_DailiesWalkReceived(i_data, i_args)
 		"keys": RULES.dailies.containers
 	});
 
+	gui_CreateChoices({
+		"wnd": wnd.elTabs.settings,
+		"name": 'slate',
+		"value": RULES.dailies.slate,
+		"label": 'Slate:',
+		"keys": RULES.dailies.slates
+	});
+
+	gui_CreateChoices({
+		"wnd": wnd.elTabs.settings,
+		"name": 'template',
+		"value": RULES.dailies.template,
+		"label": 'Template:',
+		"keys": RULES.dailies.templates
+	});
+
 	var elBtns = document.createElement('div');
 	wnd.elContent.appendChild(elBtns);
 	elBtns.style.clear = 'both';
@@ -254,6 +291,8 @@ function d_ProcessGUI(i_wnd)
 
 	for (var key in i_wnd.elTabs.general.m_choises)
 		params[key] = i_wnd.elTabs.general.m_choises[key].value;
+	for (var key in i_wnd.elTabs.settings.m_choises)
+		params[key] = i_wnd.elTabs.settings.m_choises[key].value;
 
 	i_wnd.destroy();
 
@@ -289,11 +328,15 @@ function d_ProcessGUI(i_wnd)
 	task.command = d_MakeCmd(params);
 	block.tasks = [task];
 
-	// console.log( task.command);
-	// console.log( JSON.stringify(job));
+	//console.log(task.command);
+	//console.log(JSON.stringify(job));
+	//return;
 	n_SendJob(job);
 
-	nw_MakeNews({"title": 'dailies'});
+	let news_path = g_CurPath();
+	if (ASSET && ASSET.dailies && ASSET.dailies.paths)
+		news_path = ASSET.path;
+	nw_MakeNews({'title':'dailies','path':news_path});
 }
 
 function d_MakeCmd(i_params)
@@ -305,7 +348,7 @@ function d_MakeCmd(i_params)
 	var input = c_PathPM_Client2Server(params.input);
 	var output = c_PathPM_Client2Server(params.output) + '/' + params.filename;
 
-	var cmd = 'python';
+	var cmd = 'python3';
 
 	cmd += ' "' + c_PathPM_Client2Server(d_makemovie) + '"';
 
@@ -314,7 +357,7 @@ function d_MakeCmd(i_params)
 	cmd += ' -f ' + params.fps;
 	cmd += ' -r ' + params.format;
 
-	if (params.slate && params.slate.length)
+	if (params.slate && params.slate.length && params.slate != "noslate")
 		cmd += ' -s ' + params.slate;
 
 	cmd += ' -t ' + params.template;
@@ -353,6 +396,9 @@ function d_MakeCmd(i_params)
 	cmd += ' --artist "' + params.artist + '"';
 	cmd += ' --activity "' + params.activity + '"';
 
+	if (RULES.dailies.imgcmd)
+		cmd += ' -i ' + RULES.dailies.imgcmd;
+
 	if (RULES.dailies.preview)
 	{
 		cmd += ' --pcodec "' + RULES.dailies.preview.codec + '"';
@@ -363,17 +409,19 @@ function d_MakeCmd(i_params)
 	if ((params.aspect_in != null) && (params.aspect_in != ''))
 		cmd += ' --aspect_in ' + params.aspect_in;
 
+	if ((params.cacher_aspect != null) && (params.cacher_aspect != ''))
+		cmd += ' --cacher_aspect ' + params.cacher_aspect;
+	if ((params.cacher_opacity != null) && (params.cacher_opacity != ''))
+		cmd += ' --cacher_opacity ' + params.cacher_opacity;
+	if ((params.draw169 != null) && (params.draw169 != ''))
+		cmd += ' --draw169 ' + params.draw169;
+	if ((params.draw235 != null) && (params.draw235 != ''))
+		cmd += ' --draw235 ' + params.draw235;
+
 	cmd += ' --createoutdir';
 
 	cmd += ' "' + input + '"';
 	cmd += ' "' + output + '"';
-
-	// python "/cgru/utilities/moviemaker/makemovie.py" -c \
-	//  "/cgru/utilities/moviemaker/codecs/photojpg_best.ffmpeg" -f 25 -n mov --fs 1 --fe 20 -r 720x576x1.09 -g \
-	//  1.00 -s "dailies_slate" -t "dailies_withlogo" --project "ENCODE" --shot "preview" --ver "preview" \
-	//  --artist "Timurhai" --activity "comp" --tmpformat tga --lgspath "logo.png" --lgssize 25 --lgsgrav \
-	//  SouthEast --lgfpath "logo.png" --lgfsize 10 --lgfgrav North \
-	//  "/data/tools/encode/preview/preview.####.jpg" "/data/tools/encode/preview_preview_121226"
 
 	return cmd;
 }
@@ -388,16 +436,16 @@ var d_cvtguiparams = {
 	fps /**********/: {"label": 'FPS', "width": '20%'},
 	time_start /***/: {"default": '00:00:00', "width": '20%'},
 	duration /*****/: {"default": '00:00:00', "width": '20%'},
-	quality /******/: {"label": 'JPEG Quality', 'type': 'int', "default": 100, 'width': '20%'},
+	quality /******/: {"label": 'JPEG Quality', 'type': 'int', "default": 100, 'width': '20%',"lwidth":'160px'},
 	ipar /*********/: {"label": 'Input pixel aspect', "width": '20%',"lwidth":'160px'},
-	padding /******/: {"label": 'Padding', 'width': '20%'},
-	af_capacity /**/: {'label': 'Capacity', 'width': '20%', 'type': 'int'},
-	af_maxtasks /***/: {'label': 'Max Tasks', 'width': '20%', 'type': 'int', 'default': -1},
-	af_perhost /****/: {'label': 'Per Host', 'width': '20%', 'type': 'int', 'default': 1},
+	padding /******/: {"label": 'Padding', 'width': '20%', "default": 4},
+	first_frame /**/: {"label": 'First Frame', 'width': '20%'},
+	af_capacity /**/: {'label': 'Capacity', 'width': '15%', 'type': 'int'},
+	af_maxtasks /***/: {'label': 'Max Tasks', 'width': '15%', 'type': 'int', 'default': -1},
+	af_perhost /****/: {'label': 'Per Host', 'width': '15%', 'type': 'int', 'default': 1},
 	af_fpt /********/: {
-		'label': 'Frames Per Task',
-		'width': '20%',
-		'lwidth': '160px',
+		'label': 'FPT',
+		'width': '15%',
 		'type': 'int',
 		'default': 10,
 		'tooltip': 'Frames Per Task'
@@ -453,7 +501,7 @@ function d_Convert(i_args)
 		"keys": RULES.dailies.formats
 	});
 
-	gui_Create(wnd.elContent, d_cvtguiparams, [params, RULES.dailies]);
+	gui_Create(wnd.elContent, d_cvtguiparams, [params, RULES, RULES.dailies]);
 
 	gui_CreateChoices(
 		{"wnd": wnd.elContent, "name": 'imgtype', "value": 'jpg', "label": 'Image Type:', "keys": img_types});
@@ -650,6 +698,8 @@ function d_CvtImages(i_wnd, i_params)
 	cmd += ' -q ' + i_params.quality;
 	if (i_params.padding)
 		cmd += ' --renumpad ' + i_params.padding;
+	if (i_params.first_frame)
+		cmd += ' --renumfirst ' + i_params.first_frame;
 	if (i_params.format && (i_params.format != 'asis'))
 		cmd += ' -r ' + i_params.format;
 
@@ -806,6 +856,9 @@ function d_CvtMovies(i_wnd, i_params, i_to_sequence)
 
 		if (i_params.padding)
 			cmd += ' -p ' + i_params.padding;
+
+		if (i_params.first_frame)
+			cmd += ' --first ' + i_params.first_frame;
 	}
 	else
 	{

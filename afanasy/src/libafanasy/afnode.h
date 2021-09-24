@@ -22,7 +22,6 @@
 
 #include "af.h"
 
-class MCGeneral;
 class AfContainer;
 class AfContainerIt;
 class AfList;
@@ -48,10 +47,14 @@ public:
 	inline int64_t getFlags() const { return m_flags; }
 	inline int64_t getState() const { return m_state; }
 
-	inline const std::string &getAnnotation() const { return m_annotation; }
-	inline const std::string &getCustomData() const { return m_custom_data; }
+	inline bool hasCustomData() const {return m_custom_data.size() != 0;}
+	inline bool  noCustomData() const {return m_custom_data.size() == 0;}
 
-	friend class ::AfContainer;
+    inline const std::string & getAnnotation() const {return m_annotation; }
+	inline const std::string & getCustomData() const {return m_custom_data;}
+	inline const std::string & getSrvInfo()    const {return m_srv_info;   }
+
+    friend class ::AfContainer;
 	friend class ::AfList;
 
 	virtual int v_calcWeight() const; ///< Calculate and return memory size.
@@ -78,12 +81,17 @@ public:
 		const JSON &i_object, std::string *io_changes = NULL, MonitorContainer *i_monitoring = NULL);
 	virtual void v_jsonWrite(std::ostringstream &o_str, int i_type) const;
 
-	Msg *jsonWrite(const std::string &i_type, const std::string &i_name) const;
+	inline const std::map<std::string, int32_t> & getRunnigServices() const {return m_running_services;}
 
 protected:
 	virtual void v_readwrite(Msg *msg); ///< Read or write node attributes in message
 
 	virtual void v_priorityChanged(MonitorContainer *i_monitoring);
+
+	void incrementService(const std::string & i_name);
+	void decrementService(const std::string & i_name);
+
+	inline void clearRunningServices() {m_running_services.clear();}
 
 protected:
 	/// Node id, unique for nodes of the same type. It is a position in container where node is stored.
@@ -107,8 +115,11 @@ protected:
 
 	std::string m_annotation;
 	std::string m_custom_data;
+	std::string m_srv_info;       ///< Some info that server can show to user.
 
 private:
 	std::list<std::string> m_log; ///< Log.
+
+	std::map<std::string, int32_t> m_running_services;
 };
 }

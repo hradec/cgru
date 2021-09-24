@@ -45,11 +45,10 @@ font: 16px Arial;
 font-weight: bold;
 float: left;
 border: 2px solid #575757;
-border-radius: 2px 2px 16px 16px;
+border-radius: 2px 2px 4px 4px;
 margin: -8px 10px;
-padding: 6px 8px 3px 8px;
+padding: 6px 12px 3px 12px;
 cursor: pointer;
-text-transform: uppercase;
 text-align: center;
 color: #222;
 }
@@ -139,6 +138,14 @@ background-color: rgba(150,255,255,.1);
 -webkit-user-select: none;
 }
 .button:hover { background-color: rgba(150,255,255,.3); }
+.button.delete {
+background-image: url(/lib/icons/delete.png);
+background-size: 100%;
+background-repeat: no-repeat;
+background-position: center;
+width: 12px; height: 12px;
+margin: 0; padding: 0;
+}
 
 .monitor {
 position: absolute;
@@ -150,7 +157,7 @@ overflow: hidden;
 
 .view {
 position: absolute;
-left: 50px; right: 200px;
+left: 100px; right: 400px;
 top: 0; bottom: 0;
 }
 .panel {
@@ -159,7 +166,7 @@ top: 0; bottom: 0;
 }
 .panel.left {
 left: 0;
-width: 48px;
+width: 98px;
 border-right: 2px solid #575757;
 }
 .panel.right {
@@ -169,7 +176,7 @@ border-left: 2px solid #575757;
 overflow-y: auto;
 word-wrap: break-word;
 }
-.panel.right .name {
+.panel.right .node_name {
 padding: 4px;
 text-align: center;
 font-weight: bold;
@@ -308,18 +315,19 @@ cursor: default;
 .ONL { background: #787;}
 .NbY { background: #88F;}
 .NBY { background: #77F;}
+.WDP { background: #969;}
+.WTM { background: #599;}
 .PAU { background: #888;}
 .DON { background: #486;}
 .WRN { background: #292;}
-.WDP { background: #969;}
 .PPA { background: #CC6;}
 .RUN { background: #8A6;}
-.WTM { background: #599;}
 .ERR { background: #965;}
 .RER { background: #F77;}
 .WRC { background: #4AC;}
 .OFF, .item.task.SKP { background: #777;}
-.DRT { border: 1px solid #955;}
+.SIC {background: #F55;}
+.DRT { border: 1px solid #F00;}
 .item.hidden { display: none;}
 .monitor.show_hidden .item.hidden { display: block; opacity: .5;}
 .item.selected, .item.task.selected {
@@ -338,6 +346,57 @@ font-style: italic;
 text-transform: lowercase;
 }
 
+.service, .disabled_service {
+margin: 1px 4px;
+padding: 1px 4px;
+border-radius: 2px;
+}
+.service {
+font-weight: bold;
+float: left;
+border: 1px solid #555;
+}
+.service.ticket.host {
+float: right;
+}
+.service.running {
+border: 1px solid #FF5;
+font-style: italic;
+}
+.service.limit_reached {
+border: 1px solid #F55;
+}
+.disabled_service {
+float: right;
+border: 1px solid #F55;
+}
+.service.dummy {
+font-weight: normal;
+border: 1px dashed #FF5;
+}
+/*
+	.service.disabled is a configured service that is temporary disabled
+	.disabled_service is not a service that is disabled, it is not a service
+ */
+.service img { width: 14px; height: 14px; float: left; margin: 1px 2px;}
+.service.ticket img { width: auto;}
+.info_services .service .name { padding: 4px; }
+.info_services .disabled_service .name { padding: 2px 4px; }
+.info_services .service img { width: 24px; height: 24px; }
+.info_services .service.ticket img { width: auto; height: 24px; }
+.service.disabled { opacity: 0.7; border: 1px solid #F55;}
+.service.disabled div { text-decoration: line-through; font-style: italic;}
+.disabled_service { text-decoration: line-through;}
+.service .button.delete, .disabled_service .button.delete { float: right;}
+/*
+	serivces are shown in a pool/render item and in the right panel info
+*/
+.info_services {
+border-top: 1px solid #555;
+margin-top: 4px;
+padding-top: 4px;
+}
+
 .render .resources {
 background: #EEEE99;
 position: absolute;
@@ -345,6 +404,10 @@ top: 0;
 left: 54%;
 width: 0;
 overflow: visible;
+}
+
+.item.render .tickets {
+float: right;
 }
 
 .item.render .plotter {
@@ -390,6 +453,10 @@ border: 1px solid #575757;
 .jobblock.selected {
 background: #DFD;
 }
+
+.jobblock .ticket { float: left; margin: 0px 4px; }
+.jobblock .ticket img { width: auto; height: 14px; float: left; }
+.jobblock .ticket .label { font-size: 12px; }
 
 .item.block {
 margin: 4px 4px 0px 4px;
@@ -501,6 +568,9 @@ position: absolute;
 background: #55AA44;
 left: 0; top: 0; bottom: 0;
 }
+.rendertask .ticket { float: left; margin: 0px 3px; }
+.rendertask .ticket img { float: left; width: auto; height: 14px; }
+.rendertask .ticket .label { float: right; font-size: 10px; font-weight: normal; margin: 1px; }
 /*
 .rendertask .icon {
 position: absolute;

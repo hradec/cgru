@@ -1,26 +1,22 @@
 # -*- coding: utf-8 -*-
 
-from parsers import parser
+from parsers import maya
 
 FRAME = "FumeFX: Frame: "
 
 
-class mayafumefx(parser.parser):
+class mayafumefx(maya.maya):
     """Maya FumeFX simulation
     """
 
     def __init__(self):
-        parser.parser.__init__(self)
+        maya.maya.__init__(self)
         self.firstframe = True
-        self.str_error = ['Error: FumeFX is not authorized']
+        self.str_error += ['Error: FumeFX is not authorized']
 
-    def do(self, data, mode):
-        """Missing DocString
+    def do(self, i_args):
+        data = i_args['data']
 
-        :param data:
-        :param mode:
-        :return:
-        """
         needcalc = False
         index = 0
         while index < len(data):

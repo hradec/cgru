@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from parsers import parser
+from parsers import maya
 
 import re
 
@@ -9,24 +9,22 @@ import re
 re_percent = re.compile(r'(\s*)(\d*)(\s*% done)')
 
 
-class maya_arnold(parser.parser):
+class maya_arnold(maya.maya):
     """mtoa parser
     """
 
     def __init__(self):
-        parser.parser.__init__(self)
+        maya.maya.__init__(self)
         self.firstframe = True
         self.data_all = ''
 
-        self.str_error = ['[mtoa] Failed batch render']
+        self.str_error += [
+            '[mtoa] Failed batch render'
+        ]
 
-    def do(self, data, mode):
-        """Missing DocString
+    def do(self, i_args):
+        data = i_args['data']
 
-        :param data:
-        :param mode:
-        :return:
-        """
         if len(data) < 1:
             return
 

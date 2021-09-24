@@ -16,8 +16,14 @@ namespace AFGUI
 
 	const char FONT_FAMILY[] = "SansSerif";
 
-	const int THUMB_JOBS_NUM = 10;
 	const int THUMB_JOBS_HEIGHT = 50;
+
+	const int RENDER_ITEM_SIZE = 0;
+
+	const int LEFT   = 0;
+	const int TOP    = 1;
+	const int RIGHT  = 2;
+	const int BOTTOM = 3;
 
 	const int STAR_NUMPOINTS = 5;
 	const int STAR_RADIUSOUT = 100;
@@ -66,12 +72,15 @@ namespace AFGUI
 	const char CLR_TASKWARNINGRUN[]  = "CCCC55";
 	const char CLR_TASKSKIPPED[]     = "555555";
 	const char CLR_TASKWAITRECONN[]  = "4099CC";
+	const char CLR_TASKTRYNEXT[]     = "AAAAAA";
 	const char CLR_ITEMRENDER[]      = "6D6C69";
 	const char CLR_ITEMRENDEROFF[]   = "50544C";
 	const char CLR_ITEMRENDERBUSY[]  = "637840";
-	const char CLR_ITEMRENDERNIMBY[] = "5E778F";
+	const char CLR_ITEMRENDERnimby[] = "5E88AF";
+	const char CLR_ITEMRENDERNIMBY[] = "556699";
 	const char CLR_ITEMRENDERPAUSED[]= "777777";
-	const char CLR_ITEMRENDERPLTCLR[]= "FAFA32";
+	const char CLR_ITEMRENDERSICK[]  = "FF7777";
+	const char CLR_ITEMRENDERPLTCLR[]= "DADA32";
 	const char CLR_RUNNING[]         = "FFFFFF";
 	const char CLR_DONE[]            = "D67F00";
 	const char CLR_ERROR[]           = "B92803";
@@ -127,12 +136,15 @@ namespace AFGUI
 	const char CLR_TASKWARNINGRUN[]  = "DC7C50";
 	const char CLR_TASKSKIPPED[]     = "444444";
 	const char CLR_TASKWAITRECONN[]  = "4099CC";
+	const char CLR_TASKTRYNEXT[]     = "AAAAAA";
 	const char CLR_ITEMRENDER[]      = "43764A";
 	const char CLR_ITEMRENDEROFF[]   = "50544C";
 	const char CLR_ITEMRENDERBUSY[]  = "637840";
-	const char CLR_ITEMRENDERNIMBY[] = "5E778F";
+	const char CLR_ITEMRENDERnimby[] = "5E88AF";
+	const char CLR_ITEMRENDERNIMBY[] = "556699";
 	const char CLR_ITEMRENDERPAUSED[]= "777777";
-	const char CLR_ITEMRENDERPLTCLR[]= "FAFA32";
+	const char CLR_ITEMRENDERSICK[]  = "FF7777";
+	const char CLR_ITEMRENDERPLTCLR[]= "DADA32";
 	const char CLR_RUNNING[]         = "A0D26E";
 	const char CLR_DONE[]            = "14320A";
 	const char CLR_ERROR[]           = "FA320A";

@@ -41,12 +41,13 @@ public:
 
 	af::TaskProgress taskprogress;
 
-	virtual const QVariant getToolTip() const;
-	virtual const QString getSelectString() const;
+	virtual const QString  v_getSelectString() const;
+	virtual const QString  v_getInfoText()     const;
+
+	virtual bool v_mousePressed(int i_x, int i_y, int i_w, int i_h, const Qt::MouseButtons & i_buttons);
 
 	void showThumbnail();
 
-	static const int ItemId = 2;
 	static const int WidthInfo;
 
 	bool compare( int type, const ItemJobTask & other, bool ascending) const;
@@ -59,15 +60,11 @@ public:
 	inline const af::MCTaskPos getTaskPos() const { return af::MCTaskPos( m_job_id, m_blocknum, m_tasknum);}
 	
 protected:
-	virtual void paint( QPainter *painter, const QStyleOptionViewItem &option) const;
+	virtual void v_paint(QPainter * i_painter, const QRect & i_rect, const QStyleOptionViewItem & i_option) const;
 
 private:
 	void processFiles();
 	void thumbsCLear();
-
-private:
-	static const int TaskHeight = 13;
-	static const int TaskThumbHeight = 100;
 
 private:
 	ListTasks * m_list;
@@ -84,6 +81,6 @@ private:
 	std::vector<std::string> m_files;
 	bool m_files_ready;
 
-	int m_thumbs_num;
-	QImage ** m_thumbs_imgs;
+	QVector<QImage*> m_thumbs_imgs;
+	QVector<QString> m_thumbs_names;
 };

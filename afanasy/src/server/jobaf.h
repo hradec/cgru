@@ -89,6 +89,10 @@ public:
 	/// Initialize new job, came to Afanasy container.
 	bool initialize();
 
+	/// Set state of new tasks
+	void checkStates();
+	void checkStatesOnAppend();
+
 	int getUid() const;
 
 	virtual int v_calcWeight()        const;  ///< Calculate and return memory size.
@@ -111,13 +115,16 @@ public:
 	void addSolveCounts(MonitorContainer * i_monitoring, af::TaskExec * i_exec, RenderAf * i_render);
 	void remSolveCounts(MonitorContainer * i_monitoring, af::TaskExec * i_exec, RenderAf * i_render);
 
+	void tryTaskNext(bool i_append, int i_block_num, int i_task_num);
+
 public:
 	/// Set Jobs Container.
 	inline static void setJobContainer( JobContainer *Jobs){ ms_jobs = Jobs;}
 
 protected:
-	/// Allocate JobInfo, tasksLog.
-	void construct();
+	/// Allocate Block objects.
+	/// Assumes that 'alreadyConstructed' Block objects are already allocated (usefull when appending new blocks)
+	void construct(int alreadyConstructed = 0);
 
 	void readStore();
 	
@@ -126,6 +133,7 @@ protected:
 protected:
 	af::JobProgress * m_progress; ///< Tasks progress.
 	Block ** m_blocks; ///< Blocks.
+	UserAf * m_user;
 
 private:
 	bool m_deletion; ///< Whether the job is deleting.
@@ -133,7 +141,6 @@ private:
 	std::list<RenderAf*> renders_ptrs;
 	std::list<int> renders_counts;
 
-	UserAf * m_user;
 	BranchSrv * m_branch_srv;
 
 	std::string m_store_dir_tasks; ///< Tasks store directory.
@@ -152,6 +159,8 @@ private:
 
 	bool solveOnRender( RenderAf * i_render, MonitorContainer * i_monitoring);
 
+	bool solveTaskOnRender(RenderAf * i_render, int i_block_num, int i_task_num, MonitorContainer * i_monitoring, bool & o_continue);
+
 	virtual void v_priorityChanged( MonitorContainer * i_monitoring);
 
 	/// Check whether job has not done depend jobs.
@@ -161,13 +170,18 @@ private:
 	/// Restart tasks, can restart only matching state mask.
 	void restartAllTasks( const std::string & i_message, RenderContainer * i_renders, MonitorContainer * i_monitoring, uint32_t i_state = 0);
 
+	bool checkTryTasksNext();
+	void resetTryTasksNext();
+
+	void appendBlocks(Action & i_action, const JSON & i_operation);
+
 	af::TaskExec *genTask( RenderAf *render, int block, int task, std::list<int> * blocksIds, MonitorContainer * monitoring);
 	
 	/**
 	 * @brief Emit events and submit them to the wall job
 	 * @param events: event types, e.g. JOB_DONE, JOB_ERROR or JOB_DELETED
 	 */
-	void emitEvents(std::vector<std::string> events);
+	void emitEvents(const std::vector<std::string> & i_events) const;
 
 private:
 	static JobContainer * ms_jobs;          ///< Jobs container pointer.

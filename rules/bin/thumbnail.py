@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 import json
@@ -112,7 +111,7 @@ if Options.input.find(',') != -1 or os.path.isdir(Options.input):
                 elif cgruutils.isMovieExt(afile) and not Options.nomovie:
                     new_movie = os.path.join(root, afile)
                     new_mtime = int(os.path.getmtime(new_movie))
-                    if new_movie > cur_mtime:
+                    if new_mtime > cur_mtime:
                         Movie = new_movie
                         cur_mtime = new_mtime
 
@@ -290,6 +289,9 @@ if Options.debug:
     sys.exit(0)
 
 for cmd in Cmds:
-    os.system(cmd)
+    if Options.verbose:
+        os.system(cmd)
+    else:
+        os.system(cmd + ' > /dev/null 2>&1')
 
 print(json.dumps(out))

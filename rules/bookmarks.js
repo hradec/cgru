@@ -27,8 +27,11 @@ function bm_Init()
 	if (localStorage.bookmarks_opened == null)
 		localStorage.bookmarks_opened = 'false';
 
-	if (localStorage.bookmarks_projects_opened == null)
-		localStorage.bookmarks_projects_opened = '';
+	if (localStorage.bookmarks_projects_closed == null)
+		localStorage.bookmarks_projects_closed = '';
+
+	if (localStorage.bookmarks_scenes_closed == null)
+		localStorage.bookmarks_scenes_closed = '';
 
 	if (localStorage.bookmarks_thumbnails_show == null)
 		localStorage.bookmarks_thumbnails_show = 'false';
@@ -61,6 +64,11 @@ function bm_InitConfigured()
 	if (RULES.bookmarks.refresh < 1)
 		return;
 	setInterval(bm_Load, RULES.bookmarks.refresh * 1000);
+}
+
+function bm_GetUserFileName()
+{
+	return ad_GetUserFileName(g_auth_user.id, 'bookmarks');
 }
 
 function bm_OnClick()
@@ -114,12 +122,13 @@ function bm_Load(i_args)
 	if (i_args.info == null)
 		i_args.info = 'load';
 
-	var filename = 'users/' + g_auth_user.id + '.json';
-	n_Request({
-		'send': {'getobjects': {'file': filename, 'objects': ['bookmarks']}},
+	n_GetFile({
+		'path': bm_GetUserFileName(),
 		'func': bm_Received,
-		'args': i_args,
-		'info': 'bookmarks ' + i_args.info
+		'info': 'news',
+		'cache_time': -1,
+		'parse': true,
+		'local': false
 	});
 }
 
@@ -128,12 +137,12 @@ function bm_Received(i_user, i_args)
 	if (false == bm_initialized)
 		return;
 
-	// console.log('nw_NewsReceived()');
 	if (i_user == null)
 		return;
+
 	if (i_user.error)
 	{
-		c_Error(i_user.error);
+		c_Log(i_user.error);
 		return;
 	}
 
@@ -180,8 +189,9 @@ function bm_Show()
 
 	g_auth_user.bookmarks.sort(bm_Compare);
 
-	// Collect projects:
+	// Collect projects and scenes:
 	let project = null;
+	let scene = null;
 	for (let i = 0; i < g_auth_user.bookmarks.length; i++)
 	{
 		let bm = g_auth_user.bookmarks[i];
@@ -195,16 +205,34 @@ function bm_Show()
 		{
 			project = {};
 			project.name = names[1];
-			project.bms = [];
+			project.scenes = [];
+			scene = null;
 
 			bm_projects.push(project);
 		}
 
-		project.bms.push(bm);
+		let scene_path = null;
+		let scene_name = null;
+		if (names.length > 3)
+		{
+			scene_path = names[1] + '/' + names[2] + '/' + names[3];
+			scene_name = names[3];
+		}
+		if ((scene == null) || (scene.path != scene_path))
+		{
+			scene = {};
+			scene.name = scene_name;
+			scene.path = scene_path;
+			scene.bms = [];
+
+			project.scenes.push(scene);
+		}
+
+		scene.bms.push(bm);
 	}
 
 	// Construct elements:
-	let opened = localStorage.bookmarks_projects_opened.split('|');
+	let closed_projects = localStorage.bookmarks_projects_closed.split('|');
 	for (let p = 0; p < bm_projects.length; p++)
 	{
 		let project = bm_projects[p];
@@ -213,49 +241,82 @@ function bm_Show()
 		project.el = document.createElement('div');
 		$('bookmarks').appendChild(project.el);
 		project.el.classList.add('project');
-		if (opened.indexOf(project.name) != -1)
-			project.el.classList.add('opened');
-		else
+		if (closed_projects.includes(project.name))
 			project.el.classList.add('closed');
+		else
+			project.el.classList.add('opened');
 
 		// Project label:
 		let el = document.createElement('div');
 		project.elLabel = el;
 		project.el.appendChild(el);
+		el.textContent = project.name;
 		el.classList.add('label');
 		el.onclick = bm_ProjectClicked;
-		el.m_project = project;
-		el.textContent = project.name + ' - ' + project.bms.length;
 
-		// Project bookmarks:
-		let folder_label = null;
-		for (let b = 0; b < project.bms.length; b++)
+		// Project scenes:
+		let project_count = 0;
+		let closed_scenes = localStorage.bookmarks_scenes_closed.split('|');
+		for (let s = 0; s < project.scenes.length; s++)
 		{
-			let bm = project.bms[b];
+			let scene = project.scenes[s];
 
-			// Folder label:
-			let label = bm.path.split('/');
-			if (label.length > 3)
-				label = label.slice(3,-1);
-			label = label.join(' / ');
-			if (label != folder_label)
+			// Scene element:
+			scene.el = document.createElement('div');
+			project.el.appendChild(scene.el);
+			scene.el.classList.add('scene');
+			if (closed_scenes.includes(scene.path))
+				scene.el.classList.add('closed');
+			else
+				scene.el.classList.add('opened');
+
+			// Scene label:
+			if (scene.name)
 			{
 				let el = document.createElement('div');
-				project.el.appendChild(el);
-				el.classList.add('bm_folder_label');
-				el.textContent = label;
-				folder_label = label;
+				scene.elLabel = el;
+				scene.el.appendChild(el);
+				el.textContent = scene.name;
+				el.classList.add('label');
+				el.onclick = bm_SceneClicked;
 			}
 
-			// Bookmark element:
-			let el = bm_CreateBookmark(bm);
-			bm_elements.push(el);
-			project.el.appendChild(el);
+			// Scene bookmarks:
+			for (let b = 0; b < scene.bms.length; b++)
+			{
+				let bm = scene.bms[b];
+
+				// Bookmark element:
+				let el = bm_CreateBookmark(bm);
+				bm_elements.push(el);
+				scene.el.appendChild(el);
+			}
+
+			if (scene.elLabel)
+			{
+				let label = scene.name + ' - ' + scene.bms.length;
+				scene.elLabel.textContent = label;
+
+				scene.elLabel.title = scene.path
+						+ '\nBookmarks count: ' + scene.bms.length
+						+ '\nClick to toggle collapse';
+			}
+
+			project_count += scene.bms.length;
 		}
+
+		let label = project.name + ' - ' + project_count;
+		project.elLabel.textContent = label;
+
+		project.elLabel.title = 'Project: ' + project.name
+				+ '\nBookmarks count: ' + project_count
+				+ '\nClick to toggle collapse';
 	}
 
 	bm_HighlightCurrent();
 	bm_ThumbnailsShowHide();
+
+	bm_DeleteObsoleteForTime();
 }
 
 function bm_CreateBookmark(i_bm)
@@ -274,36 +335,14 @@ function bm_CreateBookmark(i_bm)
 	elDel.ondblclick = function(e) { bm_Delete([e.currentTarget.m_path]); };
 	elDel.title = 'Double click to delete.';
 
-	// Display status:
-	if (i_bm.status)
-	{
-		let elStatus = document.createElement('div');
-		el.appendChild(elStatus);
-		elStatus.classList.add('status');
-
-		// Flags:
-		if (i_bm.status.flags && i_bm.status.flags.length)
-		{
-			let elFlags = document.createElement('div');
-			elStatus.appendChild(elFlags);
-			elFlags.classList.add('flags');
-			st_SetElFlags(i_bm.status, elFlags);
-		}
-
-		// Show progress bar:
-		if (i_bm.status.progress)
-		{
-			let elBar = document.createElement('div');
-			el.appendChild(elBar);
-			elBar.classList.add('bar');
-			st_SetElProgress(i_bm.status, elBar);
-		}
-	}
-
 	var elPath = document.createElement('a');
 	el.appendChild(elPath);
+	elPath.classList.add('name');
 	elPath.textContent = name;
 	elPath.href = '#' + i_bm.path;
+
+	// Display status:
+	st_SetElStatus(el, i_bm.status, /*show all tasks = */ false);
 
 	var tooltip = '';
 	if (i_bm.cuser)
@@ -316,7 +355,7 @@ function bm_CreateBookmark(i_bm)
 		tooltip += 'Modified at: ' + c_DT_StrFromSec(i_bm.mtime) + '\n';
 	el.title = tooltip;
 
-	if (bm_ObsoleteStatus(i_bm.status))
+	if (false == bm_ActualStatus(i_bm.status))
 		el.classList.add('obsolete');
 
 	el.m_bookmark = i_bm;
@@ -326,14 +365,14 @@ function bm_CreateBookmark(i_bm)
 
 function bm_ProjectClicked(i_evt)
 {
-	var el = i_evt.currentTarget.m_project.el;
+	let el = i_evt.currentTarget.parentElement;
 	el.classList.toggle('opened');
 	el.classList.toggle('closed');
 
-	var list = '';
-	for (var p = 0; p < bm_projects.length; p++)
+	let list = '';
+	for (let p = 0; p < bm_projects.length; p++)
 	{
-		if (bm_projects[p].el.classList.contains('closed'))
+		if (false == bm_projects[p].el.classList.contains('closed'))
 			continue;
 
 		if (list.length)
@@ -342,7 +381,36 @@ function bm_ProjectClicked(i_evt)
 		list += bm_projects[p].name;
 	}
 
-	localStorage.bookmarks_projects_opened = list;
+	localStorage.bookmarks_projects_closed = list;
+}
+
+function bm_SceneClicked(i_evt)
+{
+	let el = i_evt.currentTarget.parentElement;
+	el.classList.toggle('opened');
+	el.classList.toggle('closed');
+
+	let list = '';
+	for (let p = 0; p < bm_projects.length; p++)
+	{
+		for (let s = 0; s < bm_projects[p].scenes.length; s++)
+		{
+			let scene =  bm_projects[p].scenes[s];
+
+			if (scene.path == null)
+				continue;
+
+			if (false == scene.el.classList.contains('closed'))
+				continue;
+
+			if (list.length)
+				list += '|';
+
+			list += scene.path;
+		}
+	}
+
+	localStorage.bookmarks_scenes_closed = list;
 }
 
 function bm_NavigatePost()
@@ -353,30 +421,49 @@ function bm_NavigatePost()
 	bm_HighlightCurrent();
 }
 
-function bm_ObsoleteStatus(i_status)
+function bm_ActualStatus(i_status)
 {
 	if (i_status == null)
-		return true;
+		return false;
+
+	if (i_status.tasks && (typeof i_status.tasks == 'object'))
+	{
+		for (let t in i_status.tasks)
+		{
+			let task = i_status.tasks[t];
+
+			if (task.deleted)
+				continue;
+			if (task.artists && (task.artists.indexOf(g_auth_user.id) == -1))
+				continue;
+			if (task.progress && (task.progress >= 100))
+				continue;
+			if (task.flags && (task.flags.indexOf('omit')) != -1)
+				continue;
+
+			return true;
+		}
+	}
 
 	if (i_status.artists == null)
-		return true;
+		return false;
 
 	if (i_status.artists.indexOf(g_auth_user.id) == -1)
-		return true;
+		return false;
 
 	if (i_status.progress)
 	{
 		if (i_status.progress >= 100)
-			return true;
+			return false;
 	}
 
 	if (i_status.flags)
 	{
 		if (i_status.flags.indexOf('omit') != -1)
-			return true;
+			return false;
 	}
 
-	return false;
+	return true;
 }
 
 function bm_StatusesChanged(i_args)
@@ -386,14 +473,12 @@ function bm_StatusesChanged(i_args)
 
 function bm_HighlightCurrent()
 {
-	var path = g_CurPath();
-
-	for (var i = 0; i < bm_elements.length; i++)
+	for (let i = 0; i < bm_elements.length; i++)
 	{
-		if (path == bm_elements[i].m_bookmark.path)
+		if (bm_elements[i].m_bookmark.path == g_CurPath())
 		{
 			bm_elements[i].classList.add('cur_path');
-			if (g_CurPathDummy() || bm_ObsoleteStatus(RULES.status))
+			if (g_CurPathDummy() || (false == bm_ActualStatus(RULES.status)))
 			{
 				bm_elements[i].classList.add('obsolete');
 			}
@@ -421,7 +506,7 @@ function bm_Delete(i_paths)
 		obj.objects.push({"path": i_paths[i]});
 	obj.delarray = 'bookmarks';
 
-	obj.file = 'users/' + g_auth_user.id + '.json';
+	obj.file = bm_GetUserFileName();
 	n_Request({"send": {"editobj": obj}, "func": bm_DeleteFinished});
 }
 
@@ -439,18 +524,63 @@ function bm_DeleteFinished(i_data)
 
 function bm_DeleteObsoleteOnClick()
 {
-	var paths = [];
-	for (var i = 0; i < bm_elements.length; i++)
-		if (bm_elements[i].classList.contains('obsolete'))
-			paths.push(bm_elements[i].m_bookmark.path);
-
-	if (paths.length == 0)
+	let bookmarks_deleted = bm_DeleteObsoleteForTime(true);
+	if (bookmarks_deleted == 0)
+		c_Info('No obsolete bookmarks found.');
+	else
+		c_Info('Bookmarks deleted: ' + bookmarks_deleted);
+}
+function bm_DeleteObsoleteForTime(i_delete_any_time)
+{
+	let paths = [];
+	let cur_seconds = c_DT_CurSeconds();
+	for (let i = 0; i < bm_elements.length; i++)
 	{
-		c_Info('No obsolete bookmarks founded.');
-		return;
+		let el = bm_elements[i];
+		let bm = el.m_bookmark;
+
+		if ( ! bm.mtime)
+		{
+			paths.push(bm.path);
+			c_Log('Deleting invalid bookmark: ' + bm.path + ' - no modification time.');
+			continue;
+		}
+
+		if (false == el.classList.contains('obsolete'))
+		{
+			// Delete bookmarks that are inactive for a long time
+			if ((cur_seconds - bm.mtime) > (RULES.bookmarks.inactive_delete_days * 24 * 60 * 60))
+			{
+				paths.push(bm.path);
+				c_Log('Deleting inactive bookmark: ' + bm.path + ' - '
+						+ c_DT_StrFromSec(bm.mtime) + ' - ' + RULES.bookmarks.inactive_delete_days + ' days.');
+			}
+
+			continue;
+		}
+
+		// Deleta all obsolete bookmarks
+		if (i_delete_any_time)
+		{
+			paths.push(bm.path);
+			c_Log('Deleting obsolete bookmark: ' + bm.path);
+			continue;
+		}
+
+		// Delete obsolete bookmarks if modified time later than configured
+		if ((cur_seconds - bm.mtime) > (RULES.bookmarks.obsolete_delete_days * 24 * 60 * 60))
+		{
+			paths.push(bm.path);
+			c_Log('Deleting obsolete bookmark: ' + bm.path + ' - '
+					+ c_DT_StrFromSec(bm.mtime) + ' - ' + RULES.bookmarks.obsolete_delete_days + ' days.');
+			continue;
+		}
 	}
 
-	bm_Delete(paths);
+	if (paths.length)
+		bm_Delete(paths);
+
+	return paths.length;
 }
 
 /* ---------------- [ thumbnail functions ] -------------------------------------------------------------- */

@@ -397,7 +397,7 @@ JobNode.prototype.showThumb = function(i_path) {
 		var img = document.createElement('img');
 		thumb.appendChild(img);
 		img.ondragstart = function() { return false; };
-		img.src = '@TMP@' + i_path;
+		img.src = '/@TMP@' + i_path;
 		img.style.display = 'none';
 		img.m_height = this.monitor.view_opts.jobs_thumbs_height;
 		img.onload = function(e) {
@@ -441,7 +441,7 @@ function JobBlock(i_elParent, i_block)
 	this.service = this.params.service;
 	this.elIcon = document.createElement('img');
 	this.elRoot.appendChild(this.elIcon);
-	this.elIcon.src = 'icons/software/' + this.service + '.png';
+	this.elIcon.src = '/icons/software/' + this.service + '.png';
 	this.elIcon.style.position = 'absolute';
 	//	this.elIcon.classList.add('icon');
 
@@ -453,6 +453,7 @@ function JobBlock(i_elParent, i_block)
 	this.elName = cm_ElCreateText(this.element, 'Block Name');
 	this.elDepends = cm_ElCreateText(this.element);
 
+	this.elTickets = cm_ElCreateFloatText(this.element, 'right', 'Task Tickets');
 	this.elCapacity = cm_ElCreateFloatText(this.element, 'right', 'Tasks Capacity');
 	this.elErrSolving = cm_ElCreateFloatText(this.element, 'right');
 	this.elForgiveTime = cm_ElCreateFloatText(this.element, 'right', 'Errors Forgive Time');
@@ -707,6 +708,8 @@ JobBlock.prototype.constructFull = function() {
 	this.elTasksWrc = cm_ElCreateText(this.elFull, 'Waiting Reconnect Tasks Counter');
 	this.elTasksErr = cm_ElCreateText(this.elFull, 'Error Tasks Counter');
 
+	this.elSrvInfo = cm_ElCreateText(this.elFull, 'Server Information String');
+
 	//	this.elTasksDon.classList.add('font-done');
 	//	this.elTasksRdy.classList.add('font-ready');
 	//	this.elTasksRun.classList.add('font-run');
@@ -714,6 +717,7 @@ JobBlock.prototype.constructFull = function() {
 	this.elTasksErr.classList.add('ERR');
 	this.elTasksErr.style.display = 'none';
 
+	this.elTickets = cm_ElCreateFloatText(this.elFull, 'right', 'Tasks Tickets');
 	this.elErrHosts = cm_ElCreateFloatText(this.elFull, 'right');
 };
 
@@ -1097,6 +1101,8 @@ JobBlock.prototype.update = function(i_displayFull) {
 			this.elRunTime.textContent = '';
 			this.elRunTime.title = '';
 		}
+
+		this.updateTickets();
 	}
 
 	if (this.displayFull)
@@ -1249,6 +1255,11 @@ JobBlock.prototype.update = function(i_displayFull) {
 			this.elErrHosts.innerHTML = he_txt;
 		}
 
+		if (this.params.srv_info)
+			this.elSrvInfo.innerHTML = '<b>' + this.params.srv_info + '</b>';
+		else
+			this.elSrvInfo.textContent = '';
+
 		// Show/Hire error hosts counter as it has a special style.
 		// And set an empty string (like on other counters) is not enough.
 		if (tasks_err)
@@ -1323,16 +1334,43 @@ JobBlock.prototype.update = function(i_displayFull) {
 	}
 };
 
+JobBlock.prototype.updateTickets = function() {
+	this.elTickets.textContent = '';
+
+	var tickets = this.params.tickets;
+	if (tickets == null)
+		return;
+
+	for (let tk in tickets)
+	{
+		let elTk = document.createElement('div');
+		elTk.classList.add('ticket');
+		this.elTickets.appendChild(elTk);
+
+		let label = '';
+
+		if (cm_TicketsIcons.includes(tk + '.png'))
+		{
+			let elIcon = document.createElement('img');
+			elTk.appendChild(elIcon);
+			elIcon.src = ('/icons/tickets/' + tk + '.png');
+		}
+		else
+			label += tk;
+
+		let elLabel = document.createElement('div');
+		elTk.appendChild(elLabel);
+		elLabel.classList.add('label');
+		elLabel.textContent = label + 'x' + tickets[tk];
+	}
+}
+
 JobNode.prototype.updatePanels = function() {
 	var elPanelR = this.monitor.elPanelR;
-
-	work_UpdatePanels(this.monitor, this);
-
 
 	// Blocks:
 	JobBlock.deselectAll(this.monitor);
 	elPanelR.m_elBlocks.classList.remove('active');
-
 
 	// Errors control buttons:
 	var errors = 0;
@@ -1451,8 +1489,6 @@ JobNode.resetPanels = function(i_monitor) {
 			elFolders.removeChild(elFolders.m_elFolders[i]);
 	elFolders.m_elFolders = [];
 	elFolders.m_elRules.style.display = 'none';
-
-	work_ResetPanels(i_monitor);
 };
 
 JobNode.createPanels = function(i_monitor) {
@@ -1461,36 +1497,36 @@ JobNode.createPanels = function(i_monitor) {
 
 	// Errors:
 	var acts = {};
-	acts.error_hosts /********/ = {'label': 'GEH', "handle": 'mh_Get', 'tooltip': 'Show error hosts.'};
-	acts.reset_error_hosts /**/ = {'label': 'REH', 'handle': 'mh_Oper', 'tooltip': 'Reset error hosts.'};
-	acts.restart_errors /*****/ = {'label': 'RET', 'handle': 'mh_Oper', 'tooltip': 'Restart error tasks.'};
+	acts.error_hosts       = {'label':'Get',     'handle':'mh_Get',  'tooltip':'Show error hosts.'};
+	acts.reset_error_hosts = {'label':'Reset',   'handle':'mh_Oper', 'tooltip':'Reset error hosts.'};
+	acts.restart_errors    = {'label':'Restart', 'handle':'mh_Oper', 'tooltip':'Restart error tasks.'};
 	i_monitor.createCtrlBtn(
-		{'name': 'errors', 'label': 'ERR', 'tooltip': 'Error tasks and hosts.', 'sub_menu': acts});
+		{'name': 'errors', 'label': 'Errors', 'tooltip': 'Error tasks and hosts.', 'sub_menu': acts});
 
 
 	// Restart:
 	var acts = {};
-	acts.restart /**********/ = {'label': 'ALL', 'tooltip': 'Restart all tasks.'};
-	acts.restart_pause /****/ = {'label': 'A&P', 'tooltip': 'Restart all and pause.'};
-	acts.restart_errors /***/ = {'label': 'ERR', 'tooltip': 'Restart error tasks.'};
-	acts.restart_running /**/ = {'label': 'RUN', 'tooltip': 'Restart running tasks.'};
-	acts.restart_skipped /**/ = {'label': 'SKP', 'tooltip': 'Restart skipped tasks.'};
-	acts.restart_done /*****/ = {'label': 'DON', 'tooltip': 'Restart done task.'};
+	acts.restart         = {'label':'All',       'tooltip':'Restart all tasks.'};
+	acts.restart_pause   = {'label':'All&Pause', 'tooltip':'Restart all and pause.'};
+	acts.restart_errors  = {'label':'Errors',    'tooltip':'Restart error tasks.'};
+	acts.restart_running = {'label':'Running',   'tooltip':'Restart running tasks.'};
+	acts.restart_skipped = {'label':'Skipped',   'tooltip':'Restart skipped tasks.'};
+	acts.restart_done    = {'label':'Done',      'tooltip':'Restart done task.'};
 	i_monitor.createCtrlBtn(
-		{'name': 'restart_tasks', 'label': 'RES', 'tooltip': 'Restart job tasks.', 'sub_menu': acts});
+		{'name': 'restart_tasks', 'label': 'Restart', 'tooltip': 'Restart job tasks.', 'sub_menu': acts});
 
 
 	// Move:
 	if(false == g_VISOR() || cm_IsSith())
 	{
 		var acts = {};
-		acts.move_jobs_top /*****/ = {'label': 'TOP', 'tooltip': 'Move jobs top.'};
-		acts.move_jobs_up /******/ = {'label': 'UP', 'tooltip': 'Move jobs up.'};
-		acts.move_jobs_down /****/ = {'label': 'DWN', 'tooltip': 'Move jobs down.'};
-		acts.move_jobs_bottom /**/ = {'label': 'BOT', 'tooltip': 'Move jobs bottom.'};
+		acts.move_jobs_top    = {'label':'Top',    'tooltip':'Move jobs top.'};
+		acts.move_jobs_up     = {'label':'Up',     'tooltip':'Move jobs up.'};
+		acts.move_jobs_down   = {'label':'Down',   'tooltip':'Move jobs down.'};
+		acts.move_jobs_bottom = {'label':'Bottom', 'tooltip':'Move jobs bottom.'};
 		i_monitor.createCtrlBtn({
 			'name': 'move_jobs',
-			'label': 'MOV',
+			'label': 'Move',
 			'tooltip': 'Move jobs.',
 			'sub_menu': acts,
 			'handle': 'moveJobs'
@@ -1499,23 +1535,20 @@ JobNode.createPanels = function(i_monitor) {
 
 	// Actions:
 	var acts = {};
-	acts.start = {"label": "STA", "tooltip": 'Start job.'};
-	acts.pause = {"label": "PAU", "tooltip": 'Pause job.'};
-	acts.stop = {"label": "STP", "tooltip": 'Double click to stop job running tasks.', "ondblclick": true};
-	acts.listen =
-		{"label": "LIS", "tooltip": 'Double click to listen job.', "ondblclick": true, "handle": 'listen'};
+	acts.start  = {'label':'START',  'tooltip':'Start job.'};
+	acts.pause  = {'label':'PAUSE',  'tooltip':'Pause job.'};
+	acts.stop   = {'label':'STOP',   'tooltip':'Double click to stop job running tasks.', 'ondblclick': true};
+	acts.listen = {'label':'LISTEN', 'tooltip':'Double click to listen job.','ondblclick':true, 'handle':'listen'};
+	acts.delete = {'label':'DELETE', 'tooltip':'Double click to delete job(s).', 'ondblclick':true};
 	if(false == g_VISOR() || cm_IsSith() || cm_IsJedi())
 	{
-	    acts.delete = {"label": "DEL", "tooltip": 'Double click to delete job(s).', "ondblclick": true};
-		// if(cm_IsSith()){
-		// 	acts.deldone = {
-		// 		"label": "DDJ",
-		// 		"tooltip": 'Double click to delete all done jobs.',
-		// 		"ondblclick": true,
-		// 		"always_active": true,
-		// 		"handle": 'delDoneJobs'
-		// 	};
-		// }
+		acts.deldone = {
+			"label": "DELDONE",
+			"tooltip": 'Double click to delete all done jobs.',
+			"ondblclick": true,
+			"always_active": true,
+			"handle": 'delDoneJobs'
+		};
 	}
 	i_monitor.createCtrlBtns(acts);
 
@@ -1728,8 +1761,8 @@ JobNode.createParams = function() {
 };
 
 JobNode.view_opts = {
-	jobs_thumbs_num: {"type": 'num', "label": "TQU", "tooltip": 'Thumbnails quantity.', "default": 12},
-	jobs_thumbs_height: {"type": 'num', "label": "THE", "tooltip": 'Thumbnails height.', "default": 100}
+	jobs_thumbs_num: {"type": 'num', "label": "THUMBNAIS COUNT", "tooltip": 'Thumbnails quantity.', "default": 12},
+	jobs_thumbs_height: {"type": 'num', "label": "THUMBNAIS SIZE", "tooltip": 'Thumbnails height.', "default": 100}
 };
 
 

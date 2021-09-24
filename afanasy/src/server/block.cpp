@@ -25,22 +25,8 @@ Block::Block( JobAf * blockJob, af::BlockData * blockData, af::JobProgress * pro
    m_jobprogress( progress),
    m_initialized( false)
 {
-   m_tasks = new Task*[ m_data->getTasksNum()];
-   if( m_tasks == NULL )
-   {
-      AFERROR("Blocl::Block: Can't allocate memory for tasks.")
+   if (!allocateTasks())
       return;
-   }
-   for( int t = 0; t < m_data->getTasksNum(); t++) m_tasks[t] = NULL;
-   for( int t = 0; t < m_data->getTasksNum(); t++)
-   {
-	  m_tasks[t] = new Task( this, progress->tp[ m_data->getBlockNum()][t], t);
-	  if( m_tasks == NULL )
-      {
-		 AFERRAR("Blocl::Block: Can't allocate memory for task %d of %d.", t, m_data->getTasksNum())
-         return;
-      }
-   }
    constructDependBlocks();
    m_initialized = true;
 }
@@ -189,7 +175,7 @@ bool Block::v_startTask( af::TaskExec * taskexec, RenderAf * render, MonitorCont
    // Set variable capacity to maximum value:
    if( m_data->canVarCapacity() && (taskexec->getCapacity() > 0))
    {
-      int cap_coeff = render->getCapacityFree() / taskexec->getCapacity();
+      int cap_coeff = render->findCapacityFree() / taskexec->getCapacity();
 	  if( cap_coeff < m_data->getCapCoeffMin())
       {
 		 AFERRAR("Block::startTask: cap_coeff < data->getCapCoeffMin(%d<%d)", cap_coeff, m_data->getCapCoeffMin())
@@ -214,39 +200,64 @@ void Block::reconnectTask(af::TaskExec *i_taskexec, RenderAf & i_render, Monitor
 
 bool Block::canRunOn( RenderAf * render)
 {
-   // check max running tasks on the same host:
-   if(  m_data->getMaxRunTasksPerHost() == 0 ) return false;
-	if((m_data->getMaxRunTasksPerHost() > 0) && (getRenderCount(render) >= m_data->getMaxRunTasksPerHost())) return false;
-   // check available capacity:
-   if( false == render->hasCapacity( m_data->getCapMinResult())) return false;
-   // render services:
-   if( false == render->canRunService( m_data->getService())) return false;
-   // check maximum hosts:
-   if(( m_data->getMaxRunningTasks() >= 0 ) && ( m_data->getRunningTasksNumber() >= m_data->getMaxRunningTasks() )) return false;
-   // Check block avoid hosts list:
-   if( avoidHostsCheck( render->getName()) ) return false;
-   // Check task avoid hosts list:
-   if( m_data->getNeedMemory() > render->getHostRes().mem_free_mb ) return false;
-   // Check needed hdd:
-   if( m_data->getNeedHDD()    > render->getHostRes().hdd_free_gb ) return false;
-   // Check needed power:
-   if( m_data->getNeedPower()  > render->getHost().m_power       ) return false;
+	// Check max running tasks on the same host:
+	if (m_data->getMaxRunTasksPerHost() == 0)
+		return false;
+	if ((m_data->getMaxRunTasksPerHost() > 0) && (getRenderCount(render) >= m_data->getMaxRunTasksPerHost()))
+		return false;
 
-   // check hosts mask:
-   if( false == m_data->checkHostsMask( render->getName())) return false;
-   // check exclude hosts mask:
-   if( false == m_data->checkHostsMaskExclude( render->getName())) return false;
-   // Check needed properties:
-   if( false == m_data->checkNeedProperties( render->getHost().m_properties)) return false;
+	// Check available capacity:
+	if (false == render->hasCapacity(m_data->getCapMinResult()))
+		return false;
 
-   return true;
+	// render services:
+	if (false == render->canRunService(m_data->getService()))
+		return false;
+
+	// Check Tickets:
+	if (false == render->hasTickets(m_data->getTickets()))
+		return false;
+
+	// check maximum hosts:
+	if ((m_data->getMaxRunningTasks() >= 0) && (m_data->getRunningTasksNumber() >= m_data->getMaxRunningTasks()))
+		return false;
+
+	// Check block avoid hosts list:
+	if (avoidHostsCheck(render->getName()))
+		return false;
+
+	// Check needed memory:
+	if (m_data->getNeedMemory() >= render->getHostRes().mem_free_mb)
+		return false;
+
+	// Check needed hdd:
+	if (m_data->getNeedHDD() >= render->getHostRes().hdd_free_gb)
+		return false;
+
+	// check hosts mask:
+	if (false == m_data->checkHostsMask(render->getName()))
+		return false;
+
+	// check exclude hosts mask:
+	if (false == m_data->checkHostsMaskExclude(render->getName()))
+		return false;
+
+	// Check needed power:
+	if (false == m_data->checkNeedPower(render->findPower()))
+		return false;
+
+	// Check needed properties:
+	if (false == m_data->checkNeedProperties(render->findProperties()))
+		return false;
+
+	return true;
 }
 
 void Block::addSolveCounts(MonitorContainer * i_monitoring, af::TaskExec * i_exec, RenderAf * i_render)
 {
 	addRenderCount(i_render);
 
-	m_data->addSolveCounts(i_exec);
+	m_data->addSolveCounts(i_exec, i_render);
 
 	m_job->addSolveCounts(i_monitoring, i_exec, i_render);
 }
@@ -255,7 +266,7 @@ void Block::remSolveCounts(MonitorContainer * i_monitoring, af::TaskExec * i_exe
 {
 	remRenderCount(i_render);
 
-	m_data->remSolveCounts(i_exec);
+	m_data->remSolveCounts(i_exec, i_render);
 
 	m_job->remSolveCounts(i_monitoring, i_exec, i_render);
 }
@@ -413,42 +424,78 @@ bool Block::checkDepends( MonitorContainer * i_monitoring)
 bool Block::action( Action & i_action)
 {
 	uint32_t blockchanged_type = 0;
-	bool job_progress_changed = false;
+	bool job_changed = false;
 
 	const JSON & operation = (*i_action.data)["operation"];
 	if( operation.IsObject())
 	{
 		std::string type;
 		af::jr_string("type", type, operation);
-		if( type == "reset_error_hosts")
+		if (type == "reset_error_hosts")
 		{
 			v_errorHostsReset();
-			if( blockchanged_type < af::Msg::TBlocksProperties ) blockchanged_type = af::Msg::TBlocksProperties;
-			job_progress_changed = true;
+			if (blockchanged_type < af::Msg::TBlocksProperties)
+				blockchanged_type = af::Msg::TBlocksProperties;
+			job_changed = true;
 		}
-		else if( type == "skip")
+		else if (type == "skip")
 		{
-			skipRestartTasks( true, "Tasks skip by " + i_action.author, i_action, operation);
+			skipRestartTasks(true, "Tasks skip by " + i_action.author, i_action, operation, AFJOB::STATE_SKIPPED_MASK | AFJOB::STATE_DONE_MASK);
 		}
-		else if( type == "restart")
+		else if (type == "done")
 		{
-			skipRestartTasks( false, "Tasks restart by " + i_action.author, i_action, operation);
+			skipRestartTasks(true, "Tasks set done by " + i_action.author, i_action, operation, AFJOB::STATE_DONE_MASK);
 		}
-		else if( type == "restart_running")
+		else if (type == "restart")
 		{
-			skipRestartTasks( false, "Tasks restart running by " + i_action.author, i_action, operation, AFJOB::STATE_RUNNING_MASK);
+			skipRestartTasks(false, "Tasks restart by " + i_action.author, i_action, operation, 0 /*any task*/);
 		}
-		else if( type == "restart_skipped")
+		else if (type == "restart_running")
 		{
-			skipRestartTasks( false, "Tasks restart skipped by " + i_action.author, i_action, operation, AFJOB::STATE_SKIPPED_MASK);
+			skipRestartTasks(false, "Restart running tasks by " + i_action.author, i_action, operation, AFJOB::STATE_RUNNING_MASK);
 		}
-		else if( type == "restart_done")
+		else if (type == "restart_skipped")
 		{
-			skipRestartTasks( false, "Tasks restart done by " + i_action.author, i_action, operation, AFJOB::STATE_DONE_MASK);
+			skipRestartTasks(false, "Restart skipped tasks by " + i_action.author, i_action, operation, AFJOB::STATE_SKIPPED_MASK);
+		}
+		else if (type == "restart_done")
+		{
+			skipRestartTasks(false, "Restart done tasks by " + i_action.author, i_action, operation, AFJOB::STATE_DONE_MASK);
+		}
+		else if (type == "restart_errors")
+		{
+			skipRestartTasks(false, "Restart error tasks by " + i_action.author, i_action, operation, AFJOB::STATE_ERROR_MASK);
+		}
+		else if (type == "trynext")
+		{
+			if (tryTasksNext(i_action, operation))
+			{
+				blockchanged_type = af::Msg::TBlocksProgress;
+				job_changed = true;
+			}
+		}
+		else if (type == "append_tasks")
+		{
+			if (appendTasks(i_action, operation))
+			{
+				// Add a log line so that store() is called at the job level (a bit hacky)
+				i_action.log += "\nBlock['" + m_data->getName() + "']: Append tasks";
+				return true;
+			}
+			return false;
+		}
+		else if (type == "tickets")
+		{
+			if (editTickets(i_action, operation))
+			{
+				blockchanged_type = af::Msg::TBlocksProperties;
+				job_changed = true;
+			}
 		}
 		else
 		{
 			appendJobLog("Unknown block operation \"" + type + "\" by " + i_action.author);
+			i_action.answerError("Unknown operation: " + type);
 			return false;
 		}
 
@@ -468,7 +515,7 @@ bool Block::action( Action & i_action)
 			i_action.log += "\nBlock['" + m_data->getName() + "']:" + changes;
 
 			blockchanged_type = af::Msg::TBlocksProperties;
-			job_progress_changed = true;
+			job_changed = true;
 			constructDependBlocks();
 		}
 	}
@@ -479,10 +526,31 @@ bool Block::action( Action & i_action)
 		i_action.monitors->addBlock( af::Msg::TBlocksProperties, m_data);
 	}
 
-	return job_progress_changed;
+	return job_changed;
 }
 
-void Block::skipRestartTasks( bool i_skip, const std::string & i_message, const Action & i_action, const JSON & i_operation, uint32_t i_state)
+bool Block::editTickets(Action & i_action, const JSON & operation)
+{
+	std::string name;
+	if (false == af::jr_string("name", name, operation))
+	{
+		i_action.answerError("Ticket 'name' string is not specified.");
+		return false;
+	}
+
+	int32_t count;
+	if (false == af::jr_int32("count", count, operation))
+	{
+		i_action.answerError("Ticket 'count' integer is not specified.");
+		return false;
+	}
+
+	m_data->editTicket(name, count);
+
+	return true;
+}
+
+void Block::skipRestartTasks(bool i_skip, const std::string & i_message, const Action & i_action, const JSON & i_operation, uint32_t i_state)
 {
 	std::vector<int32_t> tasks_vec;
 	af::jr_int32vec("task_ids", tasks_vec, i_operation);
@@ -505,15 +573,103 @@ void Block::skipRestartTasks( bool i_skip, const std::string & i_message, const 
 			}
 		}
 
-		if( i_skip )
-			m_tasks[t]->skip( i_message, i_action.renders, i_action.monitors);
+		if (i_skip)
+			m_tasks[t]->skip(i_message, i_action.renders, i_action.monitors, i_state);
 		else
 		{
 			m_data->setTimeStarted(time(NULL), true);
 			m_data->setTimeDone(0);
-			m_tasks[t]->restart( i_message, i_action.renders, i_action.monitors, i_state);
+			m_tasks[t]->restart(i_message, i_action.renders, i_action.monitors, i_state);
 		}
 	}
+}
+
+bool Block::tryTasksNext(Action & i_action, const JSON & i_operation)
+{
+	if (m_job->isMaintenanceFlag())
+	{
+		i_action.answerError("Maintenance job can't try tasks next.");
+		return false;
+	}
+
+	std::vector<int32_t> tasks_vec;
+	af::jr_int32vec("task_ids", tasks_vec, i_operation);
+	std::string mode;
+	af::jr_string("mode", mode, i_operation);
+
+	if (tasks_vec.size() == 0)
+	{
+		i_action.answerError("'task_ids' array is not specified.");
+		return false;
+	}
+
+	bool append;
+	if (mode == "append")
+		append = true;
+	else if (mode == "remove")
+		append = false;
+	else
+	{
+		i_action.answerError("Invalid 'mode' = '" + mode + "'.");
+		return false;
+	}
+
+	bool success = false;
+	for (int i = 0; i < tasks_vec.size(); i++)
+	{
+		int t = tasks_vec[i];
+
+		if ((t >= m_data->getTasksNum()) || ( t < 0 ))
+		{
+			i_action.answerError("Invalid operation task numer = " + af::itos(t));
+			appendJobLog(i_action.getAnswer());
+			break;
+		}
+
+		if (m_tasks[t]->tryNext(append, i_action.monitors))
+		{
+			m_job->tryTaskNext(append, m_data->getBlockNum(), t);
+			success = true;
+		}
+	}
+
+	if (success)
+	{
+		i_action.answerInfo("Tasks to try next processed.");
+	}
+	else
+	{
+		i_action.answerError("Unable to find valid tasks.");
+	}
+
+	return success;
+}
+
+bool Block::allocateTasks(int alreadyAllocated)
+{
+	Task **old_tasks = m_tasks;
+	m_tasks = new Task *[m_data->getTasksNum()];
+	if (m_tasks == NULL)
+	{
+		AFERROR("Blocl::Block: Can't allocate memory for tasks.")
+		if (NULL != old_tasks)
+			delete [] old_tasks;
+		return false;
+	}
+	for (int t = 0; t < m_data->getTasksNum(); t++)
+		m_tasks[t] = t < alreadyAllocated ? old_tasks[t] : NULL;
+	if (NULL != old_tasks)
+		delete [] old_tasks;
+	for (int t = alreadyAllocated; t < m_data->getTasksNum(); t++)
+	{
+		m_tasks[t] = new Task(this, m_jobprogress->tp[m_data->getBlockNum()][t], t);
+		if (m_tasks == NULL)
+		{
+			AFERRAR("Blocl::Block: Can't allocate memory for task %d of %d.", t, m_data->getTasksNum())
+			return false;
+		}
+	}
+	return true;
 }
 
 void Block::constructDependBlocks()
@@ -582,4 +738,54 @@ int Block::blackListWeight() const
    weight += af::weigh( m_errorHosts);
    for( int t = 0; t < m_data->getTasksNum(); t++) weight += m_tasks[t]->blackListWeight();
    return weight;
+}
+
+bool Block::appendTasks(Action & i_action, const JSON & i_operation)
+{
+	if (m_job->getId() == AFJOB::SYSJOB_ID)
+	{
+		i_action.answerError("Appending system job is not allowed.");
+		return false;
+	}
+
+	if (m_data->isNumeric())
+	{
+		i_action.answerError("Appending tasks to numeric block is not allowed.");
+		return false;
+	}
+
+	const JSON &tasks = i_operation["tasks"];
+	if (!tasks.IsArray())
+	{
+		i_action.answerError("Operation requires tasks array.");
+		return false;
+	}
+
+	// Allocate new tasks
+	int old_tasks_num = m_data->getTasksNum();
+	m_data->jsonReadAndAppendTasks(i_operation);
+	m_jobprogress->appendTasks(m_data->getBlockNum(), m_data->getTasksNum() - old_tasks_num);
+	allocateTasks(old_tasks_num); // allocate only new tasks
+
+	// Store tasks
+	storeTasks();
+
+	// Set new tasks ready
+	m_job->checkStatesOnAppend();
+
+	// Emit an event for monitors (afwatch ListTasks)
+	i_action.monitors->addBlock(af::Msg::TBlocks, m_data);
+
+	// Return new tasks ids:
+	std::string answer = "{\"task_ids\":[";
+	for (int i = old_tasks_num; i < m_data->getTasksNum(); i++)
+	{
+		if (i != old_tasks_num)
+			answer += ",";
+		answer += af::itos(i);
+	}
+	answer += "]}";
+	i_action.answerObject(answer);
+
+	return true;
 }

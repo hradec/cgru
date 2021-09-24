@@ -45,6 +45,8 @@ public:
 
 	bool isValid( std::string * o_err = NULL ) const;
 
+	bool isSystem() const {return AFJOB::SYSJOB_ID == m_id;}
+
     void v_generateInfoStream( std::ostringstream & o_str, bool full = false) const; /// Generate information.
 
 	// First 32 flags are reserved for af::Node (zombie, hidden, ...)
@@ -53,7 +55,8 @@ public:
 		FPPApproval   = 1ULL << 32,
 		FMaintenance  = 1ULL << 33,
 		FIgnoreNimby  = 1ULL << 34,
-		FIgnorePaused = 1ULL << 35
+		FIgnorePaused = 1ULL << 35,
+		FAppendedBlocks = 1ULL << 36
 	};
 
 	inline int64_t getSerial() const { return m_serial; }
@@ -102,29 +105,22 @@ public:
     inline bool isIgnorePausedFlag() const { return ( m_flags & FIgnorePaused ); }
     inline void setIgnorePausedFlag( bool i_on = true) { if( i_on ) m_flags = m_flags | FIgnorePaused; else m_flags = m_flags & (~FIgnorePaused); }
 
+    inline bool isAppendedBlocksFlags() const { return ( m_flags & FAppendedBlocks ); }
+    inline void setAppendedBlocksFlag() { m_flags |= FAppendedBlocks; }
+
 	inline bool setDependMask(        const std::string & str, std::string * errOutput = NULL)
 		{ return setRegExp( m_depend_mask, str, "job depend mask", errOutput);}
 	inline bool setDependMaskGlobal(  const std::string & str, std::string * errOutput = NULL)
 		{ return setRegExp( m_depend_mask_global, str, "job global depend mask", errOutput);}
-	inline bool setNeedOS(            const std::string & str, std::string * errOutput = NULL)
-		{ return setRegExp( m_need_os, str, "job need os mask", errOutput);}
-	inline bool setNeedProperties(    const std::string & str, std::string * errOutput = NULL)
-		{ return setRegExp( m_need_properties, str, "job need properties mask", errOutput);}
 
 	inline bool hasDependMask()         const { return m_depend_mask.notEmpty();        }
 	inline bool hasDependMaskGlobal()   const { return m_depend_mask_global.notEmpty(); }
-	inline bool hasNeedOS()             const { return m_need_os.notEmpty();            }
-	inline bool hasNeedProperties()     const { return m_need_properties.notEmpty();    }
 
 	inline const std::string & getDependMask()         const { return m_depend_mask.getPattern();        }
 	inline const std::string & getDependMaskGlobal()   const { return m_depend_mask_global.getPattern(); }
-	inline const std::string & getNeedOS()             const { return m_need_os.getPattern();            }
-	inline const std::string & getNeedProperties()     const { return m_need_properties.getPattern();    }
 
 	inline bool checkDependMask(        const std::string & str ) const { return m_depend_mask.match( str);        }
 	inline bool checkDependMaskGlobal(  const std::string & str ) const { return m_depend_mask_global.match( str );}
-	inline bool checkNeedOS(            const std::string & str ) const { return m_need_os.match( str);           }
-	inline bool checkNeedProperties(    const std::string & str ) const { return m_need_properties.match( str);   }
 
 //	const std::string & getTasksOutputDir() const { return m_tasks_output_dir; }
 
@@ -137,6 +133,14 @@ public:
 	virtual void v_jsonWrite( std::ostringstream & o_str, int i_type) const;
 
 	void stdOutJobBlocksTasks() const;
+
+	inline bool hasTasksToTryNext() const {return m_try_this_tasks_num.size();}
+	const std::string tryNextTasksToStr(int i_limit = 10) const;
+
+protected:
+	/// Read blocks data and append it to block list
+	/// (called by jsonRead and also when appending new blocks)
+	bool jsonReadAndAppendBlocks( const JSON & i_blocks);
 
 protected:
 	BlockData  ** m_blocks_data;    ///< Blocks pointer.
@@ -152,6 +156,9 @@ protected:
 
 	std::map< std::string, std::string > m_folders;
 
+	// Report can be set from task parser.
+	// Useful for a job of a single task.
+	// For example rules walk disk space, encoding/decoding stream info
 	std::string m_report;
 
 	std::string m_thumb_path;
@@ -186,14 +193,16 @@ protected:
 	RegExp m_depend_mask;
 	/// Jobs names mask current job depends on ( wait until they will be done).
 	RegExp m_depend_mask_global;
-	RegExp m_need_os;
-	RegExp m_need_properties;
 	
 	// Here are coming a couple of metadata just use for display
 	/// Project to which this job is associated
 	std::string m_project;
 	/// Department responsible for this job
 	std::string m_department;
+
+	// "Try this task next"
+	std::vector<int32_t> m_try_this_tasks_num;
+	std::vector<int32_t> m_try_this_blocks_num;
 
 private:
 	void initDefaultValues();

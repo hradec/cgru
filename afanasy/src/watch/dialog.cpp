@@ -12,12 +12,13 @@
 
 #include "actionid.h"
 #include "buttonmonitor.h"
-#include "buttonout.h"
+#include "buttonsnapwnd.h"
 #include "listitems.h"
 #include "listjobs.h"
 #include "listusers.h"
 #include "listrenders.h"
 #include "listmonitors.h"
+#include "listwork.h"
 #include "monitorhost.h"
 #include "offlinescreen.h"
 #include "watch.h"
@@ -74,17 +75,17 @@ Dialog::Dialog():
     m_hlayout_b->setSpacing( 0);
     m_vlayout_b->setSpacing( 3);
 
-    m_btn_out_left = new ButtonOut( ButtonOut::Left,  this);
-    m_btn_out_right = new ButtonOut( ButtonOut::Right, this);
+    m_btn_snap_left  = new ButtonSnapWnd(ButtonSnapWnd::Left,  this);
+    m_btn_snap_right = new ButtonSnapWnd(ButtonSnapWnd::Right, this);
 
-    m_hlayout_a->addWidget( m_btn_out_left);
+    m_hlayout_a->addWidget(m_btn_snap_left);
     m_hlayout_a->addLayout( m_vlayout_a);
-    m_hlayout_a->addWidget( m_btn_out_right);
+    m_hlayout_a->addWidget(m_btn_snap_right);
     m_vlayout_a->addLayout( m_hlayout_b);
     m_vlayout_a->addLayout( m_vlayout_b);
 
-    m_hlayout_a->setAlignment( m_btn_out_left, Qt::AlignVCenter);
-    m_hlayout_a->setAlignment( m_btn_out_right, Qt::AlignVCenter);
+    m_hlayout_a->setAlignment(m_btn_snap_left,  Qt::AlignVCenter);
+    m_hlayout_a->setAlignment(m_btn_snap_right, Qt::AlignVCenter);
 
     m_infoline = new InfoLine( this);
     m_infoline->setMaximumHeight( ButtonMonitor::ButtonsHeight);
@@ -93,18 +94,31 @@ Dialog::Dialog():
     m_labelversion = new LabelVersion(this);
     m_vlayout_b->addWidget( m_labelversion);
 
-//    m_topleft  = new QWidget( this);
 	m_topleft  = new QLabel("", this);
-    m_topright = new QWidget( this);
-    m_hlayout_b->addWidget( m_topleft);
-    m_btnMonitor[Watch::WJobs]    = new ButtonMonitor( Watch::WJobs,    this);
-    m_hlayout_b->addWidget( m_btnMonitor[Watch::WJobs    ]);
-    m_btnMonitor[Watch::WRenders] = new ButtonMonitor( Watch::WRenders, this);
-    m_hlayout_b->addWidget( m_btnMonitor[Watch::WRenders ]);
-    m_btnMonitor[Watch::WUsers]   = new ButtonMonitor( Watch::WUsers,   this);
-    m_hlayout_b->addWidget( m_btnMonitor[Watch::WUsers   ]);
-    m_hlayout_b->addWidget( m_topright);
-	
+	m_topright = new QWidget(this);
+
+	m_hlayout_b->addWidget(m_topleft);
+
+	m_btnMonitor[Watch::WWork] = new ButtonMonitor(Watch::WWork, this);
+	m_hlayout_b->addWidget(m_btnMonitor[Watch::WWork]);
+	if (false == af::Environment::getWatchWorkUserVisible())
+		m_btnMonitor[Watch::WWork]->setHidden(true);
+
+	m_btnMonitor[Watch::WJobs] = new ButtonMonitor(Watch::WJobs, this);
+	m_hlayout_b->addWidget(m_btnMonitor[Watch::WJobs ]);
+
+	m_btnMonitor[Watch::WFarm] = new ButtonMonitor(Watch::WFarm, this);
+	m_hlayout_b->addWidget(m_btnMonitor[Watch::WFarm ]);
+
+	m_btnMonitor[Watch::WUsers] = new ButtonMonitor(Watch::WUsers, this);
+	m_hlayout_b->addWidget(m_btnMonitor[Watch::WUsers]);
+
+	m_hlayout_b->addWidget(m_topright);
+
+	m_btnMonitor[Watch::WMonitors] = new ButtonMonitor(Watch::WMonitors, this);
+	m_hlayout_b->addWidget(m_btnMonitor[Watch::WMonitors]);
+	m_btnMonitor[Watch::WMonitors]->setHidden(true);
+
 	connect( &m_qafclient, SIGNAL( sig_newMsg( af::Msg*)), this, SLOT( newMessage( af::Msg*)));
 	connect( &m_qafclient, SIGNAL( sig_connectionLost()),  this, SLOT( connectionLost()));
 	connect( &m_qafclient, SIGNAL( sig_finished()),        this, SLOT( close()));
@@ -273,6 +287,10 @@ void Dialog::showMenuPrefs()
     action->setChecked( afqt::QEnvironment::saveWndRectsOnExit.n != 0);
     connect( action, SIGNAL( triggered() ), this, SLOT( actSaveWndRectsOnExit() ));
     m_prefsMenu->addAction( action);
+
+	action = new QAction("Reset Windows Geometry", m_prefsMenu);
+	connect(action, SIGNAL(triggered()), this, SLOT(actResetWndRects()));
+	m_prefsMenu->addAction(action);
 
 	m_prefsMenu->addSeparator();
 
@@ -485,9 +503,18 @@ void Dialog::idReceived( int i_id, int i_uid)
 
 void Dialog::closeList()
 {
-    if( m_listitems != NULL) m_listitems->close();
-    m_listitems = NULL;
-    m_monitorType = Watch::WNONE;
+	if (m_listitems != NULL)
+	{
+		//delete m_listitems;
+		// Better not delete qt widgets manually, let qt to delete them.
+		// There still can be events queue.
+		// But we should keep in mind, that qt can delete it with some delay.
+		// New list item class constructor can be called before old list items class destructor.
+		m_listitems->close();
+	}
+
+	m_listitems = NULL;
+	m_monitorType = Watch::WNONE;
 }
 
 bool Dialog::openMonitor( int type, bool open)
@@ -523,37 +550,44 @@ bool Dialog::openMonitor( int type, bool open)
       closeList();
    }
 
-   switch( type)
-   {
-   case Watch::WJobs:
-   {
-      newlist = new ListJobs( parent);
-      displayInfo("Your jobs list.");
-      break;
-   }
-   case Watch::WUsers:
-   {
-      newlist = new ListUsers( parent);
-      displayInfo("Users list.");
-     break;
-   }
-   case Watch::WRenders:
-   {
-      newlist = new ListRenders( parent);
-      displayInfo("Render hosts list.");
-      break;
-   }
-   case Watch::WMonitors:
-   {
-      newlist = new ListMonitors( parent);
-      displayInfo("Connected monitors.");
-      break;
-   }
-   default:
-      AFERRAR("Dialog::changeMonitor: unknown type = %d", type)
-      if( false == open ) m_monitorType = Watch::WNONE;
-      return false;
-   }
+	switch( type)
+	{
+	case Watch::WWork:
+	{
+		newlist = new ListWork(parent);
+		displayInfo("Branches/jobs list.");
+		break;
+	}
+	case Watch::WJobs:
+	{
+		newlist = new ListJobs(parent);
+		displayInfo("Your jobs list.");
+		break;
+	}
+	case Watch::WUsers:
+	{
+		newlist = new ListUsers(parent);
+		displayInfo("Users list.");
+		break;
+	}
+	case Watch::WFarm:
+	{
+		newlist = new ListRenders(parent);
+		displayInfo("Farm pools/renders list.");
+		break;
+	}
+	case Watch::WMonitors:
+	{
+		newlist = new ListMonitors(parent);
+		displayInfo("Connected monitors.");
+		break;
+	}
+	default:
+		AFERRAR("Dialog::changeMonitor: unknown type = %d", type)
+		if (false == open)
+			m_monitorType = Watch::WNONE;
+		return false;
+}
 
    if( open )
    {
@@ -574,34 +608,34 @@ void Dialog::keyPressEvent( QKeyEvent * event)
    const QString key( event->text());
    if( key.isNull() || key.isEmpty() ) return;
 
-   if( af::Environment::checkKey( key.at(0).toLatin1()))
-   {
-      if( af::Environment::GOD())
-      {
+	if (af::Environment::checkKey(key.at(0).toLatin1()))
+	{
+		if (af::Environment::GOD())
+		{
 			MonitorHost::setUid(0);
 
-         m_btnMonitor[Watch::WMonitors] = new ButtonMonitor( Watch::WMonitors, this);
-         m_hlayout_b->addWidget( m_btnMonitor[Watch::WMonitors]);
+			if (false == af::Environment::getWatchWorkUserVisible())
+				m_btnMonitor[Watch::WWork]->setHidden(false);
+			m_btnMonitor[Watch::WMonitors]->setHidden(false);
 
 			m_topleft->setText("GOD MODE");
-      }
-      else if( af::Environment::VISOR())
-      {
+		}
+		else if (af::Environment::VISOR())
+		{
 			MonitorHost::setUid(0);
 
 			m_topleft->setText("VISOR MODE");
-      }
-      else
-      {
+		}
+		else
+		{
 			MonitorHost::setUid(-1);
 
-         if( m_btnMonitor[Watch::WMonitors])
-         {
-            delete m_btnMonitor[Watch::WMonitors];
-            m_btnMonitor[Watch::WMonitors] = NULL;
-         }
+			if (false == af::Environment::getWatchWorkUserVisible())
+				m_btnMonitor[Watch::WWork]->setHidden(true);
+			m_btnMonitor[Watch::WMonitors]->setHidden(true);
+
 			m_topleft->setText("");
-      }
+		}
       int opened_type = m_monitorType ;
       closeList();
 //      ButtonMonitor::unset();
@@ -623,13 +657,14 @@ void Dialog::actNotifications()
     Watch::displayInfo("Opening 'Notifications' Window");
 }
 
-void Dialog::actSavePreferencesOnExit()   { afqt::QEnvironment::savePrefsOnExit.n    = 1 - afqt::QEnvironment::savePrefsOnExit.n;     }
-void Dialog::actSaveGUIOnExit()           { afqt::QEnvironment::saveGUIOnExit.n      = 1 - afqt::QEnvironment::saveGUIOnExit.n;       }
-void Dialog::actSaveHotkeysOnExit()       { afqt::QEnvironment::saveHotkeysOnExit.n  = 1 - afqt::QEnvironment::saveHotkeysOnExit.n;   }
-void Dialog::actSaveWndRectsOnExit()      { afqt::QEnvironment::saveWndRectsOnExit.n = 1 - afqt::QEnvironment::saveWndRectsOnExit.n;  }
-void Dialog::actShowOfflineNoise()        { afqt::QEnvironment::showOfflineNoise.n   = 1 - afqt::QEnvironment::showOfflineNoise.n;    }
-void Dialog::actShowDocs()  { Watch::showDocs();  }
-void Dialog::actShowForum() { Watch::showForum(); }
+void Dialog::actSavePreferencesOnExit(){afqt::QEnvironment::savePrefsOnExit.n    = 1 - afqt::QEnvironment::savePrefsOnExit.n;   }
+void Dialog::actSaveGUIOnExit()        {afqt::QEnvironment::saveGUIOnExit.n      = 1 - afqt::QEnvironment::saveGUIOnExit.n;     }
+void Dialog::actSaveHotkeysOnExit()    {afqt::QEnvironment::saveHotkeysOnExit.n  = 1 - afqt::QEnvironment::saveHotkeysOnExit.n; }
+void Dialog::actSaveWndRectsOnExit()   {afqt::QEnvironment::saveWndRectsOnExit.n = 1 - afqt::QEnvironment::saveWndRectsOnExit.n;}
+void Dialog::actResetWndRects()        {afqt::QEnvironment::resetAllRects();}
+void Dialog::actShowOfflineNoise()     {afqt::QEnvironment::showOfflineNoise.n   = 1 - afqt::QEnvironment::showOfflineNoise.n;  }
+void Dialog::actShowDocs() {Watch::showDocs();}
+void Dialog::actShowForum(){Watch::showForum();}
 
 void Dialog::actSavePreferences()
 {
@@ -707,8 +742,8 @@ void Dialog::reloadImages()
     else
         m_labelversion->setFixedHeight( m_img_bot.height());
 
-    m_btn_out_left->reloadImages();
-    m_btn_out_right->reloadImages();
+    m_btn_snap_left->reloadImages();
+    m_btn_snap_right->reloadImages();
 }
 
 void Dialog::paintEvent( QPaintEvent * event )

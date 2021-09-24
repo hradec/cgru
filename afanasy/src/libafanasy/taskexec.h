@@ -172,6 +172,9 @@ public:
 	inline void setTaskCommand(const std::string & i_str             ) {m_command_task = i_str;}
 	inline void setTaskFiles(  const std::vector<std::string> & i_vec) {m_files_task   = i_vec;}
 
+	inline void joinEnvironment(const std::map<std::string, std::string> & i_env)
+		{for (auto const& it : i_env) m_environment[it.first] = it.second;}
+
 	inline void setHostNames( const std::list<std::string> & names)  { m_multihost_names = names;}
 	inline const std::list<std::string> & getMultiHostsNames() const { return m_multihost_names; }
 
@@ -187,6 +190,7 @@ public:
 	/// Read or write task in message buffer.
 	void v_readwrite( Msg * msg);
 
+	std::map<std::string, int32_t> m_tickets;
 
 	std::string m_custom_data_task;
 	std::string m_custom_data_block;
@@ -236,7 +240,6 @@ private:
 	int64_t m_frames_num;    ///< Number of frames.
 
 	int64_t m_time_start;
-
 
 private:
 	void initDefaults();

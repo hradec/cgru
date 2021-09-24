@@ -77,6 +77,10 @@ class service(object):  # TODO: Class names should follow CamelCase naming conve
         if self.isSkippingExistingFiles() and len(self.taskInfo['files']):
             self.checkExistingFiles()
 
+        # Transfer paths in environment:
+        for name in self.taskInfo['environment']:
+            self.taskInfo['environment'][name] = self.pm.toClient(self.taskInfo['environment'][name])
+
         # When GUI receives task exec to show files,
         # server sends exec with parsed files.
         for i in range(0, len(self.taskInfo['parsed_files'])):
@@ -227,6 +231,13 @@ class service(object):  # TODO: Class names should follow CamelCase naming conve
         else:
             return []
 
+    def getEnvironment(self):
+        """Missing DocString
+
+        :return:
+        """
+        return self.taskInfo['environment']
+
     def getLog(self):
         """
             This string will appear in server task log
@@ -280,18 +291,14 @@ class service(object):  # TODO: Class names should follow CamelCase naming conve
     def hasParser(self):
         return self.parser is not None
 
-    def parse(self, data, mode, pid):
+    def parse(self, i_args):
         """Missing DocString
-
-        :param data:
-        :param mode:
-        :param pid:
         :return:
         """
         if self.parser is None:
             return None
 
-        self.parser.parse(data, mode, pid)
+        self.parser.parse(i_args)
 
         thumb_cmds = self.generateThumbnail(True)
         for cmd in thumb_cmds:

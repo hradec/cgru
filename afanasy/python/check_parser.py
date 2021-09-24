@@ -1,11 +1,12 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
+import json
 import os
 import subprocess
 import sys
 
-sys.path.append(os.path.abspath(sys.argv[0]))
-
+import cgruutils
 
 def UsageExit(message=''):
     """Missing DocString
@@ -38,6 +39,8 @@ parser = eval(cmd)
 taskInfo = dict()
 taskInfo['frames_num'] = framesNum
 taskInfo['wdir'] = os.getcwd()
+taskInfo['environment'] = dict()
+taskInfo['environment']['PDG_DIR'] = os.getcwd()
 parser.setTaskInfo(taskInfo)
 
 arguments = []
@@ -45,13 +48,10 @@ for i in range(3, len(sys.argv)):
     arguments.append(sys.argv[i])
 
 process = subprocess.Popen(arguments, shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-# process = subprocess.Popen(' '.join(arguments), shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 process.stdin.close()
 
 stdout = process.stdout
 stderr = process.stderr
-# stdout = process.stderr
-# stderr = process.stdout
 
 
 def printMuted(i_str):
@@ -60,6 +60,23 @@ def printMuted(i_str):
     sys.stdout.write('\033[0m')
     sys.stdout.flush()
 
+Parser_Error = False
+Parser_BadResult = False
+Parser_Warning = False
+Parser_Activity = None
+Parser_Resources = None
+Parser_Report = None
+
+resources = ''' {"host_resources":{
+    "cpu_num":4, "cpu_mhz":2790, "cpu_loadavg":[4,6,5],
+    "cpu_user":9, "cpu_nice":0, "cpu_system":4, "cpu_idle":84, "cpu_iowait":0, "cpu_irq":0, "cpu_softirq":0,
+    "mem_total_mb":7853, "mem_free_mb":4885, "mem_cached_mb":2724, "mem_buffers_mb":475,
+    "swap_total_mb":7812, "swap_used_mb":103,
+    "hdd_total_gb":34, "hdd_free_gb":11, "hdd_rd_kbsec":0, "hdd_wr_kbsec":47, "hdd_busy":0,
+    "net_recv_kbsec":0, "net_send_kbsec":0,
+    "logged_in_users":["foo","bar"]
+}}'''
+resources = json.loads(resources)
 
 while True:
     stdout.flush()
@@ -69,30 +86,77 @@ while True:
     if len(data) < 1:
         break
 
-    printMuted(data)
+    printMuted(cgruutils.toStr(data))
 
-    parser.parse(data, 'mode', 0)
+    args = dict()
+    args['mode'] = 'RUN'
+    args['pid'] = process.pid
+    args['data'] = data
+    args['resources'] = json.dumps(resources)
+
+    parser.parse(args)
 
     info = 'Parse:'
     info += ' %d%%: %d frame %d%%;' % (parser.percent, parser.frame, parser.percentframe)
 
     if len(parser.activity):
         info += ' Activity: %s;' % parser.activity
+        Parser_Activity = parser.activity
+
+    if len(parser.resources):
+        info += ' Resources: %s;' % parser.resources
+        Parser_Resources = parser.resources
 
     if len(parser.report):
         info += ' Report: %s;' % parser.report
+        Parser_Report = parser.report
+
+    if parser.warning:
+        info += '\nPARSER WARNING'
+        Parser_Warning = True
+
+    if parser.error:
+        info += '\nPARSER ERROR'
+        Parser_Error = True
+
+    if parser.badresult:
+        info += '\nPARSER BAD RESULT'
+        Parser_BadResult = True
 
     sys.stdout.write('%s\n' % info)
     sys.stdout.flush()
 
-info = ''
-if len(parser.files):
-    info += '\nFiles:'
-    for afile in parser.files:
-        info += '\n' + afile
-
-sys.stdout.write('%s\n' % info)
 sys.stdout.flush()
 
-print(stderr.read().replace('\r', ''))
+print('\nResult:')
 
+if len(parser.files_all):
+    print('Files:')
+    for afile in parser.files_all:
+        print(afile)
+
+StrErr = cgruutils.toStr(stderr.read()).replace('\r', '')
+if len(StrErr):
+    print('\nSTDERR:')
+    print(StrErr)
+
+if Parser_Activity:
+    print('Activity: ' + Parser_Activity)
+
+if Parser_Resources:
+    print('Resources: ' + Parser_Resources)
+
+if Parser_Report:
+    print('Report: ' + Parser_Report)
+
+if Parser_Warning:
+    print('PARSER WARNING')
+
+if Parser_Error:
+    print('PARSER ERROR')
+
+if Parser_BadResult:
+    print('PARSER BAD RESULT')
+
+if not Parser_Warning and not Parser_Error and not Parser_BadResult:
+    print('\nSUCCESS')

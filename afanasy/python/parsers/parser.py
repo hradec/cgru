@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
+
+import json
 import os
 import sys
 import traceback
 
 import cgruutils
 
+ACTIVITY = 'ACTIVITY: '
+REPORT   = 'REPORT: '
 
 # TODO: Class names should follow CamelCase naming convention
 class parser(object):
@@ -12,10 +16,6 @@ class parser(object):
     """
 
     def __init__(self):
-        self.str_warning = []
-        self.str_error = []
-        self.str_badresult = []
-        self.str_finishedsuccess = []
         self.percent = 0
         self.frame = 0
         self.percentframe = 0
@@ -24,6 +24,7 @@ class parser(object):
         self.badresult = False
         self.finishedsuccess = False
         self.activity = ''
+        self.resources = ''
         self.report = ''
         self.result = None
         self.log = None
@@ -31,9 +32,23 @@ class parser(object):
         self.taskInfo = {}
         self.pid = 0
 
+        if not hasattr(self, 'str_warning'):
+            self.str_warning = []
+        if not hasattr(self, 'str_error'):
+            self.str_error = []
+        if not hasattr(self, 'str_badresult'):
+            self.str_badresult = []
+        if not hasattr(self, 'str_finishedsuccess'):
+            self.str_finishedsuccess = []
+
         self.files = []
         self.files_onthefly = []
         self.files_all = []
+
+        self.host_resources = None
+        self.res_mem_peak_mb = None
+        self.res_cpu_agv = None
+        self.res_cpu_cur = []
 
     def setTaskInfo(self, taskInfo):
         """Missing DocString
@@ -85,17 +100,12 @@ class parser(object):
         """
         return self.log
 
-    def do(self, data, mode):
+    def do(self, i_args):
         """Missing DocString
-
-        :param data:
-        :param mode:
-        :return:
         """
-        print('Error: parser.do: Invalid call, this method must be '
-              'implemented.')
+        pass
 
-    def doBaseCheck(self, data, mode):
+    def doBaseCheck(self, data):
         self.activity = ''
         self.report = ''
         self.warning = False
@@ -117,6 +127,16 @@ class parser(object):
             if lower.find(string.lower()) != -1:
                 self.finishedsuccess = True
 
+        activity_pos = data.rfind(ACTIVITY)
+        if activity_pos > -1:
+            activity_pos += len(ACTIVITY)
+            self.activity = data[activity_pos: data.find('\n', activity_pos)]
+
+        report_pos = data.rfind(REPORT)
+        if report_pos > -1:
+            report_pos += len(REPORT)
+            self.report = data[report_pos: data.find('\n', report_pos)]
+
         lines = data.split('\n')
         for line in lines:
             if line.find('@IMAGE@') != -1:  # Will be used in CGRU render scripts
@@ -133,24 +153,23 @@ class parser(object):
                 line = line[8:]
                 self.appendFile(line.strip(), True)
 
-    def parse(self, data, mode, pid=0):
+    def parse(self, i_args):
         """Missing DocString
-
-        :param data:
-        :param mode:
-        :param pid:
         :return:
         """
 
-        data = cgruutils.toStr(data)
-        mode = cgruutils.toStr(mode)
-        self.pid = pid
+        i_args['data'] = cgruutils.toStr(i_args['data'])
+        if 'mode' in i_args:
+            i_args['mode'] = cgruutils.toStr(i_args['mode'])
+        if 'pid' in i_args:
+            self.pid = i_args['pid']
 
-        if len(data):
-            self.doBaseCheck(data, mode)
+        self.processResources(i_args)
 
+        if len(i_args['data']):
+            self.doBaseCheck(i_args['data'])
         try:
-            self.result = self.do(data, mode)
+            self.result = self.do(i_args)
         except:  # TODO: too broad exception clause
             print('Error parsing output:')
             # print(str(sys.exc_info()[1]))
@@ -179,6 +198,47 @@ class parser(object):
         if self.percent > 100:
             self.percent = 100
 
+
+    def processResources(self, i_args):
+        if not 'resources' in i_args:
+            return
+
+        resources = None
+        try:
+            resources = json.loads(cgruutils.toStr(i_args['resources']))
+        except:
+            print('Bad input resources json:')
+            traceback.print_exc(file=sys.stdout)
+            resources = None
+
+        if 'host_resources' in resources:
+            self.host_resources = resources['host_resources']
+
+        if self.host_resources is None:
+            return
+
+        # Peak Memory
+        if 'mem_total_mb' and 'mem_free_mb' in self.host_resources:
+            mem_used_mb = self.host_resources['mem_total_mb'] - self.host_resources['mem_free_mb']
+            if self.res_mem_peak_mb is None or self.res_mem_peak_mb < mem_used_mb:
+                self.res_mem_peak_mb = mem_used_mb
+
+        # Average CPU
+        cpubusy = None
+        for cpu in ['cpu_user', 'cpu_nice', 'cpu_system', 'cpu_iowait', 'cpu_irq', 'cpu_softirq']:
+            if cpu in self.host_resources:
+                if cpubusy is None:
+                    cpubusy = self.host_resources[cpu]
+                else:
+                    cpubusy += self.host_resources[cpu]
+        if cpubusy is not None:
+            self.res_cpu_cur.append(cpubusy)
+            self.res_cpu_agv = 0
+            for cpu in self.res_cpu_cur:
+                self.res_cpu_agv += cpu
+            self.res_cpu_agv = int(round(self.res_cpu_agv / float(len(self.res_cpu_cur))))
+
+
     def toHTML(self, i_data):
         """ Convert data to HTML.
             Designed for GUIs for escape sequences, errors highlighting.
@@ -198,7 +258,8 @@ class parser(object):
         :param i_line: input line
         :return: converted line
         """
-        self.parse(i_line, 'html')
+
+        self.parse({'data':i_line})
 
         if self.error:
             i_line = '<span style="background-color:#FF0000"><b>' + i_line + '</b></span>'

@@ -2,6 +2,7 @@
 
 import os
 import re
+import socket
 import time
 
 import hou
@@ -28,12 +29,15 @@ class BlockParameters:
         self.afnode = afnode
         self.ropnode = None
         self.subblock = subblock
+        self.single_task = False
+        self.local_render = False
         self.frame_pertask = 1
         self.frame_sequential = 1
         self.prefix = prefix
         self.preview = ''
         self.name = ''
         self.service = ''
+        self.tickets = dict()
         self.parser = ''
         self.cmd = ''
         self.cmd_useprefix = True
@@ -45,6 +49,10 @@ class BlockParameters:
         self.tasks_names = []
         self.tasks_cmds = []
         self.tasks_previews = []
+        self.file_check_enable = False
+        self.file_check_size_mb_min = -1
+        self.file_check_size_mb_max = -1
+        self.file_check_skip_existing = True
         # Fill in this array with files to delete in a block post command.
         # Files should have a common afanasy "@#*@" pattern,
         # it will be replaced with "*" for shell.
@@ -54,8 +62,8 @@ class BlockParameters:
         self.soho_outputmode = None
 
         # Get parameters:
-        self.frame_pertask = int(afnode.parm('frame_pertask').eval())
-        self.frame_sequential = int(afnode.parm('frame_sequential').eval())
+        self.single_task = bool(afnode.parm('single_task').eval())
+        self.local_render = bool(afnode.parm('local_render').eval())
         self.job_name = str(afnode.parm('job_name').eval())
         self.job_branch = ''
         self.start_paused = int(afnode.parm('start_paused').eval())
@@ -66,6 +74,7 @@ class BlockParameters:
         self.maxperhost = -1
         self.maxruntime = -1
         self.minruntime = -1
+        self.progress_timeout = -1
         self.capacity = -1
         self.capacity_min = -1
         self.capacity_max = -1
@@ -74,6 +83,15 @@ class BlockParameters:
         self.depend_mask = ''
         self.depend_mask_global = ''
         self.min_memory = -1
+        self.tickets_use = int(afnode.parm('tickets_use').eval())
+        self.tickets_auto = int(afnode.parm('tickets_auto').eval())
+        self.ticket_mem = int(afnode.parm('ticket_mem').eval())
+        self.tickets_aux_use = int(afnode.parm('tickets_aux_use').eval())
+        self.tickets_aux_data = afnode.parm('tickets_aux_data').eval()
+        self.pools_use = int(afnode.parm('pools_use').eval())
+        self.pools_data = afnode.parm('pools_data').eval()
+        self.generate_previews = self.afnode.parm('generate_previews').eval()
+        self.life_time = -1
         self.preview_approval = afnode.parm('preview_approval').eval()
 
         if afnode.parm('enable_extended_parameters').eval():
@@ -82,8 +100,9 @@ class BlockParameters:
             self.priority = int(afnode.parm('priority').eval())
             self.max_runtasks = int(afnode.parm('max_runtasks').eval())
             self.maxperhost = int(afnode.parm('maxperhost').eval())
-            self.maxruntime = int(afnode.parm('maxruntime').eval())
+            self.maxruntime = float(afnode.parm('maxruntime').eval())
             self.minruntime = int(afnode.parm('minruntime').eval())
+            self.progress_timeout = float(afnode.parm('progress_timeout').eval())
             self.min_memory = int(afnode.parm('min_memory').eval())
             self.capacity = int(afnode.parm('capacity').eval())
             self.capacity_min = int(
@@ -96,6 +115,16 @@ class BlockParameters:
             self.depend_mask = str(afnode.parm('depend_mask').eval())
             self.depend_mask_global = str(
                 afnode.parm('depend_mask_global').eval())
+            self.life_time = self.afnode.parm('life_time').eval()
+
+        if afnode.parm('file_check_enable').eval():
+            self.file_check_enable = True
+            self.file_check_size_mb_min = int(1024.0 * 1024.0 * afnode.parm('file_check_size_mb_min').eval())
+            self.file_check_size_mb_max = int(1024.0 * 1024.0 * afnode.parm('file_check_size_mb_max').eval())
+            self.file_check_skip_existing = afnode.parm('file_check_skip_existing').eval()
+
+        if self.local_render:
+            self.hosts_mask = str(socket.gethostname())
 
         # Process frame range:
         opname = afnode.path()
@@ -132,9 +161,17 @@ class BlockParameters:
             hou.ui.displayMessage('Frames per task < 1 for "%s"' % opname)
             return
 
+        if self.single_task:
+            self.frame_pertask = self.frame_last - self.frame_first + 1
+            self.frame_sequential = 1
+        else:
+            self.frame_pertask = int(afnode.parm('frame_pertask').eval())
+            self.frame_sequential = int(afnode.parm('frame_sequential').eval())
+
         # Process output driver type to construct a command:
         if ropnode:
             self.service = 'hbatch'
+            self.tickets['HYTHON'] = 1
 
             if not isinstance(ropnode, hou.RopNode):
                 hou.ui.displayMessage(
@@ -151,12 +188,13 @@ class BlockParameters:
             roptype = ropnode.type().name()
 
             if roptype == 'ifd':
-                if ropnode.node(ropnode.parm('camera').eval())==None:
-                    hou.ui.displayMessage("Camera in "+ropnode.name()+" is not valid",severity = hou.severityType.Error)
+                if ropnode.node(ropnode.parm('camera').eval()) is None:
+                    hou.ui.displayMessage("Camera in %s is not valid" % ropnode.name(), severity=hou.severityType.Error)
                     return
 
                 if not ropnode.parm('soho_outputmode').eval():
                     self.service = 'hbatch_mantra'
+                    self.tickets['MANTRA'] = 1
 
                 vm_picture = ropnode.parm('vm_picture')
 
@@ -166,8 +204,14 @@ class BlockParameters:
                             vm_picture.evalAsStringAtFrame(self.frame_first),
                             vm_picture.evalAsStringAtFrame(self.frame_last)
                         )
+
+            # TODO karma hydra delegate.
+
             elif roptype == 'rib':
                 self.service = 'hbatch_prman'
+                self.tickets['PRMAN'] = 1
+
+            # TODO renderman hydra delegate.
 
             elif roptype == 'arnold':
                 if not ropnode.parm('soho_outputmode').eval():
@@ -182,7 +226,20 @@ class BlockParameters:
                             ar_picture.evalAsStringAtFrame(self.frame_last)
                         )
 
-            elif roptype == 'alembic':
+            # Solaris. Arnold.
+            elif roptype == 'usdrender_rop' and ropnode.parm('renderer').eval() == 'HdArnoldRendererPlugin':
+                self.service = 'houdinitoarnold'
+
+                ar_picture = ropnode.parm('outputimage')
+
+                if ar_picture is not None:
+                    self.preview = \
+                        afcommon.patternFromPaths(
+                            ar_picture.evalAsStringAtFrame(self.frame_first),
+                            ar_picture.evalAsStringAtFrame(self.frame_last)
+                        )
+
+            elif roptype in ['alembic', 'usd_rop']:
                 self.numeric = False
                 taskname = ropnode.name()
                 taskname += ' ' + str(self.frame_first)
@@ -192,6 +249,7 @@ class BlockParameters:
                 
             elif roptype == 'Redshift_ROP':
                 self.service = 'hbatch_redshift'
+                self.tickets['REDSHIFT'] = 1
                 rs_picture = ropnode.parm('RS_outputFileNamePrefix')
 
                 if rs_picture is not None:
@@ -201,8 +259,26 @@ class BlockParameters:
                             rs_picture.evalAsStringAtFrame(self.frame_last)
                         )
 
+            # TODO redshift hydra delegate.
+
+            # For files menu in watcher
+            elif roptype == 'geometry':
+                file_geo = ropnode.parm('sopoutput')
+
+                if file_geo is not None:
+                    self.preview = \
+                        afcommon.patternFromPaths(
+                            file_geo.evalAsStringAtFrame(self.frame_first),
+                            file_geo.evalAsStringAtFrame(self.frame_last)
+                        )
+
             # Block command:
             self.cmd = 'hrender_af'
+
+            if self.single_task:
+                # On a single task we can see progress as job report
+                self.cmd += ' --report'
+
             if afnode.parm('ignore_inputs').eval():
                 self.cmd += ' -i'
 
@@ -212,14 +288,6 @@ class BlockParameters:
             self.cmd += ' -s @#@ -e @#@ --by %d -t "%s"' % (
                 self.frame_inc, afnode.parm('take').eval()
             )
-
-#            numWedges = computeWedge(ropnode, roptype)
-#            if numWedges:
-#                self.frame_first = 0
-#                self.frame_last = numWedges - 1
-#                self.frame_inc = 1
-#                self.frame_pertask = 1
-#                self.parser = "mantra"
 
             self.cmd += '%(auxargs)s'
             self.cmd += ' "%(hipfilename)s"'
@@ -245,6 +313,8 @@ class BlockParameters:
                 self.name = self.afnode.parm('cmd_name').eval()
                 if self.name is None or self.name == '':
                     self.name = self.cmd.split(' ')[0]
+                if self.prefix != '':
+                    self.name = '%s_%s' % (self.prefix, self.name)
 
                 # Service:
                 self.service = self.afnode.parm('cmd_service').eval()
@@ -329,7 +399,7 @@ class BlockParameters:
         block = af.Block(self.name, self.service)
         block.setParser(self.parser)
         block.setCommand(cmd, self.cmd_useprefix)
-        if self.preview != '':
+        if self.preview != '' and self.generate_previews:
             block.setFiles([self.preview])
 
         if self.numeric:
@@ -344,7 +414,7 @@ class BlockParameters:
             for cmd in self.tasks_cmds:
                 task = af.Task(self.tasks_names[t])
                 task.setCommand(cmd)
-                if len(self.tasks_previews):
+                if len(self.tasks_previews) and self.generate_previews:
                     task.setFiles([self.tasks_previews[t]])
                 block.tasks.append(task)
                 t += 1
@@ -356,8 +426,17 @@ class BlockParameters:
         if self.capacity_min != -1 or self.capacity_max != -1:
             block.setVariableCapacity(self.capacity_min, self.capacity_max)
 
-        block.setTaskMaxRunTime(self.maxruntime)
-        block.setTaskMinRunTime(self.minruntime)
+        if self.minruntime > 0.01:
+            block.setTaskMinRunTime(self.minruntime)
+        if self.maxruntime > 0.01:
+            block.setTaskMaxRunTime(int(self.maxruntime*3600.0))
+        if self.progress_timeout > 0.001:
+            block.setTaskProgressChangeTimeout(int(self.progress_timeout*3600.0))
+
+        if self.file_check_enable:
+            block.checkRenderedFiles(self.file_check_size_mb_min, self.file_check_size_mb_max)
+            if self.file_check_skip_existing:
+                block.skipExistingFiles()
 
         # Delete files in a block post command:
         if len(self.delete_files):
@@ -383,7 +462,22 @@ class BlockParameters:
         if self.subtaskdepend:
             block.setDependSubTask()
         if self.min_memory > -1:
-            block.setNeedMemory(self.min_memory)
+            block.setNeedMemory(self.min_memory*1024)
+
+        # Process Tickets
+        if self.tickets_use:
+            if self.tickets_auto:
+                for ticket in self.tickets:
+                    block.addTicket(ticket, self.tickets[ticket])
+            if self.ticket_mem:
+                block.addTicket('MEM', self.ticket_mem)
+            if self.tickets_aux_use and self.tickets_aux_data is not None and len(self.tickets_aux_data):
+                for ticket in self.tickets_aux_data.split(','):
+                    ticket = ticket.strip().split(':')
+                    if len(ticket) != 2:
+                        hou.ui.displayMessage('Invalid ticket data: "%s".' % ticket)
+                        continue
+                    block.addTicket(ticket[0], int(ticket[1]))
 
         return block
 
@@ -409,12 +503,13 @@ class BlockParameters:
             sec = now_sec % 60
             wait_sec = now_day + (hours * 3600) + (minutes * 60) + sec
             if wait_sec <= now_sec:
-                if hou.ui.displayMessage(
-                            ('Now is greater than %d:%d\nOffset by 1 day?' % (hours,minutes)),
-                            buttons=('Offset', 'Abort'),
-                            default_choice=0, close_choice=1,
-                            title=('Wait Time')
-                        ) == 0:
+                result = hou.ui.displayMessage(
+                    'Now is greater than %d:%d\nOffset by 1 day?' % (hours, minutes),
+                    buttons=('Offset', 'Abort'),
+                    default_choice=0, close_choice=1,
+                    title='Wait Time'
+                )
+                if result == 0:
                     wait_sec += (24*3600)
                 else:
                     return
@@ -472,13 +567,28 @@ class BlockParameters:
         if self.hosts_mask_exclude != '':
             job.setHostsMaskExclude(self.hosts_mask_exclude)
 
+        if self.life_time > -1:
+            job.setTimeLife(self.life_time * 3600)  # hours to seconds
+
+        # Process Pools
+        if self.pools_use and self.pools_data is not None and len(self.pools_data):
+            pools = dict()
+            for pool in self.pools_data.split(','):
+                pool = pool.strip().split(':')
+                if len(pool) != 2:
+                    hou.ui.displayMessage('Invalid pool data: "%s".' % pool)
+                    continue
+                pools[pool[0]] = int(pool[1])
+            if len(pools):
+                job.setPools(pools)
+
         job.setFolder('input', os.path.dirname(hou.hipFile.name()))
 
         images = None
         for blockparam in blockparams:
             job.blocks.append(blockparam.genBlock(renderhip))
 
-            # Set ouput folder from the first block with images to preview:
+            # Set output folder from the first block with images to preview:
             if images is None and blockparam.preview != '':
                 images = blockparam.preview
                 job.setFolder('output', os.path.dirname(images))
@@ -487,7 +597,7 @@ class BlockParameters:
             job.setCmdPost('deletefiles "%s"' % renderhip)
 
         if VERBOSE:
-            job.output(True)
+            job.output()
 
         job.send()
 
@@ -525,7 +635,7 @@ def getBlockParameters(afnode, ropnode, subblock, prefix, frame_range):
         block_generate = \
             BlockParameters(afnode, ropnode, subblock, prefix, frame_range)
         blockname = block_generate.name
-        block_generate.name += '-G'
+        block_generate.name += '-GenIFD'
 
         if not block_generate.valid:
             block_generate.doPost()
@@ -537,7 +647,9 @@ def getBlockParameters(afnode, ropnode, subblock, prefix, frame_range):
         tile_render = afnode.parm('sep_tile').eval()
         tile_divx = afnode.parm('sep_tile_divx').eval()
         tile_divy = afnode.parm('sep_tile_divy').eval()
-        use_tmp_img_folder = afnode.parm('sep_use_tmp_img_folder').eval()
+        tiles_count = tile_divx * tile_divy
+        tiles_stitch_service = afnode.parm('tiles_stitch_service').eval()
+        tiles_stitch_capacity = afnode.parm('tiles_stitch_capacity').eval()
         del_rop_files = afnode.parm('sep_del_rop_files').eval()
 
         if read_rop or run_rop:
@@ -561,6 +673,10 @@ def getBlockParameters(afnode, ropnode, subblock, prefix, frame_range):
                 # Set output mode to produce ifd files:
                 block_generate.ropnode.parm('soho_outputmode').set(1)
                 block_generate.soho_outputmode = 0
+
+                # We use unexpandedString() here to keep $F4 as expression.
+                # If we eval() the value,
+                # we will 'bake' the frame number when user submit the job.
                 block_generate.ropnode.parm('soho_diskfile').set(
                     block_generate.ropnode.parm(
                         'vm_picture').unexpandedString() + '.ifd'
@@ -574,12 +690,12 @@ def getBlockParameters(afnode, ropnode, subblock, prefix, frame_range):
             parm_files  = afnode.parm('sep_files')
 
         images = afcommon.patternFromPaths(
-            parm_images.evalAsStringAtFrame( block_generate.frame_first),
-            parm_images.evalAsStringAtFrame( block_generate.frame_last))
+            parm_images.evalAsStringAtFrame(block_generate.frame_first),
+            parm_images.evalAsStringAtFrame(block_generate.frame_last))
 
         files = afcommon.patternFromPaths(
-            parm_files.evalAsStringAtFrame( block_generate.frame_first),
-            parm_files.evalAsStringAtFrame( block_generate.frame_last))
+            parm_files.evalAsStringAtFrame(block_generate.frame_first),
+            parm_files.evalAsStringAtFrame(block_generate.frame_last))
 
         if run_rop:
             if join_render:
@@ -593,72 +709,91 @@ def getBlockParameters(afnode, ropnode, subblock, prefix, frame_range):
                     'hrender_af', 'hrender_separate'
                 )
 
-                if use_tmp_img_folder:
-                    block_generate.cmd += ' --tmpimg'
-
         if not join_render:
-            tiles = tile_divx * tile_divy
             block_render = BlockParameters(afnode, ropnode, subblock, prefix,
                                            frame_range)
-            block_render.name = blockname + '-R'
+            block_render.name = blockname + '-TileRender'
             block_render.cmd = 'mantra'
             block_render.service = block_render.cmd
             if run_rop:
                 block_render.dependmask = block_generate.name
 
-            if tile_render or del_rop_files or use_tmp_img_folder:
-                block_render.cmd = 'mantrarender '
-
             if del_rop_files:
                 block_render.delete_files.append(files)
 
-            if use_tmp_img_folder:
-                block_render.cmd += 't'
-
             if tile_render:
                 block_render.numeric = False
-                block_render.cmd += 'c %(tile_divx)d %(tile_divy)d' % vars()
-                block_render.cmd += ' @#@'
-                block_render.frame_pertask = -tiles
+                block_render.cmd += ' -t count=%(tile_divx)dx%(tile_divy)d,index=@#@' % vars()
+                block_render.frame_pertask = -tiles_count
                 for frame in range(block_generate.frame_first,
                                    block_generate.frame_last + 1,
                                    block_generate.frame_inc):
                     arguments = afnode.parm(
                         'sep_render_arguments').evalAsStringAtFrame(frame)
                     arguments = arguments.replace(
-                        '@FILES@', parm_files.evalAsStringAtFrame( frame))
+                        '@FILES@', parm_files.evalAsStringAtFrame(frame))
 
-                    for tile in range(0, tiles):
-                        block_render.tasks_names.append(
-                            '%d tile %d' % (frame, tile))
-                        block_render.tasks_cmds.append(
-                            '%d -R %s' % (tile, arguments))
+                    for tile in range(0, tiles_count):
+                        block_render.tasks_names.append('frame %d tile %d' % (frame, tile))
+                        block_render.tasks_cmds.append('%d %s' % (tile, arguments))
             else:
-                if del_rop_files or use_tmp_img_folder:
-                    block_render.cmd += ' -R '
-                else:
-                    block_render.cmd += ' -V a '
-                block_render.cmd += afcommon.patternFromPaths(
+                block_render.cmd += ' ' + afcommon.patternFromPaths(
                     afnode.parm('sep_render_arguments').evalAsStringAtFrame(block_generate.frame_first),
                     afnode.parm('sep_render_arguments').evalAsStringAtFrame(block_generate.frame_last)
                 ).replace('@FILES@', files)
                 block_render.preview = images
 
         if tile_render:
-            cmd = 'exrjoin %(tile_divx)d %(tile_divy)d %(images)s d' % vars()
+            cmd = 'itilestitch "%s"' % images
+            tile_suffix = '_tile%02d_'
+            timg = os.path.relpath(images)
+
+            # Now we should find a dot before frame number,
+            # as matra places tile_suffix there.
+            tpos = timg.find('@')
+            if tpos > 0:
+                # We found Afanasy digits pattern start
+                tpos -= 1
+            else:
+                # We do not have Afanay numeric pattern.
+                # May be aftist sent just one frame to render.
+                name, ext = os.path.splitext(timg)
+                # Shitf to name w/o extension
+                tpos = len(name) - 1
+                # Shift frame digits
+                while name[tpos].isdigit() and tpos > 0:
+                    tpos -= 1
+                # Shitf a dot before frame digits
+                if name[tpos] == '.':
+                    tpos -= 1
+                # It will be used as a length to cut, not as index
+                tpos += 1
+
+            # Insert tile suffix
+            timg = timg[:tpos] + tile_suffix + timg[tpos:]
+
+            # List all tiles in the command
+            for i in range(0, tiles_count):
+                cmd += ' "%s"' % (timg % i)
 
             block_join = BlockParameters(
                 afnode, ropnode, subblock, prefix, frame_range
             )
 
-            block_join.name = blockname + '-J'
-            block_join.service = 'generic'
+            block_join.name = blockname + '-TilesStitch'
+            block_join.service = tiles_stitch_service
+            block_join.capacity = tiles_stitch_capacity
+            block_join.tickets = dict()
+            # block render might be referenced before assignment
             block_join.dependmask = block_render.name
             block_join.cmd = cmd
             block_join.cmd_useprefix = False
             block_join.preview = images
 
-        if tile_render:
+            # Disable minimum running time as it can be set on Afanasy ROP.
+            # As tile stich can be much fast
+            block_join.minruntime = 0
+
             params.append(block_join)
 
         if not join_render:
@@ -807,6 +942,10 @@ def getJobParameters(afnode, subblock=False, frame_range=None, prefix=''):
                 return None
 
         elif node and node.type().name() == "wedge":
+            newprefix = node.name()
+            if prefix != '':
+                newprefix = prefix + '_' + newprefix
+
             wedgednode = None
             if node.inputs():
                 wedgednode = node.inputs()[0]
@@ -822,14 +961,15 @@ def getJobParameters(afnode, subblock=False, frame_range=None, prefix=''):
                 hou.hscript('set WEDGE = ' + names[wedge])
                 hou.hscript('set WEDGENUM = ' + str(wedge))
                 hou.hscript('varchange')
-                #add wedged node to next block
-                block = getBlockParameters(afnode, wedgednode, subblock, "{}_{}".format(node.name(),wedge), frame_range)[0]
+                # add wedged node to next block
+                block = getBlockParameters(afnode, wedgednode, subblock, "{}_{:02}".format(newprefix,wedge), frame_range)[0]
                 block.auxargs += " --wedge " + node.path() + " --wedgenum " + str(wedge)
                 newparams.append(block)
             # clear environment
             hou.hscript('set WEDGE = ')
             hou.hscript('set WEDGENUM = ')
             hou.hscript('varchange')
+            dependmask = newprefix + '_.*'
 
         else:
             newparams = \
@@ -904,5 +1044,5 @@ def computeWedge(ropnode, roptype):
             numWedgeJobs = len(takes)
 
         if not numWedgeJobs:
-            raise hou.OperationFailed("The specified wedge node does not compute anyting.")
+            raise hou.OperationFailed("The specified wedge node does not compute anything.")
     return numWedgeJobs

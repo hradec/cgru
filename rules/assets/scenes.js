@@ -44,12 +44,28 @@ function sc_InitHTML( i_data)
 
 	if( sc_scenes )
 	{
-		scenes_Show();
+		$('scenes_load_btn').textContent = 'Load All Shots';
+		$('scenes_load_btn').onclick = function()
+		{
+			sc_Show_Loaded();
+			scenes_Show();
+		}
 	}
 	else
 	{
-		scene_Show();
+		$('scenes_load_btn').textContent = 'Load Scene Shots';
+		$('scenes_load_btn').onclick = function()
+		{
+			sc_Show_Loaded();
+			scene_Show();
+		}
 	}
+}
+
+function sc_Show_Loaded()
+{
+	$('scenes_load_btn').style.display = 'none';
+	$('scenes_show_loaded').style.display = 'block';
 }
 
 function sc_Post()
@@ -185,17 +201,21 @@ function scene_Show()
 		elShot.m_elStatus.appendChild( elSt.elAnnotation);
 		elSt.elAnnotation.classList.add('annotation');
 
-		elSt.elArtists = document.createElement('div');
-		elShot.m_elStatus.appendChild( elSt.elArtists);
-		elSt.elArtists.classList.add('artists');
-
 		elSt.elFlags = document.createElement('div');
 		elShot.m_elStatus.appendChild( elSt.elFlags);
 		elSt.elFlags.classList.add('flags');
 
+		elSt.elTasks = document.createElement('div');
+		elShot.m_elStatus.appendChild( elSt.elTasks);
+		elSt.elTasks.classList.add('tags');
+
 		elSt.elTags = document.createElement('div');
 		elShot.m_elStatus.appendChild( elSt.elTags);
 		elSt.elTags.classList.add('tags');
+
+		elSt.elArtists = document.createElement('div');
+		elShot.m_elStatus.appendChild( elSt.elArtists);
+		elSt.elArtists.classList.add('artists');
 
 		function st_CreateSceneShot( i_status)
 		{
@@ -209,7 +229,7 @@ function scene_Show()
 			for( var fl = 0; fl < folders[f].status.flags.length; fl++)
 				elShot.classList.add( folders[f].status.flags[fl]);
 
-		var st_obj = new Status( folders[f].status, {"path":path,"createGUI": st_CreateSceneShot});
+		var st_obj = new Status( folders[f].status, {"path":path,"createGUI": st_CreateSceneShot,'tasks_badges':true});
 		elShot.m_status = st_obj;
 		elEditBtn.m_status = st_obj;
 		elEditBtn.onclick = sc_EditStatus;
@@ -235,6 +255,13 @@ function sc_BodyReceived( i_data, i_args)
 	// Replace <br> with spaces through some pattern:
 	i_args.elShot.m_elBody.innerHTML = i_data.replace(/\<\s*br\s*\/?\s*\>/g,'@@BR@@');
 	i_args.elShot.m_elBody.innerHTML = i_args.elShot.m_elBody.textContent.replace(/@@BR@@/g,' ');
+
+	if (i_args.elShot.m_status && i_args.elShot.m_status.obj)
+	{
+		if (i_args.elShot.m_status.obj.body == null)
+			i_args.elShot.m_status.obj.body = {};
+		i_args.elShot.m_status.obj.body.data = i_data;
+	}
 }
 
 function scenes_Show()
@@ -279,7 +306,6 @@ function scenes_Received( i_data, i_args)
 		var elStatus = document.createElement('div');
 		elScene.appendChild( elStatus);
 		elStatus.classList.add('status');
-//window.console.log(JSON.stringify(fobj));
 		st_SetElLabel( fobj.status, elStatus);
 		st_SetElColor( fobj.status, elScene);
 
@@ -339,6 +365,10 @@ function scenes_Received( i_data, i_args)
 			elShot.m_elStatus.appendChild( elSt.elFlags);
 			elSt.elFlags.classList.add('flags');
 
+			elSt.elTasks = document.createElement('div');
+			elShot.m_elStatus.appendChild(elSt.elTasks);
+			elSt.elTasks.classList.add('tasks');
+
 			elSt.elTags = document.createElement('div');
 			elShot.m_elStatus.appendChild( elSt.elTags);
 			elSt.elTags.classList.add('tags');
@@ -363,7 +393,7 @@ function scenes_Received( i_data, i_args)
 				for( var f = 0; f < fobj.status.flags.length; f++)
 					elShot.classList.add( fobj.status.flags[f]);
 
-			var st_obj = new Status( fobj.status, {"path":elShot.m_path,"createGUI": st_CreateSceneShot});
+			let st_obj = new Status(fobj.status, {"path":elShot.m_path,"createGUI": st_CreateSceneShot,"display_short":true,'tasks_badges':true});
 			elShot.m_status = st_obj;
 
 			elShot.ondblclick = sc_EditStatus;
@@ -603,13 +633,12 @@ function scenes_GetSelectedShots()
 	return shots;
 }
 
-function sc_FilterShots( i_args)
+function sc_FilterShots(i_args)
 {
 	var o_res = {};
-	o_res.found = {};
-	o_res.found.artists = [];
-	o_res.found.flags = [];
-	o_res.found.tags = [];
+	o_res.artists = [];
+	o_res.flags = [];
+	o_res.tags = [];
 
 	if (sc_elShots == null)
 		return;
@@ -617,39 +646,118 @@ function sc_FilterShots( i_args)
 	if (i_args == null)
 		i_args = {};
 
-	var anns = null;
-	if( i_args.ann )
+
+	// Prepare speial flags and tags:
+	let flags_and = false;
+	let flags_tsk = false;
+	if (i_args.flags)
 	{
-		var anns_or = i_args.ann.split(',');
-		anns = [];
-		for( var o = 0; o < anns_or.length; o++)
-			anns.push( anns_or[o].split(' '));
+		let index = i_args.flags.indexOf('_AND_');
+		if (index != -1)
+		{
+			flags_and = true;
+			i_args.flags.splice(index, 1);
+		}
+		index = i_args.flags.indexOf('_TSK_');
+		if (index != -1)
+		{
+			flags_tsk = true;
+			i_args.flags.splice(index, 1);
+		}
 	}
 
-	for( var th = 0; th < sc_elShots.length; th++)
+	let tags_and  = false;
+	let tags_tsk  = false;
+	if (i_args.tags)
 	{
-		var found = ( i_args == null );
-
-		var el = sc_elShots[th];
-		var st_obj = {};
-		if( el.m_status && el.m_status.obj )
-			st_obj = el.m_status.obj;
-
-		if( anns )
+		let index = i_args.tags.indexOf('_AND_');
+		if (index != -1)
 		{
-			if( st_obj.annotation )
-				for( var o = 0; o < anns.length; o++)
-				{
-					var found_and = true;
-					for( var a = 0; a < anns[o].length; a++)
+			tags_and = true;
+			i_args.tags.splice(index, 1);
+		}
+		index = i_args.tags.indexOf('_TSK_');
+		if (index != -1)
+		{
+			tags_tsk = true;
+			i_args.tags.splice(index, 1);
+		}
+	}
+
+
+	var anns = null;
+	if (i_args.ann )
+	{
+		let anns_or = i_args.ann.split('|');
+		anns = [];
+		for (let o = 0; o < anns_or.length; o++)
+			anns.push( anns_or[o].split('+'));
+	}
+
+	var bodies = null;
+	if (i_args.body)
+	{
+		let bodies_or = i_args.body.split('|');
+		bodies = [];
+		for (let o = 0; o < bodies_or.length; o++)
+			bodies.push(bodies_or[o].split('+'));
+	}
+
+	for (let th = 0; th < sc_elShots.length; th++)
+	{
+		let found = (i_args == null);
+
+		let el = sc_elShots[th];
+		let st_obj = {};
+		if (el.m_status && el.m_status.obj)
+			st_obj = c_CloneObj(el.m_status.obj);
+			//st_obj = Object.assign({}, el.m_status.obj);
+
+		// Join status with tasks
+		if (st_obj.tasks)
+		{
+			let keys = ['artists'];
+			// Join flags or tags, never join and flags and tags.
+			// If task search enabled for both tags and flags,
+			// we should search tasks, not just join shot status with tasks status.
+			if (false == (flags_tsk && tags_tsk))
+			{
+				if (flags_tsk)
+					keys.push('flags');
+				if (tags_tsk)
+					keys.push('tags');
+			}
+
+			for (let t in st_obj.tasks)
+			{
+				let task = st_obj.tasks[t];
+				for (let key of keys)
+					if (task[key])
 					{
-						if( st_obj.annotation.indexOf( anns[o][a]) == -1 )
+						if (null == st_obj[key])
+							st_obj[key] = [];
+						for (let val of task[key])
+							if (st_obj[key].indexOf(val) == -1)
+								st_obj[key].push(val);
+					}
+			}
+		}
+
+		if (anns)
+		{
+			if (st_obj.annotation)
+				for (let o = 0; o < anns.length; o++)
+				{
+					let found_and = true;
+					for (let a = 0; a < anns[o].length; a++)
+					{
+						if (st_obj.annotation.toLowerCase().indexOf(anns[o][a].toLowerCase()) == -1)
 						{
 							found_and = false;
 							break;
 						}
 					}
-					if( found_and )
+					if (found_and)
 					{
 						found = true;
 						break;
@@ -658,83 +766,181 @@ function sc_FilterShots( i_args)
 		}
 		else found = true;
 
-		if( i_args.flags && found )
+		if (bodies && found)
 		{
 			found = false;
-			if( st_obj.flags && st_obj.flags.length )
+			if (st_obj.body && st_obj.body.data)
+				for (let o = 0; o < bodies.length; o++)
+				{
+					let found_and = true;
+					for (let b = 0; b < bodies[o].length; b++)
+					{
+						if (st_obj.body.data.toLowerCase().indexOf(bodies[o][b].toLowerCase()) == -1)
+						{
+							found_and = false;
+							break;
+						}
+					}
+					if (found_and)
+					{
+						found = true;
+						break;
+					}
+				}
+		}
+
+		if (i_args.flags && i_args.flags.length && found)
+		{
+			found = false;
+			if (st_obj.flags && st_obj.flags.length)
 			{
-				for( i = 0; i < i_args.flags.length; i++ )
-					if( st_obj.flags.indexOf( i_args.flags[i]) != -1 )
-						{ found = true; break; }
+				for (let f of i_args.flags)
+				{
+					// skip special flags
+					if (f.charAt(0) == '_') continue;
+
+					if (st_obj.flags.includes(f))
+					{
+						found = true;
+						if (false == flags_and)
+							break;
+					}
+					else
+					{
+						found = false;
+						if (flags_and)
+							break;
+					}
+				}
 			}
-			else if( i_args.flags.indexOf('_null_') != -1)
+			else if (i_args.flags.indexOf('_null_') != -1)
 				found = true;
 		}
 
-		if( i_args.tags && found )
+		if (i_args.tags && i_args.tags.length && found)
 		{
 			found = false;
-			if( st_obj.tags && st_obj.tags.length )
+			if (st_obj.tags && st_obj.tags.length)
 			{
-				for( i = 0; i < i_args.tags.length; i++ )
-					if( st_obj.tags.indexOf( i_args.tags[i]) != -1 )
-						{ found = true; break; }
+				for (let t of i_args.tags)
+				{
+					// skip special tags
+					if (t.charAt(0) == '_') continue;
+
+					if (st_obj.tags.includes(t))
+					{
+						found = true;
+						if (false == tags_and)
+							break;
+					}
+					else
+					{
+						found = false;
+						if (tags_and)
+							break;
+					}
+				}
 			}
-			else if( i_args.tags.indexOf('_null_') != -1)
+			else if (i_args.tags.indexOf('_null_') != -1)
 				found = true;
 		}
 
-		if( i_args.artists && found )
+		// Search tasks:
+		if (flags_tsk && tags_tsk)
+		{
+			if (st_obj.tasks)
+			{
+				for (let t in st_obj.tasks)
+				{
+					let task = st_obj.tasks[t];
+					found = true;
+
+					if (found && i_args.flags && i_args.flags.length)
+					{
+						found = false;
+						if (task.flags && task.flags.length)
+						{
+							for (let i = 0; i < i_args.flags.length; i++)
+								if (task.flags.includes(i_args.flags[i]))
+									{ found = true; break; }
+						}
+					}
+
+					if (found && i_args.tags && i_args.tags.length)
+					{
+						found = false;
+						if (task.tags && task.tags.length)
+						{
+							for (let i = 0; i < i_args.tags.length; i++)
+								if (task.tags.includes(i_args.tags[i]))
+									{ found = true; break; }
+						}
+					}
+				}
+			}
+			else
+				found = false;
+		}
+
+		if (i_args.artists && found)
 		{
 			found = false;
-			if( st_obj.artists && st_obj.artists.length )
+			if (st_obj.artists && st_obj.artists.length)
 			{
-				for( i = 0; i < i_args.artists.length; i++ )
-					if( st_obj.artists.indexOf( i_args.artists[i]) != -1 )
+				for (let i = 0; i < i_args.artists.length; i++)
+					if (st_obj.artists.indexOf(i_args.artists[i]) != -1)
 						{ found = true; break; }
 			}
-			else if( i_args.artists.indexOf('_null_') != -1)
+			else if (i_args.artists.indexOf('_null_') != -1)
 				found = true;
 		}
 
 		if( i_args.percent && found )
 		{
 			found = false;
-			if(( st_obj.progress != null ) &&
-				(( i_args.percent[0] == null ) || ( st_obj.progress >= i_args.percent[0] )) &&
-				(( i_args.percent[1] == null ) || ( st_obj.progress <= i_args.percent[1] )))
+			if ((st_obj.progress != null) &&
+				((i_args.percent[0] == null) || (st_obj.progress >= i_args.percent[0])) &&
+				((i_args.percent[1] == null) || (st_obj.progress <= i_args.percent[1])))
 				found = true;
 		}
 
-		if( i_args.finish && found )
+		if (i_args.finish && found)
 		{
 			found = false;
-			if( st_obj.finish )
+			if (st_obj.finish)
 			{
-				var days = c_DT_DaysLeft( st_obj.finish);
-				if( (( i_args.finish[0] == null ) ||  days >= i_args.finish[0] ) &&
-					(( i_args.finish[1] == null ) ||  days <= i_args.finish[1] ))
+				let days = c_DT_DaysLeft(st_obj.finish);
+				if (((i_args.finish[0] == null) ||  days >= i_args.finish[0]) &&
+					((i_args.finish[1] == null) ||  days <= i_args.finish[1]))
 					found = true;
 			}
 		}
 
-		if( found )
+		if (found)
 		{
 			el.style.display = 'block';
 			el.m_filtered = false;
 
+			// We should return not filtered shots all artists,
+			// flags and tags for search field to mute it.
 			if (st_obj.artists)
-				for (let a = 0; a < st_obj.artists.length; a++)
-					o_res.found.artists.push(st_obj.artists[a]);
+				o_res.artists = o_res.artists.concat(st_obj.artists);
 
 			if (st_obj.flags)
-				for (let f = 0; f < st_obj.flags.length; f++)
-					o_res.found.flags.push(st_obj.flags[f]);
+				o_res.flags = o_res.flags.concat(st_obj.flags);
 
 			if (st_obj.tags)
-				for (let t = 0; t < st_obj.tags.length; t++)
-					o_res.found.tags.push(st_obj.tags[t]);
+				o_res.tags = o_res.tags.concat(st_obj.tags);
 
+			if (flags_tsk && tags_tsk && st_obj.tasks)
+				for (let t in st_obj.tasks)
+				{
+					let task = st_obj.tasks[t];
+					if (task.flags)
+						o_res.flags = o_res.flags.concat(task.flags);
+					if (task.tags)
+						o_res.tags = o_res.tags.concat(task.tags);
+				}
 		}
 		else
 		{
@@ -743,19 +949,20 @@ function sc_FilterShots( i_args)
 		}
 	}
 
-	if( sc_elScenes )
-		for( var f = 0; f < sc_elScenes.length; f++)
+	// Hide scenes where are no shots to show
+	if (sc_elScenes)
+		for (let f = 0; f < sc_elScenes.length; f++)
 		{
-			var oneShown = false;
-			for( var t = 0; t < sc_elScenes[f].m_elThumbnails.length; t++)
+			let oneShown = false;
+			for (var t = 0; t < sc_elScenes[f].m_elThumbnails.length; t++)
 			{
-				if( sc_elScenes[f].m_elThumbnails[t].m_filtered != true )
+				if (sc_elScenes[f].m_elThumbnails[t].m_filtered != true)
 				{
 					oneShown = true;
 					break;
 				}
 			}
-			if( oneShown )
+			if (oneShown)
 			{
 				sc_elScenes[f].style.display = 'block';
 				sc_elScenes[f].m_filtered = false;
@@ -870,6 +1077,7 @@ function sc_DisplayStatistics()
 
 	$('scenes_info').innerHTML = info;
 
+return;
 	// Statistics:
 	//
 	var args = {};
@@ -955,7 +1163,6 @@ function scenes_makeThumbnail( i_data, i_args)
 	cmd += ' -c ' + sc_thumb_params_values.colorspace;
 
 	c_Info('Generating thumbnail for ' + el.m_path + ' (' + num_updated + '/' + sc_elImgThumbs.length + ')');
-//console.log(cmd);
 
 	n_Request({"send":{"cmdexec":{"cmds":[cmd]}},"func":scenes_makeThumbnail,"elThumb":el,"info":'shot thumbnail',"local":true,"wait":false,"parse":true});
 }

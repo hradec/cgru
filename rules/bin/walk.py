@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 import json
@@ -18,8 +17,10 @@ Parser = OptionParser(
     version="%prog 1.0"
 )
 
+Parser.add_option('-d', '--maxdepth', dest='maxdepth', type = 'int',        default=-1,                 help='Maximum walk depth.')
+Parser.add_option('-i', '--fileinfo', dest='fileinfo', action='store_true', default=False,              help='Store each file info.')
 Parser.add_option('-o', '--output',   dest='output',   type = 'string',     default='.rules/walk.json', help='File to save results.')
-Parser.add_option('-n', '--noupdate', dest='noupdate', action='store_true', default=False,              help='Skip update upfolders.')
+Parser.add_option('-u', '--upparents',dest='upparents',type = 'int',        default=0,                  help='Update parent folders count (-1 = infinite, up to the root).')
 Parser.add_option('-m', '--mediainfo',dest='mediainfo',action='store_true', default=False,              help='Get media information.')
 Parser.add_option('-p', '--progress', dest='progress', action='store_true', default=False,              help='Output progress percentage.')
 Parser.add_option('-t', '--thumb',    dest='thumb',    type = 'int',        default=None,               help='Make thumbnail frequency.')
@@ -104,7 +105,7 @@ def checkDict(io_dict, i_reset_counts = False):
                 io_dict[key] = 0
 
 
-def walkdir(i_path, i_subwalk, i_curdepth=0):
+def walkdir(i_path, i_upwalk = False, i_curdepth = 0):
     global Progress
     global PrevFiles
     global CurFiles
@@ -113,7 +114,7 @@ def walkdir(i_path, i_subwalk, i_curdepth=0):
     global TotalSpace
 
     # Output current path:
-    if Options.verbose > i_curdepth and i_subwalk:
+    if Options.verbose > i_curdepth and not i_upwalk:
         outInfo('cur_path',i_path)
 
     # Output report:
@@ -158,9 +159,10 @@ def walkdir(i_path, i_subwalk, i_curdepth=0):
             TotalSpace += space
 
             fout = None
-            if i_subwalk:
+            if not i_upwalk:
                 # Recursively walk in a subfolder:
-                fout = walkdir(path, True, i_curdepth + 1)
+                if Options.maxdepth < 0 or i_curdepth <= Options.maxdepth:
+                    fout = walkdir(path, False, i_curdepth + 1)
             else:
                 # Load previous walk data:
                 fout = jsonLoad(os.path.join(path, Options.output))
@@ -212,6 +214,11 @@ def walkdir(i_path, i_subwalk, i_curdepth=0):
                     obj = mediainfo.processMovie( path)
                     if obj and 'mediainfo' in obj:
                         out['files'][entry] = obj['mediainfo']
+                if Options.fileinfo:
+                    if not entry in out['files']:
+                        out['files'][entry] = dict()
+                    out['files'][entry]['size'] = size
+                    out['files'][entry]['mtime'] = int(st.st_mtime)
             out['num_files_total'] += 1
             out['size_total'] += size
             out['size'] += size
@@ -265,7 +272,7 @@ if PrevFiles:
         cgruutils.sepThousands(prev['size_total'])))
 
 # Walk in subfolders:
-walk = walkdir(StartPath, True)
+walk = walkdir(StartPath)
 
 # Calculate difference with previous
 d_files = None
@@ -278,9 +285,10 @@ if PrevFiles:
 
 
 # Update parent folders:
-if not Options.noupdate:
+if Options.upparents != 0:
     curpath = StartPath
     PrevFiles = None
+    depth = 0
     while curpath != '/' and curpath != '':
         # Go one folder upper:
         uppath = os.path.dirname(curpath)
@@ -289,7 +297,11 @@ if not Options.noupdate:
         curpath = uppath
 
         outInfo('updating', curpath)
-        walkdir(curpath, False)
+        walkdir(curpath, True)
+
+        depth += 1
+        if Options.upparents > 0 and depth >= Options.upparents:
+            break
 
 
 # Output statistics:

@@ -85,7 +85,18 @@ function shot_InitHTML( i_data)
 
 	// Create shot process buttons:
     if (c_CanExecuteSoft())
-    	u_CreateActions(ASSET.shot_process, $('shot_process_div')); 
+	{
+		let elements = u_CreateActions(ASSET.shot_process, $('shot_process_div'));
+
+		for (let el of elements)
+		{
+if ((g_CurPath().indexOf('/SWORD_II/') != 0) && (g_CurPath().indexOf('/MAGIC_SUMMER/') != 0))
+			if (activity_Selected == null)
+				el.style.display = 'none';
+
+			el.classList.add('show_on_activity');
+		}
+	}
 
 	shot_ResultsRead( true);
 }
@@ -134,22 +145,32 @@ function shot_ResultsReceived( i_data, i_args)
 	var el = $('shot_results');
 	el.textContent = '';
 	var found = false;
-	for( var i = 0; i < i_data.length; i++)
+	for (let i = 0; i < i_data.length; i++)
 	{
-		var folders = i_data[i].folders;
-		var files   = i_data[i].files;
-		var path    = i_args.paths[i];
+		let folders = i_data[i].folders;
+		let files   = i_data[i].files;
+		let path    = i_args.paths[i];
 
-		if((( folders == null ) || ( folders.length == 0 )) &&
-			(( files  == null ) || (   files.length == 0 ))) continue;
+		if( ((folders == null) || (folders.length == 0)) &&
+			((files   == null) || (files.length   == 0))) continue;
 
 		// Last path is DAILIES,
-		// We skip it, if something already added
-		if(( i < (i_data.length - 1)) || ( shot_thumb_paths.length == 0 ))
-			shot_thumb_paths.push( path);
+		// We skip it for thumbnails, if some other path already added.
+		// As better to make thumbnail from sequences, not movies (that just converted from that sequences)
+		if ((i < (i_data.length - 1)) || (shot_thumb_paths.length == 0))
+			shot_thumb_paths.push(path);
 
-		res_filesviews.push( new FilesView({"el":el,"path":path,"walk":i_data[i],
-			"show_walk":false,"can_count":true,"masks":shot_results_masks,"count_images":true}));
+		let fva = {};
+		fva.el = el;
+		fva.path = path;
+		fva.name = c_PathBase(path);
+		fva.walk = i_data[i];
+		fva.show_walk = false;
+		fva.can_count = true;
+		fva.masks = shot_results_masks;
+		fva.count_images = true;
+
+		res_filesviews.push(new FilesView(fva));
 
 		found = true;
 	}
@@ -257,17 +278,31 @@ function shot_MakeThumbnail( i_args)
 	u_ThumbnailMake( i_args);
 }
 
-function shot_ShowRefs()
+function shot_RefsShow()
 {
+	$('shot_refs_btn').style.display = 'none';
 	$('shot_refs_div').style.clear = 'both';
 	$('shot_refs_div').style.cssFloat = 'none';
-	$('shot_refs_btn').style.display = 'none';
+	$('shot_refs').textContent = '';
 	$('shot_refs').style.display = 'block';
 	$('shot_refs').classList.add('waiting');
 
-	var walk = {};
+	let cmds = [];
+	for (let i = 0; i < ASSET.references.path.length; i++)
+		cmds.push('rules/bin/walk.sh --maxdepth 0 --mediainfo "'
+				+ RULES.root + '/' + ASSET.path + '/' + ASSET.references.path[0] + '"');
+	n_Request({
+		"send": {"cmdexec": {"cmds": cmds}},
+		"func": shot_RefsWalkReceived,
+		"info": 'walk refs media'
+	});
+}
+
+function shot_RefsWalkReceived(i_data, i_args)
+{
+	let walk = {};
 	walk.paths = [];
-	for( var i = 0; i < ASSET.references.path.length; i++)
+	for (let i = 0; i < ASSET.references.path.length; i++)
 		walk.paths.push( ASSET.path + '/' + ASSET.references.path[i]);
 
 	walk.wfunc = shot_RefsReceived;
@@ -275,8 +310,18 @@ function shot_ShowRefs()
 
 	n_WalkDir( walk);
 }
+function shot_RefsClose()
+{
+	$('shot_refs_div').style.clear = 'none';
+	$('shot_refs_div').style.cssFloat = 'left';
+	$('shot_refs').style.display = 'none';
+	$('shot_refs_btn').style.display = 'block';
+	$('shot_refs_close_btn').style.display = 'none';
+}
 function shot_RefsReceived( i_data, i_args)
 {
+	$('shot_refs_close_btn').style.display = 'block';
+
 	var walk = i_args;
 	walk.walks = i_data;
 
@@ -295,7 +340,7 @@ function shot_RefsReceived( i_data, i_args)
 			((  files == null ) || (   files.length == 0 )))
 			 continue;
 		not_empty_paths.push( walk.paths[i]);
-		new FilesView({"el":el,"path":walk.paths[i],"walk":walk.walks[i],"limits":false,"count_images":true})
+		new FilesView({"el":el,"path":walk.paths[i],"walk":walk.walks[i],"limits":false,"can_count":true})
 		found = true;
 	}
 	if( false == found )

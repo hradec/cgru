@@ -18,13 +18,13 @@
 #include "../libafanasy/environment.h"
 #include "../libafanasy/msg.h"
 #include "../libafanasy/msgqueue.h"
-#include "../libafanasy/farm.h"
 #include "../libafanasy/regexp.h"
 
 #include "action.h"
 #include "afcommon.h"
 #include "jobcontainer.h"
 #include "monitorcontainer.h"
+#include "poolscontainer.h"
 #include "rendercontainer.h"
 #include "sysjob.h"
 
@@ -37,16 +37,15 @@ RenderContainer * RenderAf::ms_renders = NULL;
 
 RenderAf::RenderAf( af::Msg * msg):
 	af::Render( msg),
-	AfNodeSrv( this)
+	AfNodeFarm(this, this, AfNodeFarm::TRenderer, NULL)
 {
 	initDefaultValues();
 }
 
 RenderAf::RenderAf( const std::string & i_store_dir):
 	af::Render(),
-	AfNodeSrv( this, i_store_dir)
+	AfNodeFarm(this, this, AfNodeFarm::TRenderer, NULL, i_store_dir)
 {
-	AFINFA("RenderAf::RenderAf(%d)", m_id);
 	initDefaultValues();
 
 	int size;
@@ -74,24 +73,27 @@ RenderAf::RenderAf( const std::string & i_store_dir):
 
 void RenderAf::initDefaultValues()
 {
-	m_farm_host_name = "no farm host";
-	m_farm_host_description = "";
-	m_services_num = 0;
-	if( m_host.m_capacity == 0 ) m_host.m_capacity = af::Environment::getRenderDefaultCapacity();
-	if( m_host.m_max_tasks == 0 ) m_host.m_max_tasks = af::Environment::getRenderDefaultMaxTasks();
+	m_parent = NULL;
+
 	setBusy( false);
 	setWOLFalling( false);
 	setWOLSleeping( false);
 	setWOLWaking( false);
+
+	m_no_task_time        = 0;
+	m_no_task_event_count = 0;
+
+	m_overload_time  = 0;
+	m_overload_seconds = 0;
 }
 
 RenderAf::~RenderAf()
 {
 }
 
-void RenderAf::setRegistered()
+void RenderAf::setRegistered(PoolsContainer * i_pools)
 {
-	getFarmHost();
+	findPool(i_pools);
 
 	if( isFromStore())
 	{
@@ -101,14 +103,14 @@ void RenderAf::setRegistered()
 	{
 		std::string log = "Registered";
 
-		if( m_host.m_register_nimby > 0 )
+		if (m_parent->newNimby())
 		{
 			setNimby();
 			log += " nimby";
 		}
-		if( m_host.m_register_paused > 0 )
+		if (m_parent->newPaused())
 		{
-			setPaused( true);
+			setPaused(true);
 			log += " paused";
 		}
 
@@ -124,6 +126,37 @@ void RenderAf::setRegistered()
 	m_wol_operation_time = 0;
 	m_idle_time = time(NULL);
 	m_busy_time = m_idle_time;
+}
+
+void RenderAf::findPool(PoolsContainer * i_pools)
+{
+	if (m_parent)
+	{
+		AF_ERR << "Render '" << getName() << "' already in pool '" + m_parent->getName() + "'";
+		return;
+	}
+
+	if (m_pool.empty())
+	{
+		i_pools->assignRender(this);
+		return;
+	}
+
+	m_parent = i_pools->getPool(m_pool);
+	if (NULL == m_parent)
+	{
+		AF_ERR << "Render pool '" + m_pool + "' does not exist.";
+		i_pools->assignRender(this);
+		return;
+	}
+
+	m_parent->addRender(this);
+}
+
+void RenderAf::setPool(PoolSrv * i_pool)
+{
+	m_pool = i_pool->getName();
+	m_parent = i_pool;
 }
 
 void RenderAf::offline( JobContainer * jobs, uint32_t updateTaskState, MonitorContainer * monitoring, bool toZombie )
@@ -148,8 +181,13 @@ void RenderAf::offline( JobContainer * jobs, uint32_t updateTaskState, MonitorCo
 	{
 		AFCommon::QueueLog("Render Deleting: " + v_generateInfoString( false));
 		appendLog("Waiting for deletion.");
+		if (m_parent)
+		{
+			m_parent->removeRender(this);
+			if (monitoring) monitoring->addEvent( af::Monitor::EVT_pools_change, m_parent->getId());
+		}
 		setZombie();
-		if( monitoring ) monitoring->addEvent( af::Monitor::EVT_renders_del, m_id);
+		if (monitoring) monitoring->addEvent( af::Monitor::EVT_renders_del, m_id);
 	}
 	else
 	{
@@ -159,6 +197,37 @@ void RenderAf::offline( JobContainer * jobs, uint32_t updateTaskState, MonitorCo
 		if( monitoring ) monitoring->addEvent( af::Monitor::EVT_renders_change, m_id);
 		store();
 	}
+}
+
+void RenderAf::getPoolConfig()
+{
+	if (NULL == m_parent)
+		return;
+
+	m_re.m_heartbeat_sec           = m_parent->getHeartBeatSec();
+	m_re.m_resources_update_period = m_parent->getResourcesUpdatePeriod();
+	m_re.m_zombie_time             = m_parent->getZombieTime();
+	m_re.m_exit_no_task_time       = m_parent->getExitNoTaskTime();
+}
+
+af::Msg * RenderAf::writeRenderEventsMsg()
+{
+	m_re.m_id = m_id;
+
+	af::Msg * msg = new af::Msg(af::Msg::TRenderEvents, &m_re);
+
+	m_re.clear();
+
+	return msg;
+}
+
+af::Msg * RenderAf::writeConnectedMsg(const std::string & i_log)
+{
+	m_re.m_log = i_log;
+
+	getPoolConfig();
+
+	return writeRenderEventsMsg();
 }
 
 af::Msg * RenderAf::update( const af::RenderUpdate & i_up)
@@ -179,11 +248,7 @@ af::Msg * RenderAf::update( const af::RenderUpdate & i_up)
 		return new af::Msg( af::Msg::TRenderId, getId());
 	}
 
-	af::Msg * msg = new af::Msg( af::Msg::TRenderEvents, &m_re);
-
-	m_re.clear();
-
-	return msg;
+	return writeRenderEventsMsg();
 }
 
 void RenderAf::online( RenderAf * render, JobContainer * i_jobs, MonitorContainer * monitoring)
@@ -194,21 +259,24 @@ void RenderAf::online( RenderAf * render, JobContainer * i_jobs, MonitorContaine
 		return;
 	}
 
-	m_idle_time = time( NULL);
+	// Update some attributes to make it online:
+	m_task_start_finish_time = 0;
+	m_idle_time = time(NULL);
 	m_busy_time = m_idle_time;
-	setBusy( false);
-	setWOLSleeping( false);
-	setWOLWaking( false);
-	setWOLFalling( false);
+	setBusy(false);
+	setWOLSleeping(false);
+	setWOLWaking(false);
+	setWOLFalling(false);
+	updateTime();
+	setOnline();
+
+	// Grab some attributes from an incoming render data:
+	m_os = render->m_os;
 	m_time_launch = render->m_time_launch;
 	m_engine = render->m_engine;
-	m_task_start_finish_time = 0;
-	m_address.copy( render->getAddress());
-	grabNetIFs( render->m_netIFs);
-	getFarmHost( &render->m_host);
-	setOnline();
-	updateTime();
-	m_hres.copy( render->getHostRes());
+	m_address.copy(render->getAddress());
+	grabNetIFs(render->m_netIFs);
+	m_hres.copy(render->getHostRes());
 
 
 	// Reconnect tasks if any:
@@ -256,8 +324,8 @@ void RenderAf::setTask( af::TaskExec *taskexec, MonitorContainer * monitoring, b
 		return;
 	}
 
-	addTask( taskexec);
-	addService( taskexec->getServiceType());
+	addTask(taskexec, monitoring);
+
 	if( monitoring ) monitoring->addEvent( af::Monitor::EVT_renders_change, m_id);
 
 	if( start)
@@ -307,6 +375,16 @@ void RenderAf::startTask( af::TaskExec *taskexec)
 
 void RenderAf::v_action( Action & i_action)
 {
+	const JSON & params = (*i_action.data)["params"];
+	if (params.IsObject())
+		jsonRead(params, &i_action.log);
+
+	if (i_action.log.size())
+	{
+		store();
+		i_action.monitors->addEvent( af::Monitor::EVT_renders_change, m_id);
+	}
+
 	const JSON & operation = (*i_action.data)["operation"];
 	if( operation.IsObject())
 	{
@@ -317,6 +395,11 @@ void RenderAf::v_action( Action & i_action)
 			if( false == isOnline()) return;
 			appendLog("Exit by " + i_action.author);
 			exitClient("exit", i_action.jobs, i_action.monitors);
+			return;
+		}
+		else if (type == "heal_sick")
+		{
+			actionHealSick(i_action);
 			return;
 		}
 		else if( type == "launch_cmd")
@@ -331,7 +414,7 @@ void RenderAf::v_action( Action & i_action)
 					appendLog("Launch command and exit request by " + i_action.author + "\n" + cmd);
 				else
 					appendLog("Launch command request by " + i_action.author + "\n" + cmd);
-				launchAndExit( cmd, exit, i_action.jobs, i_action.monitors);
+				launchAndExit(cmd, exit);
 			}
 			else
 			{
@@ -355,7 +438,11 @@ void RenderAf::v_action( Action & i_action)
 		}
 		else if( type == "delete")
 		{
-			if( isOnline() ) return;
+			if(isOnline())
+			{
+				i_action.answerError("Can`t delete online render.");
+				return;
+			}
 			appendLog( std::string("Deleted by ") + i_action.author);
 			offline( NULL, 0, i_action.monitors, true);
 			return;
@@ -378,45 +465,86 @@ void RenderAf::v_action( Action & i_action)
 			wolSleep( i_action.monitors);
 		else if( type == "wol_wake")
 			wolWake( i_action.monitors);
-		else if( type == "service")
+		else if (type == "farm")
 		{
-			af::RegExp service_mask; bool enable;
-			af::jr_regexp("name", service_mask, operation);
-			af::jr_bool("enable", enable, operation);
-			for (int i = 0 ; i < m_host.getServicesNum() ; ++i)
-			{
-				std::string service = m_host.getServiceName(i);
-				if( service_mask.match( service))
-					setService( service, enable);
-			}
+			if (false == actionFarm(i_action))
+				return;
 		}
-		else if( type == "restore_defaults")
+		else if (type == "set_pool")
 		{
-			m_max_tasks = -1;
-			m_capacity = -1;
-			m_services_disabled.clear();
-			disableServices(); // Dirty check exists in that function
+			std::string pool_name;
+			af::jr_string("name", pool_name, operation);
+			actionSetPool(pool_name, i_action);
+		}
+		else if (type == "reassign_pool")
+		{
+			actionReassignPool(i_action);
+		}
+		else if (type == "tickets")
+		{
+			if (false == actionTicket(i_action))
+				return;
 		}
 		else
 		{
 			appendLog("Unknown operation \"" + type + "\" by " + i_action.author);
+			i_action.answerError("Unknown operation: " + type);
 			return;
 		}
+
 		appendLog("Operation \"" + type + "\" by " + i_action.author);
 		i_action.monitors->addEvent( af::Monitor::EVT_renders_change, m_id);
 		store();
 		return;
 	}
 
-	const JSON & params = (*i_action.data)["params"];
-	if( params.IsObject())
-		jsonRead( params, &i_action.log);
+}
 
-	if( i_action.log.size() )
+void RenderAf::actionSetPool(const std::string & i_pool_name, Action & i_action)
+{
+	if (m_pool == i_pool_name)
 	{
-		store();
-		i_action.monitors->addEvent( af::Monitor::EVT_renders_change, m_id);
+		i_action.answerError("Render '" + getName() + "' already in a poll '" + i_pool_name + "'.");
+		return;
 	}
+
+	PoolSrv * pool = i_action.pools->getPool(i_pool_name);
+	if (NULL == pool)
+	{
+		i_action.answerError("Pool '" + i_pool_name + "' does not exist.");
+		return;
+	}
+
+	if (pool->hasRender(this))
+	{
+		i_action.answerError("Pool '" + pool->getName() + "' already has a render '" + getName() + "'.");
+		return;
+	}
+
+	if (m_parent)
+	{
+		m_parent->removeRender(this);
+		i_action.monitors->addEvent(af::Monitor::EVT_pools_change, m_parent->getId());
+	}
+
+	m_pool = i_pool_name;
+	pool->addRender(this);
+	m_parent = pool;
+
+	i_action.monitors->addEvent(af::Monitor::EVT_pools_change, m_parent->getId());
+}
+
+void RenderAf::actionReassignPool(Action & i_action)
+{
+	if (m_parent)
+	{
+		m_parent->removeRender(this);
+		i_action.monitors->addEvent(af::Monitor::EVT_pools_change, m_parent->getId());
+	}
+
+	i_action.pools->assignRender(this);
+
+	i_action.monitors->addEvent(af::Monitor::EVT_pools_change, m_parent->getId());
 }
 
 void RenderAf::ejectTasks( JobContainer * jobs, MonitorContainer * monitoring, uint32_t upstatus, const std::string * i_keeptasks_username )
@@ -465,11 +593,12 @@ void RenderAf::exitClient( const std::string & i_type, JobContainer * i_jobs, Mo
 	m_re.m_instruction = i_type;
 }
 
-void RenderAf::launchAndExit( const std::string & i_cmd, bool i_exit, JobContainer * i_jobs, MonitorContainer * i_monitoring)
+void RenderAf::launchAndExit(const std::string & i_cmd, bool i_exit)
 {
-	if( false == isOnline() ) return;
+	if (false == isOnline())
+		return;
 
-	m_re.m_instruction = ( i_exit ? "launch_exit" : "launch");
+	m_re.m_instruction = (i_exit ? "launch_exit" : "launch");
 	m_re.m_command = i_cmd;
 }
 
@@ -556,50 +685,173 @@ void RenderAf::stopTask( int jobid, int blocknum, int tasknum, int number)
 	m_re.addTaskStop( af::MCTaskPos( jobid, blocknum, tasknum, number));
 }
 
-void RenderAf::taskFinished( const af::TaskExec * taskexec, MonitorContainer * monitoring)
+void RenderAf::taskFinished(const af::TaskExec * i_exec, int64_t i_state, MonitorContainer * i_monitoring)
 {
-	removeTask( taskexec);
-	remService( taskexec->getServiceType());
+	removeTask(i_exec, i_monitoring);
 
-	if( taskexec->getNumber())
+	if (i_state & AFJOB::STATE_ERROR_MASK)
+		addErrorTask(i_exec);
+	else
+		clearErrorTasks();
+
+	if (i_exec->getNumber())
 	{
 		std::string str = "Finished service: ";
-		str += taskexec->v_generateInfoString( false);
-		appendTasksLog( str);
+		str += i_exec->v_generateInfoString(false);
+		appendTasksLog(str);
 	}
 	else
 	{
 		std::string str = "Finished task: ";
-		str += taskexec->v_generateInfoString( false);
-		appendTasksLog( str);
+		str += i_exec->v_generateInfoString(false);
+		appendTasksLog(str);
 	}
 
-	if( monitoring ) monitoring->addEvent( af::Monitor::EVT_renders_change, m_id);
+	if (i_monitoring)
+		i_monitoring->addEvent( af::Monitor::EVT_renders_change, m_id);
 }
 
-void RenderAf::addTask( af::TaskExec * taskexec)
+void RenderAf::addErrorTask(const af::TaskExec * i_exec)
+{
+	const int SickErrorsCount = m_parent->getSickErrorsCount();
+
+	if (SickErrorsCount <= 0)
+	{
+		if (m_error_tasks.size())
+			clearErrorTasks();
+		return;
+	}
+
+	std::list<ErrorTaskData*>::iterator it = m_error_tasks.begin();
+	int i = 0;
+	while (it != m_error_tasks.end())
+	{
+		if (((*it)->user_name == i_exec->getUserName()) ||
+			(i + 1 == SickErrorsCount))
+		{
+			delete *it;
+			it = m_error_tasks.erase(it);
+			continue;
+		}
+
+		it++; i++;
+	}
+
+	ErrorTaskData * etd = new ErrorTaskData;
+
+	etd->when = time(NULL);
+	etd->service = i_exec->getServiceType();
+	etd->user_name = i_exec->getUserName();
+
+	m_error_tasks.push_front(etd);
+
+	if (m_error_tasks.size() >= SickErrorsCount)
+	{
+		setSick();
+		emitEvents(std::vector<std::string>(1, "RENDER_SICK"));
+		std::string msg = std::string("Got sick after ") + af::itos(SickErrorsCount) + " errors:";
+		for (const auto & it : m_error_tasks)
+			msg += "\n" +  it->user_name + " - " + it->service + ": " + af::time2str(it->when);
+		appendLog(msg);
+	}
+}
+
+void RenderAf::clearErrorTasks()
+{
+	for (auto & it : m_error_tasks)
+		delete it;
+
+	m_error_tasks.clear();
+}
+
+void RenderAf::actionHealSick(Action & i_action)
+{
+	if (isNotSick())
+		return;
+
+	clearErrorTasks();
+
+	unsetSick();
+
+	i_action.monitors->addEvent(af::Monitor::EVT_renders_change, m_id);
+
+	appendLog(std::string("Healed by ") + i_action.author);
+}
+
+bool RenderAf::hasTickets(const std::map<std::string, int32_t> & i_tickets) const
+{
+	for (auto const& it : i_tickets)
+	{
+		if (false == hasHostTicket(it.first, it.second))
+			return false;
+
+		if (m_parent)
+		{
+			bool ticket_running = false;
+			std::map<std::string, af::Farm::Tiks>::const_iterator rIt = m_farm->m_tickets_host.find(it.first);
+			if (rIt != m_tickets_host.end())
+			{
+				if (rIt->second.usage > 0)
+					ticket_running = true;
+			}
+
+			if (false == m_parent->hasPoolTicket(it.first, it.second, ticket_running))
+				return false;
+		}
+	}
+
+	return true;
+}
+
+void RenderAf::addTask(af::TaskExec * i_taskexec, MonitorContainer * i_monitoring)
 {
 	// If render was not busy it has become busy now
-	if( false == isBusy())
+	if (false == isBusy())
 	{
-		setBusy( true);
-		m_task_start_finish_time = time( NULL);
+		setBusy(true);
+		m_task_start_finish_time = time(NULL);
 		store();
 	}
 
 	#ifdef AFOUTPUT
-	AF_DEBUG << *taskexec;
+	AF_DEBUG << *i_taskexec;
 	#endif
 
-	m_tasks.push_back( taskexec);
+	m_tasks.push_back(i_taskexec);
 
-	m_capacity_used += taskexec->getCapResult();
+	// Add task capacity
+	m_capacity_used += i_taskexec->getCapResult();
+	// Just check capacity.
+	// It was checked before, when we run canRunOn function
+	if ((findCapacity() >= 0) && (m_capacity_used > findCapacity()))
+		AF_ERR << "Capacity_used > max capacity (" << m_capacity_used << " > " << findCapacity() << ")";
 
-	if( m_capacity_used > getCapacity() )
-		AF_ERR << "Capacity_used > host.capacity (" << m_capacity_used << " > " << m_host.m_capacity << ")";
+	// Add task tickets
+	std::list<std::string> new_tickets;
+	for (auto & tIt : i_taskexec->m_tickets)
+	{
+		std::map<std::string, af::Farm::Tiks>::iterator hIt = m_tickets_host.find(tIt.first);
+		if (hIt != m_tickets_host.end())
+		{
+			if (hIt->second.usage == 0)
+				new_tickets.push_back(hIt->first);
+			hIt->second.usage += tIt.second;
+		}
+		else
+		{
+			new_tickets.push_back(tIt.first);
+			m_tickets_host[tIt.first] = Tiks(-1, tIt.second);
+		}
+	}
+
+	// Increment service on af::Node
+	incrementService(i_taskexec->getServiceType());
+
+	// Acuire task on pool
+	m_parent->taskAcuire(i_taskexec, new_tickets, i_monitoring);
 }
 
-void RenderAf::removeTask( const af::TaskExec * i_exec)
+void RenderAf::removeTask(const af::TaskExec * i_taskexec, MonitorContainer * i_monitoring)
 {
 	// Do not set free status here, even if this task was last.
 	// May it will take another task in this run cycle
@@ -608,100 +860,208 @@ void RenderAf::removeTask( const af::TaskExec * i_exec)
 	// As this af::TaskExec will be deleted by TaskRun very soon.
 
 	// Remove exec pointer:
-	for( std::list<af::TaskExec*>::iterator it = m_tasks.begin(); it != m_tasks.end(); it++)
+	for (std::list<af::TaskExec*>::iterator it = m_tasks.begin(); it != m_tasks.end(); it++)
 	{
-		if( *it == i_exec)
+		if (*it == i_taskexec)
 		{
-			it = m_tasks.erase( it);
+			it = m_tasks.erase(it);
 		}
 	}
 
 	// Remove exec pointer from events:
-	m_re.remTaskExec( i_exec);
+	m_re.remTaskExec(i_taskexec);
 
-	if( m_capacity_used < i_exec->getCapResult())
+	// Remove task capacity
+	if (m_capacity_used < i_taskexec->getCapResult())
 	{
-		AF_ERR << "Capacity_used < getCapResult() (" << m_capacity_used << " < " << i_exec->getCapResult() << ")";
+		AF_ERR << "Capacity_used < getCapResult() (" << m_capacity_used << " < " << i_taskexec->getCapResult() << ")";
 		m_capacity_used = 0;
 	}
-	else m_capacity_used -= i_exec->getCapResult();
+	else m_capacity_used -= i_taskexec->getCapResult();
+
+	// Remove task tickets
+	std::list<std::string> exp_tickets;
+	for (auto & tIt : i_taskexec->m_tickets)
+	{
+		std::map<std::string, af::Farm::Tiks>::iterator hIt = m_tickets_host.find(tIt.first);
+		if (hIt != m_tickets_host.end())
+		{
+			hIt->second.usage -= tIt.second;
+			if (hIt->second.usage < 0)
+			{
+				AF_ERR << "Render \"" << getName()
+					<< "\" has got a negative ticket \"" << hIt->first
+					<< "\" count. Resetting to zero.";
+				hIt->second.usage = 0;
+			}
+
+			if (hIt->second.usage == 0)
+				exp_tickets.push_back(hIt->first);
+		}
+	}
+
+	// Decrement service on af::Node
+	decrementService(i_taskexec->getServiceType());
+
+	// Release task on pool
+	m_parent->taskRelease(i_taskexec, exp_tickets, i_monitoring);
 }
 
-void RenderAf::v_refresh( time_t currentTime,  AfContainer * pointer, MonitorContainer * monitoring)
+void RenderAf::v_refresh( time_t i_current_time,  AfContainer * pointer, MonitorContainer * monitoring)
 {
 	if( isLocked() ) return;
 
 	JobContainer * jobs = (JobContainer*)pointer;
 
-	if( isOnline() && (getTimeUpdate() < (currentTime - af::Environment::getRenderZombieTime())))
+	if ((NULL == m_parent) && isOnline())
 	{
-		appendLog( std::string("ZOMBIETIME: ") + af::itos(af::Environment::getRenderZombieTime()) + " seconds.");
+		AF_ERR << "Render '" + getName() + "' has no pool.";
+		offline(jobs, af::TaskExec::UPRenderZombie, monitoring);
+		appendLog("Has no pool");
+		monitoring->addEvent(af::Monitor::EVT_renders_change, m_id);
+		return;
+	}
+
+	int zombie_time = m_parent->getZombieTime();
+	if (zombie_time <= 0)
+		zombie_time = AFRENDER::ZOMBIETIME;
+	if (isOnline() && (getTimeUpdate() < (i_current_time - zombie_time)))
+	{
+		appendLog( std::string("ZOMBIETIME: ") + af::itos(zombie_time) + " seconds.");
 		AFCommon::QueueLog( std::string("Render: \"") + getName() + "\" - ZOMBIETIME");
+		emitEvents(std::vector<std::string>(1, "RENDER_ZOMBIE"));
 		offline( jobs, af::TaskExec::UPRenderZombie, monitoring);
 		return;
 	}
 
+	// Check no task event timeout
+	int _no_task_event_timeout = m_parent->getNoTaskEventTime() * (1 << m_no_task_event_count);
+	if (isOnline() && (m_tasks.size() == 0) && m_no_task_time && (_no_task_event_timeout > 0))
+	{
+		if ((i_current_time - m_no_task_time) > _no_task_event_timeout)
+		{
+			std::ostringstream str;
+			str << "RENDER_NO_TASK: " << m_parent->getNoTaskEventTime()
+				<< " x2^"  << m_no_task_event_count << " = " << _no_task_event_timeout << " seconds.";
+			appendLog(str.str());
+			emitEvents(std::vector<std::string>(1, "RENDER_NO_TASK"));
+
+			// Increase event count to not to emit event each heartbeat
+			m_no_task_event_count++;
+		}
+	}
+	else
+	{
+		m_no_task_time = i_current_time;
+		m_no_task_event_count = 0;
+	}
+
+	// Check resources overflow for overload event
+	if (checkOverload())
+	{
+		if ((i_current_time - m_overload_time) > m_overload_seconds)
+		{
+			std::ostringstream str;
+			str << "RENDER_OVERLOAD: For "  << m_overload_seconds << " seconds:";
+			str << "\nMem: free = " << m_hres.mem_free_mb << "MB, total = " << m_hres.mem_total_mb << "MB"
+				<< ", overflow limit = " << af::Environment::getRenderOverflowMem() << "%";
+			str << "\nSwap: free = " << (m_hres.swap_total_mb - m_hres.swap_used_mb) << "MB, total = " << m_hres.swap_total_mb << "MB"
+				<< ", overflow limit = " << af::Environment::getRenderOverflowSwap() << "%";
+			str << "\nHDD: free = " << m_hres.hdd_free_gb << "GB, total = " << m_hres.hdd_total_gb << "GB"
+				<< ", overflow limit = " << af::Environment::getRenderOverflowHDD() << "%";
+			appendLog(str.str());
+			emitEvents(std::vector<std::string>(1, "RENDER_OVERLOAD"));
+
+			// Increase overload seconds to not to emit event each heartbeat
+			if (m_overload_seconds)
+				m_overload_seconds <<= 1;
+			else
+				m_overload_seconds = m_parent->getOverloadEventTime();
+		}
+	}
+	else
+	{
+		m_overload_time  = i_current_time;
+		m_overload_seconds = 0;
+	}
+
+	// Remove dummy tickets that were needed to store usage only
+	bool dummy_ticket_found = false;
+	std::map<std::string, Tiks>::iterator hIt = m_tickets_host.begin();
+	while (hIt != m_tickets_host.end())
+	{
+		if ((hIt->second.count < 0) && (hIt->second.usage <= 0))
+		{
+			hIt = m_tickets_host.erase(hIt);
+			dummy_ticket_found = true;
+		}
+		else
+			hIt++;
+	}
+	if (dummy_ticket_found)
+		monitoring->addEvent(af::Monitor::EVT_renders_change, m_id);
+
 	// Later auto nimby operations not needed if render is not online:
 	if( isOffline())
 	{
-		m_busy_time = currentTime;
-		m_idle_time = currentTime;
+		m_busy_time = i_current_time;
+		m_idle_time = i_current_time;
 		return;
 	}
 
 	// Update busy with no task time:
 	if(( isFree() == false ) || isBusy()) // already nimby or has task(s)
 	{
-		m_busy_time = currentTime;
+		m_busy_time = i_current_time;
 	}
 	else
 	{
 		int cpu=0,mem=0,swp=0,hgb=0,hio=0,net=0;
 
 		// CPU % busy:
-		if(( m_host.m_nimby_busy_cpu <= 0 ) ||
-			(( 100 - m_hres.cpu_idle ) < m_host.m_nimby_busy_cpu ))
+		if ((m_parent->get_busy_cpu() <= 0) ||
+			((100 - m_hres.cpu_idle) < m_parent->get_busy_cpu()))
 			cpu = 1;
 
 		// Mem % used:
-		if(( m_hres.mem_total_mb <= 0 ) || ( m_host.m_nimby_busy_mem <= 0 ) ||
-			(( 100 * ( m_hres.mem_total_mb - m_hres.mem_free_mb ) / m_hres.mem_total_mb ) < m_host.m_nimby_busy_mem ))
+		if ((m_hres.mem_total_mb <= 0) || (m_parent->get_busy_mem() <= 0) ||
+			((100 * (m_hres.mem_total_mb - m_hres.mem_free_mb) / m_hres.mem_total_mb) < m_parent->get_busy_mem()))
 			mem = 1;
 
 		// Swap % used:
-		if(( m_hres.swap_total_mb <= 0 ) || (( m_host.m_nimby_busy_swp <= 0 ) ||
-			( 100 * m_hres.swap_used_mb / m_hres.swap_total_mb ) < m_host.m_nimby_busy_swp ))
+		if ((m_hres.swap_total_mb <= 0) || ((m_parent->get_busy_swp() <= 0) ||
+			(100 * m_hres.swap_used_mb / m_hres.swap_total_mb) < m_parent->get_busy_swp()))
 			swp = 1;
 
 		// Hdd free GB:
-		if(( m_hres.hdd_total_gb <= 0 ) || ( m_host.m_nimby_busy_hddgb <= 0 ) ||
-			( m_hres.hdd_free_gb > m_host.m_nimby_busy_hddgb ))
+		if ((m_hres.hdd_total_gb <= 0) || (m_parent->get_busy_hddgb() <= 0) ||
+			(m_hres.hdd_free_gb > m_parent->get_busy_hddgb()))
 			hgb = 1;
 
 		// Hdd I/O %:
-		if(( m_host.m_nimby_busy_hddio <= 0 ) ||
-			( m_hres.hdd_busy < m_host.m_nimby_busy_hddio ))
+		if ((m_parent->get_busy_hddio() <= 0) ||
+			(m_hres.hdd_busy < m_parent->get_busy_hddio()))
 			hio = 1;
 
 		// Net Mb/s:
-		if(( m_host.m_nimby_busy_netmbs <= 0 ) ||
-		( m_hres.net_recv_kbsec + m_hres.net_send_kbsec < 1024 * m_host.m_nimby_busy_netmbs ))
+		if ((m_parent->get_busy_netmbs() <= 0) ||
+			(m_hres.net_recv_kbsec + m_hres.net_send_kbsec < (1024 * m_parent->get_busy_netmbs())))
 			net = 1;
 
 		// Render will be treated as 'not busy' if all params are 'not busy'
-		if( cpu & mem & swp & hio & hgb & net )
+		if (cpu & mem & swp & hio & hgb & net)
 		{
-			m_busy_time = currentTime;
+			m_busy_time = i_current_time;
 		}
-		else if(( m_host.m_nimby_busyfree_time > 0 ) && ( currentTime - m_busy_time > m_host.m_nimby_busyfree_time ))
+		else if ((m_parent->get_busy_nimby_time() > 0) && (i_current_time - m_busy_time > m_parent->get_busy_nimby_time()))
 		{
 		// Automatic Nimby ON:
 			std::string log("Automatic Nimby: ");
-			log += "\n Busy since: " + af::time2str( m_busy_time);// + " CPU >= " + af::itos( m_host.m_nimby_busy_cpu) + "%";
-			log += "\n Nimby busy free time = " + af::time2strHMS( m_host.m_nimby_busyfree_time, true );
-			appendLog( log);
+			log += "\n Busy since: " + af::time2str (m_busy_time);// + " CPU >= " + af::itos (m_parent->get_busy_cpu) + "%";
+			log += "\n Nimby busy free time = " + af::time2strHMS (m_parent->get_busy_nimby_time(), true);
+			appendLog (log);
 			setNIMBY();
-			monitoring->addEvent( af::Monitor::EVT_renders_change, m_id);
+			monitoring->addEvent (af::Monitor::EVT_renders_change, m_id);
 			store();
 		}
 	}
@@ -709,87 +1069,87 @@ void RenderAf::v_refresh( time_t currentTime,  AfContainer * pointer, MonitorCon
 	// Update idle time:
 	if( isBusy())
 	{
-		m_idle_time = currentTime;
+		m_idle_time = i_current_time;
 	}
-	else if(( m_host.m_nimby_idle_cpu    <= 0 ) &&
-			( m_host.m_nimby_idle_mem    <= 0 ) &&
-			( m_host.m_nimby_idle_swp    <= 0 ) &&
-			( m_host.m_nimby_idle_hddgb  <= 0 ) &&
-			( m_host.m_nimby_idle_hddio  <= 0 ) &&
-			( m_host.m_nimby_idle_netmbs <= 0 ))
+	else if((m_parent->get_idle_cpu()    <= 0) &&
+			(m_parent->get_idle_mem()    <= 0) &&
+			(m_parent->get_idle_swp()    <= 0) &&
+			(m_parent->get_idle_hddgb()  <= 0) &&
+			(m_parent->get_idle_hddio()  <= 0) &&
+			(m_parent->get_idle_netmbs() <= 0))
 	{
 		// If all params are 'off' there is no 'idle':
-		m_idle_time = currentTime;
+		m_idle_time = i_current_time;
 	}
 	else
 	{
 		int cpu=0,mem=0,swp=0,hgb=0,hio=0,net=0;
 
 		// CPU % busy:
-		if(( m_host.m_nimby_idle_cpu > 0 ) &&
-			(( 100 - m_hres.cpu_idle) > m_host.m_nimby_idle_cpu ))
+		if ((m_parent->get_idle_cpu() > 0) &&
+			((100 - m_hres.cpu_idle) > m_parent->get_idle_cpu()))
 			cpu = 1;
 
 		// Mem % used:
-		if(( m_hres.mem_total_mb > 0 ) && ( m_host.m_nimby_idle_mem > 0 ) &&
-			(( 100 * ( m_hres.mem_total_mb - m_hres.mem_free_mb ) / m_hres.mem_total_mb ) > m_host.m_nimby_idle_mem ))
+		if ((m_hres.mem_total_mb > 0) && (m_parent->get_idle_mem() > 0) &&
+			((100 * (m_hres.mem_total_mb - m_hres.mem_free_mb) / m_hres.mem_total_mb) > m_parent->get_idle_mem()))
 			mem = 1;
 
 		// Swap % used:
-		if(( m_hres.swap_total_mb ) && ( m_host.m_nimby_idle_swp > 0 ) &&
-			(( 100 * m_hres.swap_used_mb / m_hres.swap_total_mb ) > m_host.m_nimby_idle_swp ))
+		if ((m_hres.swap_total_mb) && (m_parent->get_idle_swp() > 0) &&
+			((100 * m_hres.swap_used_mb / m_hres.swap_total_mb) > m_parent->get_idle_swp()))
 			swp = 1;
 
 		// Hdd free GB:
-		if(( m_hres.hdd_total_gb > 0 ) && ( m_host.m_nimby_idle_hddgb > 0 ) &&
-			( m_hres.hdd_free_gb < m_host.m_nimby_idle_hddgb ))
+		if ((m_hres.hdd_total_gb > 0) && (m_parent->get_idle_hddgb() > 0) &&
+			(m_hres.hdd_free_gb < m_parent->get_idle_hddgb()))
 			hgb = 1;
 
 		// Hdd I/O %:
-		if(( m_host.m_nimby_idle_hddio > 0 ) &&
-			( m_hres.hdd_busy > m_host.m_nimby_idle_hddio ))
+		if ((m_parent->get_idle_hddio() > 0) &&
+			(m_hres.hdd_busy > m_parent->get_idle_hddio()))
 			hio = 1;
 
 		// Net Mb/s:
-		if(( m_host.m_nimby_idle_netmbs > 0 ) &&
-			( m_hres.net_recv_kbsec + m_hres.net_send_kbsec > 1024 * m_host.m_nimby_idle_netmbs ))
+		if ((m_parent->get_idle_netmbs() > 0) &&
+			(m_hres.net_recv_kbsec + m_hres.net_send_kbsec > (1024 * m_parent->get_idle_netmbs())))
 			net = 1;
 
 		// it will be treated as 'not idle' any param is 'not idle'
 		if( cpu | mem | swp | hio | hgb | net )
 		{
-			m_idle_time = currentTime;
+			m_idle_time = i_current_time;
 		}
 		else 
 		{
 			// Automatic WOL sleep:
-			if(( m_host.m_wol_idlesleep_time > 0 ) && isOnline() && ( isWOLSleeping() == false) && ( isWOLFalling() == false)
-				&& ( currentTime - m_idle_time > m_host.m_wol_idlesleep_time ))
+			if ((m_parent->get_idle_wolsleep_time() > 0) && isOnline() && (isWOLSleeping() == false) && (isWOLFalling() == false)
+				&& (i_current_time - m_idle_time > m_parent->get_idle_wolsleep_time()))
 			{
 				std::string log("Automatic WOL Sleep: ");
-				log += "\n Idle since: " + af::time2str( m_idle_time);
-				log += "\n WOL idle sleep time = " + af::time2strHMS( m_host.m_wol_idlesleep_time, true );
-				appendLog( log);
-				wolSleep( monitoring);
+				log += "\n Idle since: " + af::time2str(m_idle_time);
+				log += "\n WOL idle sleep time = " + af::time2strHMS(m_parent->get_idle_wolsleep_time(), true);
+				appendLog(log);
+				wolSleep(monitoring);
 			}
 
 			// Automatic Nimby Free:
-			if(( m_host.m_nimby_idlefree_time > 0 ) && isOnline() && ( isNimby() || isNIMBY())
-				&& ( currentTime - m_idle_time > m_host.m_nimby_idlefree_time ))
+			if ((m_parent->get_idle_free_time() > 0) && isOnline() && (isNimby() || isNIMBY())
+				&& (i_current_time - m_idle_time > m_parent->get_idle_free_time()))
 			{
 				std::string log("Automatic Nimby Free: ");
-				log += "\n Idle since: " + af::time2str( m_idle_time);
-				log += "\n Nimby idle free time = " + af::time2strHMS( m_host.m_nimby_idlefree_time, true );
-				appendLog( log);
+				log += "\n Idle since: " + af::time2str(m_idle_time);
+				log += "\n Nimby idle free time = " + af::time2strHMS(m_parent->get_idle_free_time(), true );
+				appendLog(log);
 				setFree();
-				monitoring->addEvent( af::Monitor::EVT_renders_change, m_id);
+				monitoring->addEvent(af::Monitor::EVT_renders_change, m_id);
 				store();
 			}
 		}
 	}
 }
 
-void RenderAf::v_postSolve(time_t i_curtime, MonitorContainer * i_monitoring)
+void RenderAf::v_postSolve(time_t i_current_time, MonitorContainer * i_monitoring)
 {
 	bool changed = false;
 
@@ -798,7 +1158,7 @@ void RenderAf::v_postSolve(time_t i_curtime, MonitorContainer * i_monitoring)
 	if (isBusy() && (m_tasks.size() == 0))
 	{
 		setBusy(false);
-		m_task_start_finish_time = i_curtime;
+		m_task_start_finish_time = i_current_time;
 		changed = true;
 	}
 
@@ -836,183 +1196,6 @@ af::Msg * RenderAf::writeTasksLog( bool i_binary)
 	return msg;
 }
 
-bool RenderAf::getFarmHost( af::Host * newHost)
-{
-	// Store old services usage:
-	std::list<int> servicescounts_old;
-	std::list<std::string> servicesnames_old;
-	for( int i = 0; i < m_services_num; i++)
-	{
-		servicescounts_old.push_back( m_services_counts[i]);
-		servicesnames_old.push_back( m_host.getServiceName(i));
-	}
-	int servicesnum_old = m_services_num;
-
-	// Clear services and services usage:
-	m_host.clearServices();
-	m_services_counts.clear();
-	m_services_num = 0;
-
-	// When render becames online it refresh hardware information:
-	if( newHost ) m_host.copy( *newHost);
-
-	// Get farm services setttings:
-	if( af::farm()->getHost( m_name, m_host, m_farm_host_name, m_farm_host_description ) == false)
-	{
-		m_farm_host_name = "no farm host";
-		m_farm_host_description = "";
-		return false;
-	}
-
-	// Check dirty - check if capacity was overriden and now is equal to the new value
-	checkDirty();
-
-	m_services_num = m_host.getServicesNum();
-	m_services_counts.resize( m_services_num, 0);
-
-	std::list<std::string>::const_iterator osnIt = servicesnames_old.begin();
-	std::list<int>::const_iterator oscIt = servicescounts_old.begin();
-	for( int o = 0; o < servicesnum_old; o++, osnIt++, oscIt++)
-		for( int i = 0; i < m_services_num; i++)
-			if( *osnIt == m_host.getServiceName(i))
-				m_services_counts[i] = *oscIt;
-
-	disableServices();
-
-	return true;
-}
-
-void RenderAf::disableServices()
-{
-	m_services_disabled_nums.clear();
-	m_services_disabled_nums.resize( m_services_num, 0);
-	if( m_services_disabled.size())
-	{
-		for( int i = 0; i < m_services_disabled.size(); i++)
-			for( int j = 0; j < m_services_num; j++)
-				if( m_services_disabled[i] == m_host.getServiceName(j))
-					m_services_disabled_nums[j] = 1;
-	}
-	checkDirty();
-}
-
-void RenderAf::setService( const std::string & srvname, bool enable)
-{
-	std::vector<std::string> m_services_disabled_old = m_services_disabled;
-	m_services_disabled.clear();
-
-	// Collect new disabled services list w/o specified service:
-	for( int i = 0; i < m_services_disabled_old.size(); i++)
-		if( m_services_disabled_old[i] != srvname )
-			m_services_disabled.push_back( m_services_disabled_old[i]);
-
-	// Add specified service in disabled list:
-	if( false == enable )
-		m_services_disabled.push_back( srvname);
-
-	disableServices();
-}
-
-const std::string RenderAf::getServicesString() const
-{
-	if( m_services_num == 0) return "No services.";
-
-	std::string str = "Services:";
-	for( int i = 0; i < m_services_num; i++)
-	{
-		str += "\n	";
-		str += m_host.getServiceName(i);
-		if( m_services_disabled_nums[i] ) str += " (DISABLED)";
-		if(( m_services_counts[i] > 0) || ( m_host.getServiceCount(i) > 0))
-		{
-			str += ": ";
-			if( m_services_counts[i] > 0) str += af::itos( m_services_counts[i]);
-			if( m_host.getServiceCount(i) > 0) str += " / max=" + af::itos( m_host.getServiceCount(i));
-		}
-	}
-	if( m_services_disabled.size())
-	{
-		str += "\nDisabled services:\n	";
-		str += af::strJoin( m_services_disabled);
-	}
-
-	return str;
-}
-void RenderAf::jsonWriteServices( std::ostringstream & o_str) const
-{
-	o_str << "\"services\":{";
-
-	for( int i = 0; i < m_services_num; i++)
-	{
-		if( i > 0 ) o_str << ",";
-		o_str << "\"" << m_host.getServiceName(i) << "\":[" << int( m_services_counts[i]);
-		if( m_host.getServiceCount(i) > 0)
-			o_str << ",\"max\"," << int( m_host.getServiceCount(i));
-		if( m_services_disabled_nums[i] ) o_str << ",false";
-		o_str << "]";
-	}
-
-	o_str << "}";
-
-	if( false == m_services_disabled.size())
-		o_str << ",\"services_disabled\":\"" << af::strJoin( m_services_disabled) << "\"";
-}
-
-bool RenderAf::canRunService( const std::string & type) const
-{
-	if( false == af::farm()->serviceLimitCheck( type, m_name)) return false;
-
-	for( int i = 0; i < m_services_num; i++)
-	{
-		if( m_host.getServiceName(i) == type)
-		{
-			if( m_services_disabled_nums[i]) return false;
-			if( m_host.getServiceCount(i) > 0)
-			{
-				return m_services_counts[i] < m_host.getServiceCount(i);
-			}
-			return true;
-		}
-	}
-	return false;
-}
-
-void RenderAf::addService( const std::string & type)
-{
-	af::farm()->serviceLimitAdd( type, m_name);
-
-	for( int i = 0; i < m_services_num; i++)
-	{
-		if( m_host.getServiceName(i) == type)
-		{
-			m_services_counts[i]++;
-			if((m_host.getServiceCount(i) > 0 ) && (m_services_counts[i] > m_host.getServiceCount(i)))
-				AFERRAR("RenderAf::addService: m_services_counts > host.getServiceCount for '%s' (%d>=%d)",
-						  type.c_str(), m_services_counts[i], m_host.getServiceCount(i))
-			return;
-		}
-	}
-}
-
-void RenderAf::remService( const std::string & type)
-{
-	af::farm()->serviceLimitRelease( type, m_name);
-
-	for( int i = 0; i < m_services_num; i++)
-	{
-		if( m_host.getServiceName(i) == type)
-		{
-			if( m_services_counts[i] < 1)
-			{
-				AFERRAR("RenderAf::remService: m_services_counts < 1 for '%s' (=%d)", type.c_str(), m_services_counts[i])
-			}
-			else
-				m_services_counts[i]--;
-			return;
-		}
-	}
-}
-
 void RenderAf::closeLostTask( const af::MCTaskUp &taskup)
 {
 	RenderContainerIt rIt( ms_renders);
@@ -1034,25 +1217,118 @@ void RenderAf::closeLostTask( const af::MCTaskUp &taskup)
 	render->m_re.addTaskClose( taskup);
 }
 
+bool RenderAf::checkOverload()
+{
+	// If render is offline, it can't be overloaded
+	if (isOffline())
+		return false;
+
+	// By default overload time is -1.
+	// It means that the feature is disabled.
+	// To enable feature, overload time should be > 0.
+	if (m_parent->getOverloadEventTime() <= 0)
+		return false;
+
+	// Check memory
+	if (m_hres.mem_total_mb)
+		if (((100 * m_hres.mem_free_mb) / m_hres.mem_total_mb) <= af::Environment::getRenderOverflowMem())
+			return true;
+
+	// Check swap
+	if (m_hres.swap_total_mb)
+		if (((100 * (m_hres.swap_total_mb - m_hres.swap_used_mb)) / m_hres.swap_total_mb) <= af::Environment::getRenderOverflowSwap())
+			return true;
+
+	// Check HDD
+	if (m_hres.hdd_total_gb)
+		if (((100 * m_hres.hdd_free_gb) / m_hres.hdd_total_gb) <= af::Environment::getRenderOverflowHDD())
+			return true;
+
+	return false;
+}
+
+void RenderAf::emitEvents(const std::vector<std::string> & i_events) const
+{
+	// Processing command for system job if some events happened:
+	if (i_events.empty())
+		return;
+
+	// Check that some custom data exists:
+	if (noCustomData() && SysJob::GetUser()->noCustomData() && SysJob::GetJob()->noCustomData())
+	{
+		// Check all parent pools custom data exists:
+		bool found = false;
+		const PoolSrv * pool = m_parent;
+		while (pool)
+		{
+			if (pool->hasCustomData())
+				found = true;
+			pool = pool->getParent();
+		}
+
+		if (false == found)
+			return;
+	}
+
+	std::ostringstream str;
+	str << "{";
+
+	str << "\n\"render\":";
+	v_jsonWrite(str, af::Msg::TRendersList);
+	str << ",\n";
+	m_hres.jsonWrite(str);
+
+	str << ",\n\"pools\":[";
+	const PoolSrv * pool = m_parent;
+	while (pool)
+	{
+		str << "\n";
+		pool->v_jsonWrite(str, af::Msg::TPoolsList);
+		pool = pool->getParent();
+		if (pool)
+			str << ",";
+	}
+	str << "\n]";
+
+	str << ",\n\"user\":";
+	SysJob::GetUser()->v_jsonWrite(str, af::Msg::TUsersList);
+
+	str << ",\n\"job\":";
+	SysJob::GetJob()->v_jsonWrite(str, af::Msg::TJobsList);
+
+	str << ",\n\"events\":[";
+
+	for (int i = 0; i < i_events.size(); i++)
+	{
+		if (i) str << ',';
+		str << '"' << i_events[i] << '"';
+	}
+	str << "]\n}";
+
+	SysJob::AddEventCommand(str.str(),
+		"", // working directory - no matter
+		m_user_name, m_name, i_events[0]);
+}
+
 af::Msg * RenderAf::writeFullInfo( bool i_binary) const
 {
-	if( i_binary )
+	if (i_binary)
 	{
 		af::Msg * o_msg = new af::Msg();
 
-		std::string str = v_generateInfoString( true);
-		if( m_custom_data.size())
-		str += "\nCustom Data:\n" + m_custom_data;
-		str += "\n";
-		str += getServicesString();
-		std::string servicelimits = af::farm()->serviceLimitsInfoString( true);
-		if( servicelimits.size())
+		std::string str = v_generateInfoString(true);
+
+		if (m_custom_data.size())
+			str += "\nCustom Data:\n" + m_custom_data;
+
+		if (m_error_tasks.size())
 		{
-			str += "\n";
-			str += servicelimits;
+			str += "\nError tasks:";
+			for(const auto & etd : m_error_tasks)
+				str += "\n" + af::time2str(etd->when) + ": " + etd->user_name + " - " + etd->service;
 		}
 
-		o_msg->setString( str);
+		o_msg->setString(str);
 
 		return o_msg;
 	}
@@ -1067,12 +1343,6 @@ af::Msg * RenderAf::writeFullInfo( bool i_binary) const
 	af::Render::v_jsonWrite( str, af::Msg::TRendersList);
 
 	str << ",\"custom_data\":\"" << m_custom_data << '"';
-
-	str << ",";
-	jsonWriteServices( str);
-
-	str << ",";
-	af::farm()->jsonWriteLimits( str);
 
 	if( isOnline())
 	{

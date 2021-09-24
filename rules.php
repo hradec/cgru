@@ -9,7 +9,7 @@ ini_set('max_execution_time', 600);
 define('HT_ACCESS_FILE_NAME', '.htaccess');
 define('HT_GROUPS_FILE_NAME', '.htgroups');
 define('HT_DIGEST_FILE_NAME', '.htdigest');
-define('FILE_MAX_LENGTH', 1000000);
+define('FILE_MAX_LENGTH', 3000000);
 
 $GuestSites = array('rules.cgru.info', '127.0.0.1');
 $CONF = array();
@@ -134,9 +134,9 @@ function fileRead($i_filename, $i_lock = true, $i_verbose = false)
 
 	if ($i_verbose) error_log('fileRead: Opened: '.$i_filename);
 
-	if ($i_lock) flock($fHandle, LOCK_SH);
+	if ($i_lock) _flock_($fHandle, LOCK_SH);
 	$data = fread($fHandle, FILE_MAX_LENGTH);
-	if ($i_lock) flock($fHandle, LOCK_UN);
+	if ($i_lock) _flock_($fHandle, LOCK_UN);
 	fclose($fHandle);
 
 	if ($i_verbose) error_log('fileRead: Read '.strlen($data).' bytes from: '.$i_filename);
@@ -144,25 +144,56 @@ function fileRead($i_filename, $i_lock = true, $i_verbose = false)
 	return $data;
 }
 
-function fileWrite($i_filename, $i_data, $i_lock = true, $i_verbose = false)
+function readObj($i_file, &$o_out, $i_lock = true)
 {
-	$fHandle = fopen($i_filename, 'w');
-	if ($fHandle === false)
+	if (false == is_file($i_file))
 	{
-		if ($i_verbose)
-			error_log('fileWrite: Unable open for writing: '.$i_filename);
+		$o_out['error'] = 'No such file ' . $i_file;
 		return false;
 	}
 
-	if ($i_lock) flock($fHandle, LOCK_EX);
+	if ($data = fileRead($i_file, $i_lock))
+	{
+		$o_out = json_decode($data, true);
+		return true;
+	}
+	else
+	{
+		$o_out['error'] = 'Unable to load file ' . $i_file;
+		return false;
+	}
+}
+
+function fileWrite($i_filename, $i_data, $i_lock = true, $i_verbose = false)
+{
+	$tmp_name = $i_filename.'.'.getmypid();
+	$fHandle = fopen($tmp_name, 'w');
+	if ($fHandle === false)
+	{
+		if ($i_verbose)
+			error_log('fileWrite: Unable open for writing: '.$tmp_name);
+		return false;
+	}
+
+	if ($i_lock) _flock_($fHandle, LOCK_EX);
 	fwrite($fHandle, $i_data);
-	if ($i_lock) flock($fHandle, LOCK_UN);
+	if ($i_lock) _flock_($fHandle, LOCK_UN);
 	fclose($fHandle);
+
+	rename($tmp_name, $i_filename);
 
 	if ($i_verbose)
 		error_log('fileWrite: Written '.strlen($i_data).' bytes to: '.$i_filename);
 
 	return true;
+}
+
+function writeObj($i_filename, $i_obj, $i_lock = true, $i_verbose = false)
+{
+	if (fileWrite($i_filename, jsonEncode($i_obj), $i_lock, $i_verbose))
+		return true;
+
+	return false;
 }
 
 function jsf_start($i_arg, &$o_out)
@@ -232,7 +263,7 @@ function jsf_initialize($i_arg, &$o_out)
 	if (array_key_exists('error', $o_out)) return;
 
 	$out = array();
-	getallusers($out);
+	getallusers($out, false);
 	if (array_key_exists('error', $out))
 	{
 		$o_out['error'] = $out['error'];
@@ -245,7 +276,7 @@ function jsf_initialize($i_arg, &$o_out)
 		$user['id'] = $obj['id'];
 
 		// We do not send all users props to each user.
-		$props = array('title', 'role', 'states', 'disabled', 'signature');
+		$props = array('title', 'role', 'tag', 'states', 'disabled', 'signature');
 		foreach ($props as $prop)
 			if (isset($obj[$prop])) $user[$prop] = $obj[$prop];
 
@@ -268,11 +299,10 @@ function processUser($i_arg, &$o_out)
 
 	if (USER_ID == null) return;
 
-	$filename = $dirname . '/' . USER_ID . '.json';
-	$user = array();
+	$user = readUser(USER_ID, true);
+	if (null == $user)
+		$user = array();
 
-	if (is_file($filename))
-		readObj($filename, $user);
 	if (array_key_exists('error', $user))
 		$o_out['error'] = $user['error'];
 
@@ -287,12 +317,13 @@ function processUser($i_arg, &$o_out)
 	// Delete nulls from some arrays:
 	$arrays = array('news', 'bookmarks', 'channels');
 	foreach ($arrays as $arr)
-		for ($i = 0; $i < count($user[$arr]);)
-			if (is_null($user[$arr][$i]))
-				array_splice($user[$arr], $i, 1);
-			else $i++;
+        if (isset($user[$arr]) && is_array($user[$arr]))
+            for ($i = 0; $i < count($user[$arr]);)
+                if (is_null($user[$arr][$i]))
+                    array_splice($user[$arr], $i, 1);
+                else $i++;
 
-	if (false == writeUser($user))
+	if (false == writeUser($user, false))
 	{
 		$o_out['error'] = 'Can`t write current user';
 		return;
@@ -317,21 +348,52 @@ function processUserIP($i_arg, &$o_user)
 	$rec = array();
 	$rec['ip'] = $ip;
 	$rec['time'] = time();
-	$rec['url'] = $i_arg['url'];
+	$rec['url'] = isset($i_arg['url']) ? $i_arg['url'] : '';
 
 	array_unshift($o_user['ips'], $rec);
 
 	$o_user['ips'] = array_slice($o_user['ips'], 0, 10);
 }
 
-function writeUser(&$i_user)
+function writeUser($i_user, $i_full)
 {
-	$filename = 'users/' . $i_user['id'] . '.json';
+	$uid = $i_user['id'];
+	$ufile_main = "users/$uid/$uid.json";
+	$ufile_news = "users/$uid/$uid-news.json";
+	$ufile_bookmarks = "users/$uid/$uid-bookmarks.json";
 
-	if (fileWrite($filename, jsonEncode($i_user)))
+	$news = null;
+	$bookmarks = null;
+
+	if (array_key_exists('news', $i_user) && count($i_user['news']))
+	{
+		$news = $i_user['news'];
+		unset($i_user['news']);
+	}
+
+	if (array_key_exists('bookmarks', $i_user) && count($i_user['bookmarks']))
+	{
+		$bookmarks = $i_user['bookmarks'];
+		unset($i_user['bookmarks']);
+	}
+
+	if (false == writeObj($ufile_main, $i_user))
+		return false;
+
+	if (false == $i_full)
 		return true;
 
-	return false;
+	if ($news && count($news))
+		writeObj($ufile_news, array('news' => $news));
+	else if (is_file($ufile_news))
+		unlink($ufile_news);
+
+	if ($bookmarks && count($bookmarks))
+		writeObj($ufile_bookmarks, array('bookmarks' => $bookmarks));
+	else if (is_file($ufile_bookmarks))
+		unlink($ufile_bookmarks);
+
+	return true;
 }
 
 function http_digest_parse()
@@ -518,6 +580,9 @@ function htaccessFolder($i_folder)
 
 	if (in_array(USER_ID, $out['users'])) return true;
 
+	if ($out['merge'])
+		return null;
+
 	return false;
 }
 
@@ -595,9 +660,8 @@ function walkDir($i_recv, $i_dir, &$o_out, $i_depth)
 
 		$walk = null;
 		$walk_file = $i_dir . '/' . $rufolder . '/walk.json';
-		if (is_file($walk_file))
-			if ($wdata = fileRead($walk_file, false))
-				$walk = json_decode($wdata, true);
+		if (false == readObj($walk_file, $walk))
+			$walk = null;
 
 		while (false !== ($entry = readdir($handle)))
 		{
@@ -608,15 +672,15 @@ function walkDir($i_recv, $i_dir, &$o_out, $i_depth)
 			{
 				if (is_file($path))
 				{
-					$fileObj = array();
+					$file_info = array();
 					if (false == is_null($walk) && isset($walk['files']) && isset($walk['files'][$entry]))
-						$fileObj = $walk['files'][$entry];
-					$fileObj['name'] = $entry;
+						$file_info = $walk['files'][$entry];
+					$file_info['name'] = $entry;
 					$st = stat($path);
-					$fileObj['size'] = $st['size'];
-					$fileObj['mtime'] = $st['mtime'];
-					$fileObj['space'] = $st['blocks'] * 512;
-					array_push($o_out['files'], $fileObj);
+					$file_info['size'] = $st['size'];
+					$file_info['mtime'] = $st['mtime'];
+					$file_info['space'] = $st['blocks'] * 512;
+					array_push($o_out['files'], $file_info);
 				}
 				continue;
 			}
@@ -636,9 +700,13 @@ function walkDir($i_recv, $i_dir, &$o_out, $i_depth)
 						if ($access)
 							array_push($o_out['rufiles'], $ruentry);
 
-						if (strrpos($ruentry, '.json') === false) continue;
-
+						// No rufiles specified to read objects to
 						if (is_null($rufiles)) continue;
+
+						// Ensure in '.json' extension
+						if (substr($ruentry, -5) != '.json') continue;
+
+						// Check that file is specified in rufiles array
 						$found = false;
 						foreach ($rufiles as $rufile)
 							if (strpos($ruentry, $rufile) === 0)
@@ -648,8 +716,10 @@ function walkDir($i_recv, $i_dir, &$o_out, $i_depth)
 							}
 						if (false == $found) continue;
 
-						if ($rudata = fileRead($path . '/' . $ruentry, false))
-							$o_out['rules'][$ruentry] = json_decode($rudata, true);
+						// Read object from rufile
+						$obj = null;
+						if (readObj($path . '/' . $ruentry, $obj, false))
+							$o_out['rules'][$ruentry] = $obj;
 					}
 					closedir($rHandle);
 					sort($o_out['rufiles']);
@@ -675,9 +745,9 @@ function walkDir($i_recv, $i_dir, &$o_out, $i_depth)
 				foreach ($lookahead as $sfile)
 				{
 					$sfilepath = $path . '/' . $rufolder . '/' . $sfile . '.json';
-					if (is_file($sfilepath))
-						if ($data = fileRead($sfilepath, false))
-							mergeObjs($folderObj, json_decode($data, true));
+					$obj = null;
+					if (readObj($sfilepath, $obj, false))
+						mergeObjs($folderObj, $obj);
 				}
 
 			if ($i_depth < $i_recv['depth'])
@@ -695,9 +765,10 @@ function readConfig($i_file, &$o_out)
 	if (false == is_file($i_file))
 		return;
 
-	if ($data = fileRead($i_file))
+	$obj = null;
+	if (readObj($i_file, $obj))
 	{
-		$o_out[$i_file] = json_decode($data, true);
+		$o_out[$i_file] = $obj;
 		if (array_key_exists('include', $o_out[$i_file]['cgru_config']))
 			foreach ($o_out[$i_file]['cgru_config']['include'] as $file)
 				readConfig($file, $o_out);
@@ -753,13 +824,13 @@ function jsf_getobjects($i_args, &$o_out)
 		return;
 	}
 
-	if ($data = fileRead($file))
+	$obj = null;
+	if (readObj($file, $obj))
 	{
-		$data = json_decode($data, true);
 		foreach ($objects as $object)
 		{
-			if (false == is_null($data) && isset($data[$object]))
-				$o_out[$object] = $data[$object];
+			if (false == is_null($obj) && isset($obj[$object]))
+				$o_out[$object] = $obj[$object];
 			else
 				$o_out[$object] = null;
 		}
@@ -793,20 +864,6 @@ function jsf_readobj($i_file, &$o_out)
 		return;
 	}
 	readObj($i_file, $o_out);
-}
-
-function readObj($i_file, &$o_out)
-{
-	if (false == is_file($i_file))
-	{
-		$o_out['error'] = 'No such file ' . $i_file;
-		return;
-	}
-
-	if ($data = fileRead($i_file))
-		$o_out = json_decode($data, true);
-	else
-		$o_out['error'] = 'Unable to load file ' . $i_file;
 }
 
 function mergeObjs(&$o_obj, $i_obj)
@@ -997,7 +1054,9 @@ function jsf_editobj($i_edit, &$o_out)
 	}
 
 	// Read object:
-	$obj = json_decode(fileRead($i_edit['file']), true);
+	$obj = null;
+	if (false == readObj($i_edit['file'], $obj))
+		$obj = null;
 
 	// Edit object:
 	if (array_key_exists('add', $i_edit) && ($i_edit['add'] == true))
@@ -1038,7 +1097,7 @@ function jsf_editobj($i_edit, &$o_out)
 	}
 
 	// Write object:
-	if (fileWrite($i_edit['file'], jsonEncode($obj)))
+	if (writeObj($i_edit['file'], $obj))
 	{
 		$o_out['status'] = 'success';
 		$o_out['object'] = $obj;
@@ -1162,7 +1221,7 @@ function jsf_makenews($i_args, &$o_out)
 {
 	// Read all users:
 	$users = array();
-	getallusers($users);
+	getallusers($users, true);
 	if (array_key_exists('error', $users))
 	{
 		$o_out['error'] = $users['error'];
@@ -1202,7 +1261,7 @@ function jsf_makenews($i_args, &$o_out)
 
 	// Write changed users:
 	foreach ($users_changed as $id)
-		writeUser($users[$id]);
+		writeUser($users[$id], true);
 
 	$o_out['users'] = $users_changed;
 }
@@ -1249,10 +1308,10 @@ function makenews($i_args, &$io_users, &$o_out)
 
 		// Get existing recent:
 		$rfile = $i_args['root'] . $path . '/' . $i_args['rufolder'] . '/' . $i_args['recent_file'];
-		if (is_file($rfile))
-			if ($rdata = fileRead($rfile))
+		$obj = null;
+		if (readObj($rfile, $obj))
 			{
-				$rarray = json_decode($rdata, true);
+				$rarray = $obj;
 				if (is_null($rarray))
 					$rarray = array();
 				$count = count($rarray);
@@ -1290,7 +1349,7 @@ function makenews($i_args, &$io_users, &$o_out)
 		// Save recent:
 		if (false == is_dir(dirname($rfile)))
 			mkdir(dirname($rfile));
-		fileWrite($rfile, jsonEncode($rarray));
+		writeObj($rfile, $rarray);
 
 		// Exit cycle if path is root:
 		if (strlen($path) == 0) break;
@@ -1329,9 +1388,8 @@ function makenews($i_args, &$io_users, &$o_out)
 		}
 
 		// If user is assigned, it should receive news:
-		if (array_key_exists('status', $news))
-			if (array_key_exists('artists', $news['status']))
-				if (in_array($user['id'], $news['status']['artists']))
+		if (array_key_exists('status', $news) && is_array($news['status']))
+			if (isUserAssignedInStatus($user, $news))
 				{
 					if (false == in_array($user['id'], $sub_users))
 						array_push($sub_users, $user['id']);
@@ -1358,6 +1416,10 @@ function makenews($i_args, &$io_users, &$o_out)
 		// Add uid to changed array:
 		if (false == in_array($user['id'], $changed_users))
 			array_push($changed_users, $user['id']);
+
+		// On empty news create an empty news array:
+		if (false == is_array($user['news']))
+			$user['news'] = [];
 
 		// Delete older news with the same path:
 		for ($i = 0; $i < count($user['news']); $i++)
@@ -1426,11 +1488,8 @@ function makebookmarks($i_bm, &$io_users, &$o_out)
 		if ($bm_index == -1)
 		{
 			// Check whether the bookmark is needed:
-			if (is_null($i_bm['status'])) continue;
-			if (false == isset($i_bm['status']['artists'])) continue;
-			if (false == in_array($user['id'], $i_bm['status']['artists'])) continue;
-			if (isset($i_bm['status']['progress']) && ($i_bm['status']['progress'] >= 100)) continue;
-			if (isset($i_bm['status']['flags']) && in_array('omit', $i_bm['status']['flags'])) continue;
+			if (false == isUserAssignedInStatus($user, $i_bm))
+				continue;
 
 			// Initialize parameters:
 			$i_bm['cuser'] = USER_ID;
@@ -1438,11 +1497,13 @@ function makebookmarks($i_bm, &$io_users, &$o_out)
 		}
 		else
 		{
-			// Copy paramters:
+			// Bookmark exists
+			// Copy creation paramters
 			$i_bm['cuser'] = $user['bookmarks'][$i]['cuser'];
 			$i_bm['ctime'] = $user['bookmarks'][$i]['ctime'];
 
-			// Delete existing bookmark:
+			// Delete existing bookmark,
+			// no updating, just new will be created
 			array_splice($user['bookmarks'], $i, 1);
 		}
 
@@ -1454,6 +1515,51 @@ function makebookmarks($i_bm, &$io_users, &$o_out)
 	}
 
 	return $changed_users;
+}
+
+function isUserAssignedInStatus(&$i_user, &$i_obj)
+{
+	if (false == isset($i_obj['status']))
+		return false;
+
+	$status = $i_obj['status'];
+	if (is_null($status))
+		return false;
+
+	// Check if user is assigned in status
+	if (array_key_exists('artists', $status))
+		if (in_array($i_user['id'], $status['artists']))
+				return true;
+
+	// Check if user is assigned in some task
+	if (array_key_exists('tasks', $status))
+		foreach ($status['tasks'] as $tname => $task)
+		{
+			if (array_key_exists('deleted', $task) && $task['deleted'])
+				continue;
+			if (false == array_key_exists('artists', $task))
+				continue;
+			if (false == in_array($i_user['id'], $task['artists']))
+				continue;
+
+			if (isset($task['changed']) && $task['changed'])
+				return true;
+
+			// Below situations for not done tasks only
+			if ((false == isset($task['progress'])) || ($task['progress'] >= 100))
+				continue;
+
+			// If status head changed, all tasks users should receive news (if task is not done)
+			if ($status['changed'])
+				return true;
+
+			// If it is a news on change something, but not status (body, comments),
+			// All tasks users should receive news (if task is not done)
+			if (isset($i_obj['title']) && ($i_obj['title'] != 'status'))
+				return true;
+		}
+
+	return false;
 }
 
 function isAdmin(&$o_out)
@@ -1517,7 +1623,7 @@ function jsf_htdigest($i_recv, &$o_out)
 
 		// Check "passwd" state:
 		$out = array();
-		getallusers($out);
+		getallusers($out, false);
 		if (array_key_exists('error', $out))
 		{
 			$o_out['error'] = $out['error'];
@@ -1577,36 +1683,33 @@ function jsf_disableuser($i_args, &$o_out)
 	if (false == isAdmin($o_out)) return;
 
 	$uid = $i_args['uid'];
-
-	$dHandle = opendir('users');
-	if ($dHandle === false)
+	$udir = "users/$uid";
+	$ufile = "$udir/$uid.json";
+	if (false === is_file($ufile))
 	{
-		$o_out['error'] = 'Can`t open users folder.';
+		$o_out['error'] = 'User file does not exist.';
 		return;
 	}
-	while (false !== ($entry = readdir($dHandle)))
+
+	// If user new object provided, we write it.
+	// This needed to just disable user and not to loose its settings.
+	if (array_key_exists('uobj', $i_args))
 	{
-		if (false === is_file("users/$entry")) continue;
-		if ($entry != "$uid.json") continue;
-
-		// If user new object provided, we write it.
-		// This needed to just disable user and not to loose its settings.
-		if (array_key_exists('uobj', $i_args))
-		{
-			if (writeUser($i_args['uobj']))
-				$o_out['status'] = 'success';
-			else
-				$out['error'] = 'Unable to write "' . $uid . '" user file';
-		}
+		if (writeUser($i_args['uobj'], true))
+			$o_out['status'] = 'success';
 		else
-		{
-			// Delete user file and loose all its data:
-			unlink("users/$entry");
-		}
-		break;
+			$out['error'] = 'Unable to write "' . $uid . '" user file';
 	}
-	closedir($dHandle);
+	else
+	{
+		// Delete user files and loose all its data:
+		$files = glob($udir . '/*');
+		foreach ($files as $file)
+			unlink($file);
+		rmdir($udir);
+	}
 
+	// Remove user from digest file
 	$data = fileRead(HT_DIGEST_FILE_NAME, true);
 	if (is_null($data))
 	{
@@ -1635,10 +1738,10 @@ function jsf_disableuser($i_args, &$o_out)
 function jsf_getallusers($i_args, &$o_out)
 {
 	if (false == isAdmin($o_out)) return;
-	getallusers($o_out);
+	getallusers($o_out, true);
 }
 
-function getallusers(&$o_out)
+function getallusers(&$o_out, $i_full)
 {
 	$dHandle = opendir('users');
 	if ($dHandle === false)
@@ -1651,13 +1754,60 @@ function getallusers(&$o_out)
 
 	while (false !== ($entry = readdir($dHandle)))
 	{
-		if (false === is_file("users/$entry")) continue;
-		if (strrpos($entry, '.json') !== (strlen($entry) - 5)) continue;
+		if (false === is_dir("users/$entry")) continue;
 
-		if ($user = json_decode(fileRead("users/$entry", true), true))
+		$user = readUser($entry, $i_full);
+		if (null != $user)
 			$o_out['users'][$user['id']] = $user;
 	}
 	closedir($dHandle);
+}
+
+function readUser($i_uid, $i_full)
+{
+	$ufile_main = "users/$i_uid/$i_uid.json";
+	$ufile_news = "users/$i_uid/$i_uid-news.json";
+	$ufile_bookmarks = "users/$i_uid/$i_uid-bookmarks.json";
+
+	if (false === is_file($ufile_main))
+		return null;
+
+	$user = null;
+	if (false == readObj($ufile_main, $user))
+		return null;
+
+	if (false == $i_full)
+		return $user;
+
+	if (is_file($ufile_news))
+	{
+		$news = null;
+		if (readObj($ufile_news, $news))
+		{
+			if (array_key_exists('news', $news) && count($news['news']))
+				$user['news'] = $news['news'];
+			else
+				unlink($ufile_news);
+		}
+		else
+			unlink($ufile_news);
+	}
+
+	if (is_file($ufile_bookmarks))
+	{
+		$bookmarks = null;
+		if (readObj($ufile_bookmarks, $bookmarks))
+		{
+			if (array_key_exists('bookmarks', $bookmarks) && count($bookmarks['bookmarks']))
+				$user['bookmarks'] = $bookmarks['bookmarks'];
+			else
+				unlink($ufile_bookmarks);
+		}
+		else
+			unlink($ufile_bookmarks);
+	}
+
+	return $user;
 }
 
 function jsf_getallgroups($i_args, &$o_out)
@@ -1726,7 +1876,11 @@ function jsf_permissionsset($i_args, &$o_out)
 	if (false == in_array('admins', $i_args['groups'])) array_unshift($i_args['groups'], 'admins');
 
 	$lines = array();
-	array_push($lines, 'Require group ' . implode(' ', $i_args['groups']));
+	array_push($lines, 'AuthMerging Or');
+	if (array_key_exists('groups', $i_args) && count($i_args['groups']))
+	{
+		array_push($lines, 'Require group ' . implode(' ', $i_args['groups']));
+	}
 	if (array_key_exists('users', $i_args) && count($i_args['users']))
 	{
 		array_push($lines, 'Require user ' . implode(' ', $i_args['users']));
@@ -1766,6 +1920,7 @@ function permissionsGet($i_args, &$o_out)
 {
 	$o_out['groups'] = array();
 	$o_out['users'] = array();
+	$o_out['merge'] = false;
 
 	if (false == is_dir($i_args['path']))
 	{
@@ -1786,21 +1941,40 @@ function permissionsGet($i_args, &$o_out)
 	$lines = explode("\n", $data);
 	foreach ($lines as $line)
 	{
-		if (strlen($line) <= 1) continue;
+		if (strlen($line) <= 1)
+			continue;
+
 		$words = explode(' ', $line);
-		if ($words[0] != 'Require') continue;
+
+		if (count($words) < 2)
+		{
+			$o_out['error'] = 'Invalid line: "'.$line.'"';
+			return;
+		}
+
+		if ($words[0] == 'AuthMerging')
+		{
+			if ($words[1] == 'Or')
+				$o_out['merge'] = true;
+			continue;
+		}
+
+		if ($words[0] != 'Require')
+			continue;
 
 		unset($words[0]);
 		//error_log( implode(' ',$words));
 		if ($words[1] == 'group')
 		{
 			unset($words[1]);
-			foreach ($words as $group) array_push($o_out['groups'], $group);
+			foreach ($words as $group)
+				array_push($o_out['groups'], $group);
 		}
 		else if ($words[1] == 'user')
 		{
 			unset($words[1]);
-			foreach ($words as $user) array_push($o_out['users'], $user);
+			foreach ($words as $user)
+				array_push($o_out['users'], $user);
 		}
 		else if ($words[1] == 'valid-user')
 		{
@@ -1982,93 +2156,101 @@ function searchComment(&$i_args, &$i_obj)
 function upload($i_path, &$o_out)
 {
 	$o_out['path'] = $i_path;
+	$path_dir = dirname($i_path);
+	$path_base = basename($i_path);
 
-	if (false == is_dir($i_path))
+	if (false == is_dir($path_dir))
 	{
-		if (false == mkdir($i_path, 0777, true))
+		if (false == mkdir($path_dir, 0777, true))
 		{
 			$o_out['error'] = 'Unable to create directory';
+			return;
 		}
 	}
-	if (false == is_writable($i_path))
+
+	if (false == is_writable($path_dir))
+	{
 		$o_out['error'] = 'Destination not writeable';
+		return;
+	}
 
 	$o_out['files'] = array();
 
 	foreach ($_FILES as $key => $file)
 	{
-		$fileObj = array();
-		$fileObj['path'] = $i_path;
-		$fileObj['name'] = $_FILES[$key]['name'];
+		$file_info = array();
+		$file_info['key']  = $key;
+		$file_info['path'] = $i_path;
+		$file_info['name'] = $file['name'];
+		$file_info['size'] = $file['size'];
 
 		if (isset($o_out['error']))
 		{
-			$fileObj['error'] = $o_out['error'];
+			$file_info['error'] = $o_out['error'];
 		}
-		else if ($_FILES[$key]['error'] != UPLOAD_ERR_OK)
+		else if ($file['error'] != UPLOAD_ERR_OK)
 		{
-			switch ($_FILES[$key]['error'])
+			switch ($file['error'])
 			{
 				case UPLOAD_ERR_INI_SIZE:
-					$fileObj['error'] = 'ERROR: Max files size reached (php.ini)';
+					$file_info['error'] = 'ERROR: Max files size reached (php.ini)';
 					break;
 				case UPLOAD_ERR_FORM_SIZE:
-					$fileObj['error'] = 'ERROR: Max files size reached (HTML form)';
+					$file_info['error'] = 'ERROR: Max files size reached (HTML form)';
 					break;
 				case UPLOAD_ERR_PARTIAL:
-					$fileObj['error'] = 'ERROR: Files was only partially uploaded';
+					$file_info['error'] = 'ERROR: Files was only partially uploaded';
 					break;
 				case UPLOAD_ERR_NO_FILE:
-					$fileObj['error'] = 'ERROR: No file was uploaded';
+					$file_info['error'] = 'ERROR: No file was uploaded';
 					break;
 				case UPLOAD_ERR_NO_TMP_DIR:
-					$fileObj['error'] = 'ERROR: Missing a temporary folder';
+					$file_info['error'] = 'ERROR: Missing a temporary folder';
 					break;
 				case UPLOAD_ERR_CANT_WRITE:
-					$fileObj['error'] = 'ERROR: Failed to write file to disk';
+					$file_info['error'] = 'ERROR: Failed to write file to disk';
 					break;
 				case UPLOAD_ERR_EXTENSION:
-					$fileObj['error'] = 'ERROR: A PHP extension stopped the file upload';
+					$file_info['error'] = 'ERROR: A PHP extension stopped the file upload';
 					break;
 				default:
-					$fileObj['error'] = 'Unknown error';
+					$file_info['error'] = 'Unknown error';
 			}
 		}
-		else if (false == is_uploaded_file($_FILES[$key]['tmp_name']))
+		else if (false == is_uploaded_file($file['tmp_name']))
 		{
-			$fileObj['error'] = 'Invalid upload';
+			$file_info['error'] = 'Invalid upload';
 		}
 		else
 		{
-			$basename = $_FILES[$key]['name'];
-			$path = $i_path . '/' . $basename;
+			$path = $i_path;
 
 			// If such file already exists, we rename the upload:
-			$dot = strrpos($basename, '.');
+			$dot = strrpos($path_base, '.');
 			$i = 1;
 			while (is_file($path))
 			{
 				if ($dot)
 				{
-					$base = substr($basename, 0, $dot);
-					$ext = substr($basename, $dot);
-					$path = $i_path . '/' . $base . '-' . $i . $ext;
+					$base = substr($path_base, 0, $dot);
+					$ext = substr($path_base, $dot);
+					$path = $path_dir . '/' . $base . '-' . $i . $ext;
 				}
 				else
-					$path = $i_path . '/' . $basename . '-' . $i;
+					$path = $path_dir . '/' . $path_base . '-' . $i;
 				$i++;
 			}
 
 			// Move uploaded file to the desired place:
-			if (false == move_uploaded_file($_FILES[$key]['tmp_name'], $path))
+			if (false == move_uploaded_file($file['tmp_name'], $path))
 			{
-				$fileObj['error'] = 'Can`t save upload';
+				$file_info['error'] = 'Can`t save upload';
 			}
 
-			$fileObj['filename'] = $path;
+			$file_info['path'] = $path;
 		}
 
-		array_push($o_out['files'], $fileObj);
+		array_push($o_out['files'], $file_info);
 	}
 }
 
