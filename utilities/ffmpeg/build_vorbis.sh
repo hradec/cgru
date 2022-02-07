@@ -1,7 +1,8 @@
 #!/bin/bash
 
 libogg=$PWD/libogg
-cd libogg-*
+cd $(ls -1drt libogg* | grep -v tar | tail -1)
+
 export LDFLAGS="-B/usr/lib/gold-ld/"
 if [ ! -z "$1" ]; then
    ./configure --help
@@ -13,7 +14,7 @@ fi
 cd ..
 
 libvorbis=$PWD/libvorbis
-cd libvorbis-*
+cd $(ls -1drt libvorbis-* | grep -v tar | tail -1)
 export CFLAGS="-B/usr/lib/gold-ld/ -I$libogg/include"
 export LDFLAGS="-B/usr/lib/gold-ld/ -L$libogg/lib -L$libogg/lib64"
 if [ ! -z "$1" ]; then
@@ -26,7 +27,7 @@ fi
 cd ..
 
 libtheora=$PWD/libtheora
-cd libtheora-*
+cd $(ls -1drt libtheora-* | grep -v tar | tail -1)
 export CFLAGS="-B/usr/lib/gold-ld/ -I$libogg/include"
 export LDFLAGS="-B/usr/lib/gold-ld/ -L$libogg/lib -L$libogg/lib64"
 if [ ! -z "$1" ]; then

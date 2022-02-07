@@ -2,7 +2,7 @@
 
 prefix=$PWD/lame
 
-cd lame-*
+cd $(ls -1drt lame* | grep -v tar | tail -1)
 
 export LDFLAGS="$LDFLAGS -B/usr/lib/gold-ld/"
 

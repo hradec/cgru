@@ -8,5 +8,6 @@ libtheora*
 libvorbis*
 x264*
 yasm*
+nasm*
 
 !*.tar*
