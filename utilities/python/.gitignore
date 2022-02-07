@@ -7,3 +7,4 @@ PyQt*
 pyqt*
 sip*
 
+!*.tar*

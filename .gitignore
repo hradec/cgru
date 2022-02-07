@@ -50,11 +50,11 @@ temp*
 *~
 
 # Archives
-*.7z
-*.bz2
-*.gz
-*.tar
-*.zip
+#*.7z
+#*.bz2
+#*.gz
+#*.tar
+#*.zip
 
 # MSVS temporary files
 ipch
@@ -72,3 +72,5 @@ ipch
 
 # atomo
 rules_root
+
+build

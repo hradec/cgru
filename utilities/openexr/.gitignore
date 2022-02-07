@@ -8,3 +8,5 @@ share
 ilmbase*
 openexr*
 zlib*
+
+!*.tar*
