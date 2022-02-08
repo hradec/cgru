@@ -1,5 +1,6 @@
 #!/bin/bash
 
+CD=$PWD
 im=$PWD/ImageMagick
 
 exr=`dirname $PWD`/openexr
@@ -21,12 +22,8 @@ configure="$configure --disable-opencl"
 configure="$configure --enable-shared="
 #with-quantum-depth=32
 
-if [ -z "$1" ]; then
-   make clean
-   $configure
-   make -j2 $@
-   convert='utilities/convert'
-   [ -f $convert ] && mv -vf $convert ../../../bin
-else
-   ./configure -h
-fi
+make clean
+$configure
+make $@
+make $@ install
+cp -rf $CD/bin/* ../../../bin/

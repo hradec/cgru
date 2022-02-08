@@ -15,13 +15,13 @@ export LDFLAGS="-L${x264} -L$lame/lib -L$lame/lib64 -L$ogg/lib -L$ogg/lib64 -L$t
 
 cd ffmpeg
 
-if [ ! -z "$1" ]; then
-   ./configure --help
-   exit
-else
+# if [ ! -z "$1" ]; then
+#    ./configure --help
+#    exit
+# else
 #   ./configure --enable-gpl --enable-nonfree --enable-libx264 --enable-libmp3lame --enable-libtheora --enable-libvorbis
    ./configure --enable-gpl --enable-nonfree
-   make  $@
-fi
+   make $@
+# fi
 
 cp -v ffmpeg ../../../bin
