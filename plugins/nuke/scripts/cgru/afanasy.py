@@ -140,12 +140,15 @@ class BlockParameters:
         self.capacity = -1
         self.maxperhost = -1
         self.maxruntime = -1
+        self.need_memory = -1
+        self.need_gpu_mem = -1
         self.hostsmask = None
         self.hostsmaskexclude = None
         self.fullrangedepend = 0
         self.tmpimage = 1
         self.pathsmap = 1
         self.imgfiles = []
+        self.moviemode = False
         self.tickets_use = 0
         self.tickets_data = None
 
@@ -163,6 +166,8 @@ class BlockParameters:
             self.capacity = int(afnode.knob('capacity').value())
             self.maxperhost = int(afnode.knob('maxperhost').value())
             self.maxruntime = int(afnode.knob('maxruntime').value())
+            self.need_memory = int(afnode.knob('need_memory').value())
+            self.need_gpu_mem = float(afnode.knob('need_gpu_mem').value())
             self.tmpimage = int(afnode.knob('tmpimage').value())
             self.pathsmap = int(afnode.knob('pathsmap').value())
             self.hostsmask = afnode.knob('hostsmask').value()
@@ -250,6 +255,12 @@ class BlockParameters:
                         )
                         self.valid = False
                         return
+
+                    if cgruutils.isMovieExt(images1):
+                        self.imgfiles.append(images1)
+                        self.moviemode = True
+                        continue
+
                     octx.setFrame(octx_framelast)
                     images2 = fileknob.getEvaluatedValue(octx)
                     if images2 is None or images2 == '':
@@ -262,8 +273,8 @@ class BlockParameters:
                         )
                         self.valid = False
                         return
-                    part1, padding, part2 = \
-                        afcommon.splitPathsDifference(images1, images2)
+
+                    part1, padding, part2 = afcommon.splitPathsDifference(images1, images2)
 
                     if padding < 1:
                         nuke.message(
@@ -275,9 +286,8 @@ class BlockParameters:
                         )
                         self.valid = False
                         return
-                    self.imgfiles.append(
-                        '%s@%s@%s' % (part1, '#' * padding, part2)
-                    )
+
+                    self.imgfiles.append('%s@%s@%s' % (part1, '#' * padding, part2))
 
             # Check images folders:
             for imgfile in self.imgfiles:
@@ -311,6 +321,9 @@ class BlockParameters:
                 if hasattr(self, par):
                     setattr(self, par, fparams[par])
 
+        if self.moviemode:
+            self.framespertask = self.framelast - self.framefirst + 1
+
         self.name = self.writename
         if subblock:
             if self.prefix is not None:
@@ -343,6 +356,7 @@ class BlockParameters:
             block = af.Block(self.name, AfanasyServiceType)
             block.setNumeric(self.framefirst, self.framelast,
                              self.framespertask, self.frameinc)
+            print(self.imgfiles)
             block.setFiles(self.imgfiles)
             if self.skipexisting:
                 block.skipExistingFiles()
@@ -351,7 +365,11 @@ class BlockParameters:
             if self.capacity != -1:
                 block.setCapacity(self.capacity)
             if self.maxruntime != -1:
-                block.setTasksMaxRunTime(self.maxruntime)
+                block.setTasksMaxRunTime(60 * self.maxruntime)
+            if self.need_memory > 0:
+                block.setNeedMemory(1024 * self.need_memory)
+            if self.need_gpu_mem > 0:
+                block.setNeedGPUMemGB(self.need_gpu_mem)
             if self.tickets_use and self.tickets_data is not None and len(self.tickets_data):
                 for ticket in self.tickets_data.split(','):
                     ticket = ticket.strip().split(':')

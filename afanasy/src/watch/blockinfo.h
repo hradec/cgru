@@ -41,17 +41,18 @@ public:
 	void generateMenu(QMenu * i_menu, QMenu * i_params_submenu = NULL) const;
 
 	int p_percentage;
-	int p_tasksready;
-	int p_tasksrunning;
-	int p_tasksdone;
-	int p_taskserror;
-	int p_tasksskipped;
-	int p_taskswarning;
-	int p_taskswaitrec;
-	int p_avoidhosts;
-	int p_errorhosts;
-	long long p_capacitytotal;
-	long long p_taskssumruntime;
+	int p_tasks_ready;
+	int p_tasks_running;
+	int p_tasks_done;
+	int p_tasks_error;
+	int p_tasks_skipped;
+	int p_tasks_waitdep;
+	int p_tasks_warning;
+	int p_tasks_waitrec;
+	int p_avoid_hosts;
+	int p_error_hosts;
+	long long p_capacity_total;
+	long long p_tasks_sumruntime;
 
 //private:
 	uint32_t state;
@@ -93,6 +94,10 @@ public:
 	int     max_running_tasks;
 	int     max_running_tasks_per_host;
 	int     need_memory;
+	int     need_gpu_mem_mb;
+	int     need_cpu_freq_mgz;
+	int     need_cpu_cores;
+	int     need_cpu_freq_cores;
 	int     need_power;
 	int     need_hdd;
 	QString need_properties;
@@ -135,6 +140,7 @@ private:
 	void addParam_Hrs(const QString & i_name, const QString & i_label, const QString & i_tip);
 	void addParam_MiB(const QString & i_name, const QString & i_label, const QString & i_tip, int i_min = -1, int i_max = 1<<30);
 	void addParam_GiB(const QString & i_name, const QString & i_label, const QString & i_tip, int i_min = -1, int i_max = 1<<30);
+	void addParam_Meg(const QString & i_name, const QString & i_label, const QString & i_tip, int i_min = -1, int i_max = 1<<30);
 
 	void drawProgress(
 		QPainter * i_painter,

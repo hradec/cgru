@@ -42,7 +42,7 @@ ItemJob::ItemJob(ListNodes * i_list_nodes, bool i_inworklist, af::Job * i_job, c
 {
 	for (int b = 0; b < i_job->getBlocksNum(); b++)
 	{
-		const af::BlockData * blockdata = i_job->getBlock(b);
+		const af::BlockData * blockdata = i_job->getBlockData(b);
 		BlockInfo * blockinfo = new BlockInfo(blockdata, this, m_list_nodes);
 		QObject::connect(blockinfo, SIGNAL(sig_BlockAction(int, QString)), m_list_nodes, SLOT(slot_BlockAction(int, QString)));
 		m_blocks.append(blockinfo);
@@ -112,7 +112,7 @@ void ItemJob::v_updateValues(af::Node * i_afnode, int i_msgType)
 	if (m_blocks.size() < job->getBlocksNum())
 		for (int b = m_blocks.size(); b < job->getBlocksNum(); b++)
 		{
-			const af::BlockData * blockdata = job->getBlock(b);
+			const af::BlockData * blockdata = job->getBlockData(b);
 			BlockInfo * blockinfo = new BlockInfo(blockdata, this, m_list_nodes);
 			QObject::connect(blockinfo, SIGNAL(sig_BlockAction(int, QString)), m_list_nodes, SLOT(slot_BlockAction(int, QString)));
 			m_blocks.append(blockinfo);
@@ -194,7 +194,7 @@ void ItemJob::v_updateValues(af::Node * i_afnode, int i_msgType)
 	m_tasks_percent = 0;
 	for (int b = 0; b < m_blocks.size(); b++)
 	{
-		const af::BlockData * block = job->getBlock(b);
+		const af::BlockData * block = job->getBlockData(b);
 		m_blocks[b]->update(block, i_msgType);
 
 		if (block->getProgressAvoidHostsNum() > 0)
@@ -204,9 +204,9 @@ void ItemJob::v_updateValues(af::Node * i_afnode, int i_msgType)
 			service = afqt::stoq(block->getService());
 
 		m_tasks_total   += m_blocks[b]->tasksnum;
-		m_tasks_done    += m_blocks[b]->p_tasksdone;
-		m_tasks_running += m_blocks[b]->p_tasksrunning;
-		m_tasks_error   += m_blocks[b]->p_taskserror;
+		m_tasks_done    += m_blocks[b]->p_tasks_done;
+		m_tasks_running += m_blocks[b]->p_tasks_running;
+		m_tasks_error   += m_blocks[b]->p_tasks_error;
 		m_tasks_percent += m_blocks[b]->p_percentage;
 	}
 	m_tasks_percent /= m_blocks.size();
@@ -342,6 +342,58 @@ void ItemJob::updateInfo(const af::Job * i_job)
 		m_info_text += "<br>Waiting: <b>" + afqt::time2Qstr(time_wait) + "</b>";
 
 	ItemNode::updateInfo();
+}
+
+const QString ItemJob::v_getMultiSelecedText(const QList<Item*> & i_selected) const
+{
+	QString info;
+
+	if (i_selected.size() == 0)
+		return info;
+
+	int jobs_count = 0;
+	long long time_started_min = 0;
+	long long time_finished_max = 0;
+	long long time_run_sum = 0;
+	int time_run_count = 0;
+
+	QListIterator<Item*> it(i_selected);
+	while (it.hasNext())
+	{
+		Item * item = it.next();
+
+		if (item->getType() != Item::TJob)
+			continue;
+
+		ItemJob * item_job = static_cast<ItemJob*>(item);
+		jobs_count ++;
+
+		if (item_job->time_started && ((item_job->time_started < time_started_min) || (time_started_min == 0)))
+			time_started_min = item_job->time_started;
+
+		if ((item_job->state & AFJOB::STATE_DONE_MASK) && (item_job->time_done > time_finished_max))
+			time_finished_max = item_job->time_done;
+
+		if (item_job->state & AFJOB::STATE_DONE_MASK)
+		{
+			time_run_sum += item_job->time_done - item_job->time_started;
+			time_run_count ++;
+		}
+	}
+
+	info += QString("<br><u><i><b>%1 Jobs Selected</b></i></u>").arg(jobs_count);
+
+	if (time_started_min)
+		info += "<br>Started First: <b>" + afqt::time2Qstr(time_started_min) + "</b>";
+	if (time_finished_max)
+		info += "<br>Finished Last: <b>" + afqt::time2Qstr(time_finished_max) + "</b>";
+	if (time_run_count > 1)
+	{
+		info += "<br>Time Run Avg: <b>" + afqt::stoq(af::time2strHMS(time_run_sum / time_run_count)) + "</b>";
+		info += "<br>Time Run Sum: <b>" + afqt::stoq(af::time2strHMS(time_run_sum)) + "</b>";
+	}
+
+	return info;
 }
 
 void ItemJob::v_buttonClicked(ItemButton * i_b)
@@ -511,7 +563,7 @@ void ItemJob::v_paint(QPainter * i_painter, const QRect & i_rect, const QStyleOp
 
 	if (time_wait > currenttime)
 	{
-		QString wait = af::time2strHMS(time_wait - currenttime).c_str();
+		QString wait = afqt::stoq(af::time2strHMS(time_wait - currenttime));
 		if (Watch::isPadawan())
 			user_eta = m_str_user + " Waiting Time:" + wait;
 		else if (Watch::isJedi())
@@ -562,18 +614,18 @@ void ItemJob::v_paint(QPainter * i_painter, const QRect & i_rect, const QStyleOp
 	QFontMetrics fm(afqt::QEnvironment::f_name);
 	QString id_str = QString("#%1").arg(getId());
 	i_painter->drawText(x+offset, y, w-10-offset-rect_top_right.width(), 20, Qt::AlignVCenter | Qt::AlignLeft, id_str);
-	offset += fm.width(id_str) + 10;
+	offset += fm.boundingRect(id_str).width() + 10;
 	
 	if (project.size())
 	{
 		i_painter->setPen(afqt::QEnvironment::clr_textbright.c);
 		i_painter->setFont(afqt::QEnvironment::f_name);
 		i_painter->drawText(x+offset, y, w-10-offset-rect_top_right.width(), 20, Qt::AlignVCenter | Qt::AlignLeft, project);
-		offset += fm.width(project);
+		offset += fm.boundingRect(project).width();
 		if (department.size())
 		{
 			i_painter->drawText(x+offset, y, w-10-offset-rect_top_right.width(), 20, Qt::AlignVCenter | Qt::AlignLeft, "(" + department + ")");
-			offset += fm.width(department);
+			offset += fm.boundingRect(department).width();
 		}
 		offset += 25;
 	}

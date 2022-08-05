@@ -63,6 +63,8 @@ public:
 	// Not called on list dtor.
 	virtual void v_itemToBeDeleted(Item * i_item);
 
+	void setScrollStep(int i_step);
+
 public slots:
 	void repaintItems();
 	void deleteAllItems();
@@ -115,8 +117,6 @@ protected:
 		bool i_dblclick = false,
 		bool i_always_active = false);
 
-	void updatePanels(Item * i_item = NULL);
-
 protected:
 
 	Item * m_current_item;
@@ -137,11 +137,14 @@ protected:
 	QMutex m_mutex;
 
 private slots:
-	void currentItemChanged(const QModelIndex & current, const QModelIndex & previous);
 	void selectionChanged(const QItemSelection & i_selected, const QItemSelection & i_deselected);
 	void doubleClicked_slot(const QModelIndex & index);
 
 private:
+	void updatePanels(const QList<Item*> & i_selected);
+
+private:
+
 	std::string m_type;
 
 	QVBoxLayout * m_vlayout;

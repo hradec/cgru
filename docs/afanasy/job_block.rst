@@ -264,22 +264,55 @@ task_progress_change_timeout
 If running task progress (percentage) will be the same for this time, task will be stopped with error.
 If this value equals or less that zero, no such limit exists.
 
+The default value can be set by ``af_task_progress_change_timeout`` config variable.
+It is a server side variable, you can ask server to reload config without restarting by ``afcmd cload`` command.
+See `Configuration <../configuration/configuration.html>`_ and `afcmd <../afanasy/afcmd.html>`_ sections.
+
 need_power
 ----------
 ``af.Block.setNeedPower(int)``
+
 Minimum render host power needed.
 It's custom host parameter can be set by pool.
 
 need_memory
 -----------
-``af.Block.setNeedMemory(megabytes)``
-Minimum render host free memory needed in mega-bytes.
+``af.Block.setNeedMemory(int)``
+
+Minimum render host free memory needed in megabytes.
+
+need_gpu_mem_mb
+---------------
+``af.Block.setNeedGPUMemGB(float)``
+
+Minimum render host GPU free memory needed in gigabytes.
+The function will convert it to integer megabytes.
+
+need_cpu_freq_mgz
+-----------------
+``af.Block.setNeedCPUFreqGHz(float)``
+
+Minimum render host CPU frequency in gigahertz.
+The function will convert it to integer megahertz.
+
+need_cpu_cores
+--------------
+``af.Block.setNeedCPUCores(int)``
+
+Minimum render host CPU cores number.
+
+need_cpu_freq_cores
+-------------------
+``af.Block.setNeedCPUFreqCores(float)``
+
+Minimum render host CPU frequency * cores in gigahertz.
+The function will convert it to integer megahertz.
 
 need_hdd
 --------
-``af.Block.setNeedHDD(gigabytes)``
+``af.Block.setNeedHDD(int)``
 
-Minimum render host free disk space needed in giga-bytes.
+Minimum render host free disk space needed in gigabytes.
 
 need_properties
 ---------------

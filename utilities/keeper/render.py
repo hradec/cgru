@@ -13,6 +13,7 @@ from Qt import QtCore, QtGui, QtWidgets
 
 Render = None
 RenderFull = None
+Refresh = None
 
 def showInfo(tray=None):
     render = RenderFull
@@ -42,21 +43,44 @@ def refresh():
     global RenderFull
 
     if Render is None:
+        # Get render by local host name
         renders = af.Cmd().renderGetLocal()
         if renders is not None and len(renders):
             Render = renders[0]
 
     if Render is not None:
+        # Get render by ID, as we already know it
         obj = af.Cmd().renderGetId(Render['id'],'full')
         if obj is not None and 'object' in obj and 'render' in obj['object']:
             RenderFull = obj['object']
             Render = RenderFull['render']
+            if Refresh:
+                Refresh.setDefaultInterval()
         else:
-            print('ERROR: Unexpected object reveived:')
-            print(json.dumps(RenderFull, sort_keys=True, indent=4))
+            if obj is None:
+                print('ERROR: NULL object reveived.')
+            elif 'info' in obj:
+                obj = obj['info']
+                if obj['kind'] == 'error':
+                    print('ERROR: %s' % obj['text'])
+                else:
+                    print('%s: %s' % (obj['kind'], obj['text']))
+            else:
+                print('ERROR: Unexpected object reveived:')
+                print(json.dumps(RenderFull, sort_keys=True, indent=4))
+
+            # "Reset" render information, if failed to reveive it
+            # Most probably render was deleted,
+            # and there is no more render with such ID
+            Render = None
+            RenderFull = None
+            # Increase refresh interval by 10 times
+            if Refresh:
+                Refresh.setIntervalKoeff(10)
 
     cmd.Tray.showIcon( makeIcon())
     cmd.Tray.updateToolTip(makeTip())
+
 
 def makeTip():
     if Render is None: return None
@@ -115,13 +139,13 @@ def drawIconResources( i_painter):
     alpha = int(255 * (.3 + .7*factor))
 
     icon_size = i_painter.viewport().width()
-    x_offset = 0.1 * icon_size
+    x_offset = int(0.1 * icon_size)
     heigth = icon_size * mem
     mem_rect = QtCore.QRect(
-        x_offset,
-        icon_size - heigth,
-        icon_size - (2 * x_offset),
-        heigth
+        int(x_offset),
+        int(icon_size - heigth),
+        int(icon_size - (2 * x_offset)),
+        int(heigth)
     )
     mem_color = QtGui.QColor( color_red, color_green, 0, alpha)
     i_painter.setBrush( QtGui.QBrush( mem_color))
@@ -140,13 +164,13 @@ def drawIconState( i_painter):
     paused = state.find('PAU') != -1
 
     icon_size = i_painter.viewport().width()
-    text_font = QtGui.QFont('Arial', icon_size / 3)
+    text_font = QtGui.QFont('Arial', int(icon_size / 3))
     text_font.setBold(True)
     rect_back = QtCore.QRect(
-        icon_size * 3 / 10,
-        icon_size * 3 / 10,
-        icon_size * 2 / 5,
-        icon_size * 2 / 5
+        int(icon_size * 3 / 10),
+        int(icon_size * 3 / 10),
+        int(icon_size * 2 / 5),
+        int(icon_size * 2 / 5)
     )
     text_color = QtGui.QColor(0, 0, 0)
     back_color = QtGui.QColor(150, 150, 150)
@@ -185,10 +209,10 @@ def drawIconState( i_painter):
         back_color = QtGui.QColor(140, 140, 250)
 
     rect_render = QtCore.QRect(
-        icon_size / 4,
-        icon_size / 4,
-        icon_size / 2,
-        icon_size / 2
+        int(icon_size / 4),
+        int(icon_size / 4),
+        int(icon_size / 2),
+        int(icon_size / 2)
     )
     i_painter.fillRect(rect_back, back_color)
     i_painter.setFont(text_font)

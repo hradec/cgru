@@ -95,6 +95,8 @@ function d_Make(i_path, i_outfolder)
 	params.input = i_path;
 	params.output = c_PathPM_Rules2Client(out_path);
 	params.activity = RULES.dailies.activity;
+	if (activity_Current)
+		params.activity = activity_Current;
 
 	d_params.general.artist = {"width": '50%'};
 	params.artist = c_GetUserTitle();
@@ -198,7 +200,8 @@ function d_DailiesWalkReceived(i_data, i_args)
 		gui_CreateTabs({"tabs": d_params_types, "elParent": wnd.elContent, "name": 'd_params_types'});
 
 	for (var type in d_params_types)
-		gui_Create(wnd.elTabs[type], d_params[type], [params, RULES.dailies]);
+		gui_Create(wnd.elTabs[type], d_params[type], [RULES.dailies, params]);
+		//gui_Create(wnd.elTabs[type], d_params[type], [params, RULES.dailies]);
 
 	gui_CreateChoices({
 		"wnd": wnd.elTabs.general,
@@ -1044,15 +1047,16 @@ function d_WmDiscard(i_wm)
 ########################################################################################################### */
 
 var d_cutparams = {
-	cut_name /*******/: {},
-	input /**********/: {},
-	fps /************/: {"label": 'FPS', 'width': '50%'},
-	af_pertask /*****/: {"label": 'Frames Per Task', 'width': '50%', 'lwidth': '140px'},
-	af_capacity /****/: {"label": 'Capacity', 'width': '25%'},
-	af_maxtasks /****/: {"label": 'Max Run Tasks', 'width': '25%', 'lwidth': '120px'},
-	af_perhost /*****/: {"label": 'Max Tasks Per Host', 'width': '25%', 'lwidth': '140px'},
-	af_maxruntime /**/: {"label": 'Max Run Time', 'width': '25%', 'lwidth': '120px'},
-	output /*********/: {}
+	cut_name      : {},
+	input         : {},
+	fps           : {"label": 'FPS', 'width': '25%'},
+	af_pertask    : {"label": 'Frames Per Task', 'width': '25%', 'lwidth': '140px'},
+	af_maxtasks   : {"label": 'Max Run Tasks', 'width': '25%', 'lwidth': '120px'},
+	af_perhost    : {"label": 'Per Host', 'width': '25%', 'lwidth': '120px'},
+	af_capacity   : {"label": 'Capacity', 'width': '25%'},
+	af_maxruntime : {"label": 'Max Run Time', 'width': '25%', 'lwidth': '140px'},
+	skipnosrc     : {"label": 'Skip No Src', 'width': '25%', 'lwidth': '120px', 'type':'bool', default: false},
+	output        : {}
 };
 
 function d_MakeCut(i_args)
@@ -1109,19 +1113,21 @@ function d_MakeCut(i_args)
 	elLabel.innerHTML = '<a href="http://' + cgru_Config.af_servername + ':' + cgru_Config.af_serverport +
 		'" target="_blank">AFANASY</a>';
 
+	var elTest = document.createElement('div');
+	elAfDiv.appendChild(elTest);
+	elTest.textContent = 'Find Results';
+	elTest.classList.add('button');
+	elTest.m_wnd = wnd;
+	elTest.onclick = function(e) { d_CutProcessGUI(e.currentTarget.m_wnd, true); };
+
 	var elSend = document.createElement('div');
 	elAfDiv.appendChild(elSend);
 	elSend.textContent = 'Send Job';
 	elSend.classList.add('button');
+    elSend.style.display = 'none';
 	elSend.m_wnd = wnd;
+    wnd.m_elSend = elSend;
 	elSend.onclick = function(e) { d_CutProcessGUI(e.currentTarget.m_wnd, false); };
-
-	var elTest = document.createElement('div');
-	elAfDiv.appendChild(elTest);
-	elTest.textContent = 'Test Inputs';
-	elTest.classList.add('button');
-	elTest.m_wnd = wnd;
-	elTest.onclick = function(e) { d_CutProcessGUI(e.currentTarget.m_wnd, true); };
 
 	var elResults = document.createElement('div');
 	wnd.elContent.appendChild(elResults);
@@ -1158,6 +1164,9 @@ function d_CutProcessGUI(i_wnd, i_test)
 	cmd += ' -c "' + params.codec + '"';
 	cmd += ' --colorspace "' + params.colorspace + '"';
 
+	if (params.skipnosrc)
+		cmd += ' --skipnosrc'
+
 	if (RULES.dailies.font)
 		cmd += ' --font "' + RULES.dailies.font + '"';
 
@@ -1173,8 +1182,7 @@ function d_CutProcessGUI(i_wnd, i_test)
 
 	for (var i = 0; i < shots.length; i++)
 		cmd += ' "' + c_PathPM_Rules2Server(shots[i]) + '"'
-
-			n_Request({"send": {"cmdexec": {"cmds": [cmd]}}, "func": d_CutFinished, "wnd": i_wnd});
+			n_Request({"send": {"cmdexec": {"cmds": [cmd], 'ignore_errors': true}}, "func": d_CutFinished, "wnd": i_wnd});
 }
 
 function d_CutFinished(i_data, i_args)
@@ -1188,8 +1196,11 @@ function d_CutFinished(i_data, i_args)
 	if ((i_data.cmdexec == null) || (!i_data.cmdexec.length) || (i_data.cmdexec[0].cut == null))
 	{
 		elResults.textContent = (JSON.stringify(i_data));
+        i_args.wnd.m_elSend.style.display = 'none';
 		return;
 	}
+
+    i_args.wnd.m_elSend.style.display = 'block';
 
 	var cut = i_data.cmdexec[0].cut;
 
@@ -1208,8 +1219,14 @@ function d_CutFinished(i_data, i_args)
 			text += ' ' + msg + ': ' + cut[i][msg];
 		}
 
+		if (text.indexOf('warning') != -1)
+			el.style.color = '#FF2';
+
 		if (text.indexOf('error') != -1)
+        {
 			el.style.color = '#F42';
+            i_args.wnd.m_elSend.style.display = 'none';
+        }
 
 		el.textContent = text;
 	}

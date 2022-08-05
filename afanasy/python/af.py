@@ -389,6 +389,22 @@ class Block:
         if value > 0:
             self.data["need_memory"] = int(value)
 
+    def setNeedGPUMemGB(self, value):
+        if value > 0:
+            self.data["need_gpu_mem_mb"] = int(value*1024.0)
+
+    def setNeedCPUFreqGHz(self, value):
+        if value > 0:
+            self.data["need_cpu_freq_mgz"] = int(value*1000.0)
+
+    def setNeedCPUCores(self, value):
+        if value > 0:
+            self.data["need_cpu_cores"] = int(value)
+
+    def setNeedCPUFreqCores(self, value):
+        if value > 0:
+            self.data["need_cpu_freq_cores"] = int(value*1000.0)
+
     def setNeedPower(self, value):
         """Missing DocString
 
@@ -614,7 +630,7 @@ class Job:
             print('Warning: priority clamped to maximum = %d' % priority)
 
         self.data["priority"] = int(priority)
-
+        
     def setCmdPre(self, command, TransferToServer=True):
         """Missing DocString
 
@@ -687,6 +703,21 @@ class Job:
             block.fillTasks()
             self.data["blocks"].append(block.data)
 
+    def checkJob(self):
+        """Missing DocString
+
+        :return:
+        """
+        error = False
+        for block in self.blocks:
+            if block.data['flags'] == 0 and len(block.tasks) == 0:
+                error = True
+
+        if error is True:
+            return False
+        else:
+            return True
+
     def output(self):
         """Missing DocString
 
@@ -705,6 +736,9 @@ class Job:
             print('Error: Job has no blocks')
 
         self.fillBlocks()
+
+        if self.checkJob() is not True:
+            return False
 
         # Set folder if empty:
         if "folders" not in self.data:
@@ -957,31 +991,26 @@ class Cmd:
         return self._sendRequest(verbose)
 
     def deleteJobById(self, jobId, verbose=False):
-        """Missing DocString
+        return self.jobOperationById('delete', jobId, verbose)
 
-        :param str jobName:
-        :param bool verbose:
-        :return:
+    def stopJobById(self, jobId, verbose=False):
+        return self.jobOperationById('stop', jobId, verbose)
+
+    def jobOperationById(self, i_opration, i_id, i_verbose=False):
+        """Missing DocString
+        :param str i_opration: operation type name
+        :param int i_id: job id
+        :param bool i_verbose: verbosity
+        :return: server response string
         """
         self.action = 'action'
         self.data['type'] = 'jobs'
-        self.data['ids'] = [jobId]
-        self.data['operation'] = {'type': 'delete'}
-        return self._sendRequest(verbose)
+        self.data['ids'] = [i_id]
+        self.data['operation'] = {'type': i_opration}
+        return self._sendRequest(i_verbose)
 
     def setJobState(self, jobId, state, verbose=False):
-        """Missing DocString
-
-        :param jobId:
-        :param str state:
-        :param bool verbose:
-        :return:
-        """
-        self.action = 'action'
-        self.data['type'] = 'jobs'
-        self.data['ids'] = [jobId]
-        self.data['operation'] = {'type': state}
-        return self._sendRequest(verbose)
+        return self.jobOperationById(state, jobId, verbose)
 
     def getJobInfo(self, jobId, verbose=False):
         """Missing DocString
@@ -1298,4 +1327,18 @@ class Cmd:
         self.data['block_ids'] = [blockId]
         self.data['operation'] = {'type': 'append_tasks',
                                   'tasks': tasks_data}
+        return self._sendRequest(verbose)
+    
+    def setJobPriorityById(self,jobId, priority, verbose=False):
+        """Missing DocString
+
+                :param jobId:
+                :param str params:
+                :param bool verbose:
+                :return:
+                """
+        self.action = 'action'
+        self.data['type'] = 'jobs'
+        self.data['ids'] = [jobId]
+        self.data['params'] = {'priority': priority}
         return self._sendRequest(verbose)

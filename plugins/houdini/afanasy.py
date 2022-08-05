@@ -60,6 +60,8 @@ class BlockParameters:
         # Parameters to restore ROP changes:
         self.soho_foreground = None
         self.soho_outputmode = None
+        self.pre_submit_script = None
+        self.post_submit_script = None
 
         # Get parameters:
         self.single_task = bool(afnode.parm('single_task').eval())
@@ -83,6 +85,10 @@ class BlockParameters:
         self.depend_mask = ''
         self.depend_mask_global = ''
         self.min_memory = -1
+        self.min_gpu_mem = -1
+        self.min_cpu_freq = -1
+        self.min_cpu_cores = -1
+        self.min_cpu_cores_freq = -1
         self.tickets_use = int(afnode.parm('tickets_use').eval())
         self.tickets_auto = int(afnode.parm('tickets_auto').eval())
         self.ticket_mem = int(afnode.parm('ticket_mem').eval())
@@ -104,6 +110,10 @@ class BlockParameters:
             self.minruntime = int(afnode.parm('minruntime').eval())
             self.progress_timeout = float(afnode.parm('progress_timeout').eval())
             self.min_memory = int(afnode.parm('min_memory').eval())
+            self.min_gpu_mem = float(afnode.parm('min_gpu_mem').eval())
+            self.min_cpu_freq = float(afnode.parm('min_cpu_freq').eval())
+            self.min_cpu_cores = int(afnode.parm('min_cpu_cores').eval())
+            self.min_cpu_cores_freq = float(afnode.parm('min_cpu_cores_freq').eval())
             self.capacity = int(afnode.parm('capacity').eval())
             self.capacity_min = int(
                 afnode.parm('capacity_coefficient1').eval())
@@ -274,6 +284,14 @@ class BlockParameters:
 
             # Block command:
             self.cmd = 'hrender_af'
+
+            # If this is a "rez" configured environment supply the same environment to
+            # the render command
+            if "REZ_USED_REQUEST" in os.environ:
+                self.cmd = 'rez-env {} -- {}'.format(
+                    os.environ["REZ_USED_REQUEST"],
+                    self.cmd
+                )
 
             if self.single_task:
                 # On a single task we can see progress as job report
@@ -463,6 +481,14 @@ class BlockParameters:
             block.setDependSubTask()
         if self.min_memory > -1:
             block.setNeedMemory(self.min_memory*1024)
+        if self.min_gpu_mem > 0:
+            block.setNeedGPUMemGB(self.min_gpu_mem)
+        if self.min_cpu_freq > 0:
+            block.setNeedCPUFreqGHz(self.min_cpu_freq)
+        if self.min_cpu_cores > 0:
+            block.setNeedCPUCores(self.min_cpu_cores)
+        if self.min_cpu_cores_freq > 0:
+            block.setNeedCPUFreqCores(self.min_cpu_cores_freq)
 
         # Process Tickets
         if self.tickets_use:
@@ -632,15 +658,6 @@ def getBlockParameters(afnode, ropnode, subblock, prefix, frame_range):
     if ropnode is not None and ropnode.type().name() == 'ifd' and afnode.parm('sep_enable').eval():
         # Case mantra separate render:
 
-        block_generate = \
-            BlockParameters(afnode, ropnode, subblock, prefix, frame_range)
-        blockname = block_generate.name
-        block_generate.name += '-GenIFD'
-
-        if not block_generate.valid:
-            block_generate.doPost()
-            return None
-
         run_rop = afnode.parm('sep_run_rop').eval()
         read_rop = afnode.parm('sep_read_rop_params').eval()
         join_render = afnode.parm('sep_join').eval()
@@ -651,6 +668,16 @@ def getBlockParameters(afnode, ropnode, subblock, prefix, frame_range):
         tiles_stitch_service = afnode.parm('tiles_stitch_service').eval()
         tiles_stitch_capacity = afnode.parm('tiles_stitch_capacity').eval()
         del_rop_files = afnode.parm('sep_del_rop_files').eval()
+
+        if not run_rop:
+            join_render = False
+
+        block_generate = BlockParameters(afnode, ropnode, join_render == False, prefix, frame_range)
+        blockname = block_generate.name
+
+        if not block_generate.valid:
+            block_generate.doPost()
+            return None
 
         if read_rop or run_rop:
             if not block_generate.ropnode:
@@ -663,12 +690,32 @@ def getBlockParameters(afnode, ropnode, subblock, prefix, frame_range):
                     '"%s" is not a ROP node' % block_generate.ropnode.path()
                 )
 
-        if not run_rop:
-            join_render = False
-
         if join_render:
+            block_generate.name += '-Separate'
             tile_render = False
         else:
+            block_generate.name += '-GenIFD'
+
+            # Get some generation specific parameters:
+            capacity      = int(afnode.parm('sep_gen_capacity').eval())
+            hosts_mask    = str(afnode.parm('sep_gen_hosts_mask').eval())
+            hosts_exclude = str(afnode.parm('sep_gen_hosts_mask_exclude').eval())
+            max_runtasks  = int(afnode.parm('sep_gen_max_runtasks').eval())
+            maxperhost    = int(afnode.parm('sep_gen_maxperhost').eval())
+            min_memory    = int(afnode.parm('sep_gen_min_memory').eval())
+            if capacity > 0:
+                block_generate.capacity = capacity
+            if hosts_mask != '':
+                block_generate.hosts_mask = hosts_mask
+            if hosts_exclude != '':
+                block_generate.hosts_mask_exclude = hosts_exclude
+            if max_runtasks > -1:
+                block_generate.max_runtasks = max_runtasks
+            if maxperhost > -1:
+                block_generate.maxperhost = maxperhost
+            if min_memory > -1:
+                block_generate.min_memory = min_memory
+
             if block_generate.ropnode.parm('soho_outputmode').eval() == 0:
                 # Set output mode to produce ifd files:
                 block_generate.ropnode.parm('soho_outputmode').set(1)
@@ -703,8 +750,10 @@ def getBlockParameters(afnode, ropnode, subblock, prefix, frame_range):
 
             if not join_render:
                 block_generate.service = 'hbatch'
+                block_generate.tickets = {'HYTHON':1}
             else:
                 block_generate.service = 'hbatch_mantra'
+                block_generate.tickets = {'HYTHON':1,'MANTRA':1}
                 block_generate.cmd = block_generate.cmd.replace(
                     'hrender_af', 'hrender_separate'
                 )
@@ -712,9 +761,10 @@ def getBlockParameters(afnode, ropnode, subblock, prefix, frame_range):
         if not join_render:
             block_render = BlockParameters(afnode, ropnode, subblock, prefix,
                                            frame_range)
-            block_render.name = blockname + '-TileRender'
             block_render.cmd = 'mantra'
-            block_render.service = block_render.cmd
+            block_render.service = 'mantra'
+            block_render.tickets = {'MANTRA':1}
+
             if run_rop:
                 block_render.dependmask = block_generate.name
 
@@ -722,6 +772,7 @@ def getBlockParameters(afnode, ropnode, subblock, prefix, frame_range):
                 block_render.delete_files.append(files)
 
             if tile_render:
+                block_render.name = blockname + '-TileRender'
                 block_render.numeric = False
                 block_render.cmd += ' -t count=%(tile_divx)dx%(tile_divy)d,index=@#@' % vars()
                 block_render.frame_pertask = -tiles_count
@@ -737,6 +788,7 @@ def getBlockParameters(afnode, ropnode, subblock, prefix, frame_range):
                         block_render.tasks_names.append('frame %d tile %d' % (frame, tile))
                         block_render.tasks_cmds.append('%d %s' % (tile, arguments))
             else:
+                block_render.name = blockname + '-Render'
                 block_render.cmd += ' ' + afcommon.patternFromPaths(
                     afnode.parm('sep_render_arguments').evalAsStringAtFrame(block_generate.frame_first),
                     afnode.parm('sep_render_arguments').evalAsStringAtFrame(block_generate.frame_last)
@@ -995,6 +1047,20 @@ def getJobParameters(afnode, subblock=False, frame_range=None, prefix=''):
 
         prevparams = newparams
 
+    if len(params):
+        # Get Pre/Post Submit Scrips:
+        parm = params[0]
+
+        if afnode.parm('pre_submit_script_enable').eval():
+            pre_submit_script = afnode.parm('pre_submit_script').eval()
+            if pre_submit_script is not None and len(pre_submit_script):
+                parm.pre_submit_script = pre_submit_script
+        if afnode.parm('post_submit_script_enable').eval():
+            post_submit_script = afnode.parm('post_submit_script').eval()
+            if post_submit_script is not None and len(post_submit_script):
+                parm.post_submit_script = post_submit_script
+
+
     # Last parameter needed to generate a job.
     if not subblock:
         params.append(
@@ -1011,9 +1077,23 @@ def render(afnode):
     params = getJobParameters(afnode)
 
     if params is not None and len(params) > 1:
-        params[-1].genJob(params[:-1])
+        job_params = params[-1]
+        params = params[:-1]
+
+        for parm in params:
+            if parm.pre_submit_script:
+                afnode = parm.afnode
+                print('Executing pre submit script on "%s":\n%s' % (afnode.name(), parm.pre_submit_script))
+                eval(parm.pre_submit_script)
+
+        job_params.genJob(params)
+
         for parm in params:
             parm.doPost()
+            if parm.post_submit_script:
+                afnode = parm.afnode
+                print('Executing post submit script on "%s":\n%s' % (afnode.name(), parm.post_submit_script))
+                eval(parm.post_submit_script)
     else:
         hou.ui.displayMessage(
             'No tasks found for:'

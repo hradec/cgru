@@ -48,6 +48,7 @@
 	"comp"    :{"title":"Comp",     "short":"Cp",  "tip":"Compositing"},
 	"concept" :{"title":"Concept",  "short":"Cc",  "tip":"Concept"},
 	"frlnc"   :{"title":"Freelance","short":"Fl",  "tip":"Freelance"},
+	"fur"     :{"title":"Fur",      "short":"Fur", "tip":"Fur, Hair"},
 	"fx"      :{"title":"FX",       "short":"FX",  "tip":"FX"},
 	"key"     :{"title":"Keying",   "short":"Key", "tip":"Keying"},
 	"layout"  :{"title":"Layout",   "short":"Lay", "tip":"Layout"},
@@ -59,7 +60,7 @@
 	"roto"    :{"title":"Roto",     "short":"Ro",  "tip":"Rotoscoping"},
 	"rnd"     :{"title":"R&D",      "short":"RnD", "tip":"Research and development"},
 	"textur"  :{"title":"Textur",   "short":"Tx",  "tip":"Texturing"},
-	"track"   :{"title":"Track",    "short":"Tr",  "tip":"Tracking"},
+	"track"   :{"title":"Track",    "short":"Tr",  "koeff":0.1, "tip":"Tracking"},
 
 	"other"   :{"title":"Other",    "short":"Ot",  "tip":"Something else",
 		"new_line":true}
@@ -88,9 +89,10 @@
 		"upload_dir":"_UPLOADS/@DATE@_@USER@",
 		"play_folders":false,
 		"scripts":["project.js"],
+		"template":"rules/assets/templates/project",
 		"show_files":true
 	},
-	"scenes":{
+	"area":{
 		"seek":["[project]/SCENE.*","[project]/EPISODE.*","[project]/SHOT.*","[project]/ASSETS.*","[project]/ANIM.*","[project]/RND.*","[project]/FREELANCE.*"],
 		"uploads":{
 			"upload":{
@@ -103,7 +105,7 @@
 		"scripts":["scenes.js"]
 	},
 	"scene":{
-		"seek":["[scenes]/"],
+		"seek":["[area]/"],
 		"uploads":{
 			"upload":{
 				"masks":[".*"],
@@ -111,6 +113,7 @@
 			}
 		},
 		"filter":"sc_FilterShots",
+		"template":"rules/assets/templates/scene",
 		"scripts":["scenes.js"]
 	},
 	"shot":{
@@ -163,7 +166,7 @@
 				"render":"RESULT/RENDER"
 			}
 		},
-		"template":"rules/assets/shot",
+		"template":"rules/assets/templates/shot",
 
 		"shot_process":[
 			{
@@ -263,7 +266,8 @@
 	"colorspace":"auto",
 	"template":"dailies_withlogo",
 	"slate":"dailies_slate",
-	"naming":"(s)_(v)_(d)",
+	"-font":"DejaVuSans",
+	"naming":"(s)_(a)_(v)_(d)",
 	"logo_slate_path":"logo.png",
 	"logo_slate_size":20,
 	"logo_slate_grav":"SouthEast",

@@ -18,6 +18,8 @@
 
 var bm_initialized = false;
 
+var bm_clicked = false;
+
 var bm_projects = [];
 var bm_elements = [];
 
@@ -171,32 +173,19 @@ function bm_Compare(a, b)
 	return 0;
 }
 
-function bm_Show()
+function bm_CollectProjects(i_bookmarks)
 {
-	if (false == bm_initialized)
-		return;
+	i_bookmarks.sort(bm_Compare);
 
-	// console.log(JSON.stringify(g_auth_user.bookmarks));
-	$('bookmarks').innerHTML = '';
-	$('bookmarks_label').textContent = 'Bookmarks';
-	bm_projects = [];
-	bm_elements = [];
-
-	if ((g_auth_user.bookmarks == null) || (g_auth_user.bookmarks.length == 0))
-		return;
-
-	$('bookmarks_label').textContent = 'Bookmarks - ' + g_auth_user.bookmarks.length;
-
-	g_auth_user.bookmarks.sort(bm_Compare);
-
-	// Collect projects and scenes:
+	let collection = [];
 	let project = null;
 	let scene = null;
-	for (let i = 0; i < g_auth_user.bookmarks.length; i++)
+	for (let bm of i_bookmarks)
 	{
-		let bm = g_auth_user.bookmarks[i];
-
 		if (bm == null)
+			continue;
+
+		if (bm.path == null)
 			continue;
 
 		let names = bm.path.split('/');
@@ -208,7 +197,7 @@ function bm_Show()
 			project.scenes = [];
 			scene = null;
 
-			bm_projects.push(project);
+			collection.push(project);
 		}
 
 		let scene_path = null;
@@ -230,6 +219,28 @@ function bm_Show()
 
 		scene.bms.push(bm);
 	}
+
+	return collection;
+}
+
+function bm_Show()
+{
+	if (false == bm_initialized)
+		return;
+
+	// console.log(JSON.stringify(g_auth_user.bookmarks));
+	$('bookmarks').innerHTML = '';
+	$('bookmarks_label').textContent = 'Bookmarks';
+	bm_projects = [];
+	bm_elements = [];
+
+	if ((g_auth_user.bookmarks == null) || (g_auth_user.bookmarks.length == 0))
+		return;
+
+	$('bookmarks_label').textContent = 'Bookmarks - ' + g_auth_user.bookmarks.length;
+
+	// Collect projects and scenes:
+	bm_projects = bm_CollectProjects(g_auth_user.bookmarks);
 
 	// Construct elements:
 	let closed_projects = localStorage.bookmarks_projects_closed.split('|');
@@ -335,11 +346,19 @@ function bm_CreateBookmark(i_bm)
 	elDel.ondblclick = function(e) { bm_Delete([e.currentTarget.m_path]); };
 	elDel.title = 'Double click to delete.';
 
+	let elFav = document.createElement('div');
+	el.appendChild(elFav);
+	elFav.classList.add('favourite_toggle');
+	elFav.m_bm = i_bm;
+	elFav.title = 'Double click to toggle favourite.';
+	elFav.ondblclick = function(e) {bm_FavouriteToggle(e.currentTarget.m_bm);};
+
 	var elPath = document.createElement('a');
 	el.appendChild(elPath);
 	elPath.classList.add('name');
 	elPath.textContent = name;
 	elPath.href = '#' + i_bm.path;
+	elPath.onclick = function(e){bm_clicked = true};
 
 	// Display status:
 	st_SetElStatus(el, i_bm.status, /*show all tasks = */ false);
@@ -357,6 +376,9 @@ function bm_CreateBookmark(i_bm)
 
 	if (false == bm_ActualStatus(i_bm.status))
 		el.classList.add('obsolete');
+
+	if (i_bm.favourite)
+		el.classList.add('favourite');
 
 	el.m_bookmark = i_bm;
 
@@ -421,10 +443,13 @@ function bm_NavigatePost()
 	bm_HighlightCurrent();
 }
 
-function bm_ActualStatus(i_status)
+function bm_ActualStatus(i_status, i_user)
 {
 	if (i_status == null)
 		return false;
+
+	if (i_user == null)
+		i_user = g_auth_user;
 
 	if (i_status.tasks && (typeof i_status.tasks == 'object'))
 	{
@@ -434,7 +459,7 @@ function bm_ActualStatus(i_status)
 
 			if (task.deleted)
 				continue;
-			if (task.artists && (task.artists.indexOf(g_auth_user.id) == -1))
+			if (task.artists && (task.artists.indexOf(i_user.id) == -1))
 				continue;
 			if (task.progress && (task.progress >= 100))
 				continue;
@@ -448,7 +473,7 @@ function bm_ActualStatus(i_status)
 	if (i_status.artists == null)
 		return false;
 
-	if (i_status.artists.indexOf(g_auth_user.id) == -1)
+	if (i_status.artists.indexOf(i_user.id) == -1)
 		return false;
 
 	if (i_status.progress)
@@ -478,6 +503,12 @@ function bm_HighlightCurrent()
 		if (bm_elements[i].m_bookmark.path == g_CurPath())
 		{
 			bm_elements[i].classList.add('cur_path');
+
+			if ((bm_clicked == false) && (nw_clicked == false))
+			{
+				bm_elements[i].scrollIntoView({behavior:'auto',block:'center',inline:'center'});
+			}
+
 			if (g_CurPathDummy() || (false == bm_ActualStatus(RULES.status)))
 			{
 				bm_elements[i].classList.add('obsolete');
@@ -489,6 +520,8 @@ function bm_HighlightCurrent()
 			bm_elements[i].classList.remove('cur_path');
 		}
 	}
+
+	bm_clicked = false;
 }
 
 function bm_Delete(i_paths)
@@ -522,6 +555,31 @@ function bm_DeleteFinished(i_data)
 	bm_Load({"info": 'deleted'});
 }
 
+function bm_FavouriteToggle(i_bm)
+{
+	let favourite = (true != i_bm.favourite);
+	let obj = {};
+	obj.replace = true;
+	obj.objects = [];
+	obj.objects.push({"path": i_bm.path,"favourite":favourite});
+	obj.id = 'path';
+	obj.file = bm_GetUserFileName();
+	n_Request({"send": {"editobj": obj}, "func": bm_FavouriteToggle_Finished});
+}
+
+function bm_FavouriteToggle_Finished(i_data)
+{
+	if ((i_data == null) || (i_data.error))
+	{
+		c_Error(i_data.error);
+		return;
+	}
+
+	c_Info('Bookmark favourite toggled.');
+	bm_clicked = true;
+	bm_Load({"info": 'favourite'});
+}
+
 function bm_DeleteObsoleteOnClick()
 {
 	let bookmarks_deleted = bm_DeleteObsoleteForTime(true);
@@ -538,6 +596,9 @@ function bm_DeleteObsoleteForTime(i_delete_any_time)
 	{
 		let el = bm_elements[i];
 		let bm = el.m_bookmark;
+
+		if (bm.favourite)
+			continue;
 
 		if ( ! bm.mtime)
 		{

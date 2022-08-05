@@ -8,10 +8,10 @@
 
 using namespace af;
 
-HostResMeter::HostResMeter(){}
-HostResMeter::HostResMeter( Msg * msg){ read( msg);}
+HostResCustom::HostResCustom(){}
+HostResCustom::HostResCustom(Msg * msg) {read(msg);}
 
-void HostResMeter::v_readwrite( Msg * msg)
+void HostResCustom::v_readwrite(Msg * msg)
 {
     rw_int32_t( value,      msg);
     rw_int32_t( valuemax,   msg);
@@ -31,7 +31,7 @@ void HostResMeter::v_readwrite( Msg * msg)
     rw_String(  tooltip,    msg);
 }
 
-void HostResMeter::jsonWrite( std::ostringstream & o_str) const
+void HostResCustom::jsonWrite(std::ostringstream & o_str) const
 {
 	o_str << "{";
 
@@ -49,7 +49,7 @@ void HostResMeter::jsonWrite( std::ostringstream & o_str) const
 	o_str << "\n}";
 }
 
-void HostResMeter::v_generateInfoStream( std::ostringstream & stream, bool full) const
+void HostResCustom::v_generateInfoStream(std::ostringstream & stream, bool full) const
 {
     stream << label   << ": ";
     stream << value   << " of " << valuemax;
@@ -135,6 +135,13 @@ void HostRes::copy( const HostRes & other)
     hdd_busy         = other.hdd_busy;
     net_recv_kbsec   = other.net_recv_kbsec;
     net_send_kbsec   = other.net_send_kbsec;
+
+	gpu_gpu_util     = other.gpu_gpu_util;
+	gpu_gpu_temp     = other.gpu_gpu_temp;
+	gpu_mem_total_mb = other.gpu_mem_total_mb;
+	gpu_mem_used_mb  = other.gpu_mem_used_mb;
+	gpu_string       = other.gpu_string;
+
     logged_in_users  = other.logged_in_users;
 
     if( custom.size() != other.custom.size())
@@ -143,7 +150,7 @@ void HostRes::copy( const HostRes & other)
             if( custom[i] ) delete custom[i];
         custom.clear();
         for( unsigned i = 0; i < other.custom.size(); i++)
-            custom.push_back( new HostResMeter());
+            custom.push_back(new HostResCustom());
     }
 
     for( unsigned i = 0; i < custom.size(); i++)
@@ -178,6 +185,12 @@ void HostRes::jsonWrite( std::ostringstream & o_str) const
 	o_str << ",\n\"hdd_busy\":"       << int(hdd_busy);
 	o_str << ",\n\"net_recv_kbsec\":" << net_recv_kbsec;
 	o_str << ",\n\"net_send_kbsec\":" << net_send_kbsec;
+
+	o_str << ",\n\"gpu_gpu_util\":"     << int(gpu_gpu_util);
+	o_str << ",\n\"gpu_gpu_temp\":"     << int(gpu_gpu_temp);
+	o_str << ",\n\"gpu_mem_total_mb\":" << gpu_mem_total_mb;
+	o_str << ",\n\"gpu_mem_used_mb\":"  << gpu_mem_used_mb;
+	o_str << ",\n\"gpu_string\":\""     << gpu_string << "\"";
 
 	if( logged_in_users.size())
 	{
@@ -234,6 +247,13 @@ void HostRes::v_readwrite( Msg * msg)
     rw_int8_t ( hdd_busy,         msg);
     rw_int32_t( net_recv_kbsec,   msg);
     rw_int32_t( net_send_kbsec,   msg);
+
+	rw_int8_t (gpu_gpu_util,     msg);
+	rw_int8_t (gpu_gpu_temp,     msg);
+	rw_int32_t(gpu_mem_total_mb, msg);
+	rw_int32_t(gpu_mem_used_mb,  msg);
+	rw_String (gpu_string,       msg);
+
     rw_StringVect( logged_in_users, msg);
 
     uint8_t custom_count = uint8_t(custom.size());
@@ -248,7 +268,7 @@ void HostRes::v_readwrite( Msg * msg)
 
     for( int i = 0; i < custom_count; i++)
         if( msg->isWriting()) custom[i]->write( msg);
-        else custom.push_back( new HostResMeter( msg));
+        else custom.push_back(new HostResCustom( msg));
 }
 
 void HostRes::v_generateInfoStream( std::ostringstream & stream, bool full) const
@@ -266,17 +286,24 @@ void HostRes::v_generateInfoStream( std::ostringstream & stream, bool full) cons
             << int( cpu_irq     ) << "% irq, "
             << int( cpu_softirq ) << "% sirq";
         stream << "\n      load average:   " << cpu_loadavg[0]/10.0 << "   " << cpu_loadavg[1]/10.0 << "   " << cpu_loadavg[2]/10.0;
-        stream << "\n   Memory: " << mem_total_mb << " Mb / " << mem_free_mb << " Mb free";
+        stream << "\n   Memory: " << mem_total_mb << " MB / " << mem_free_mb << " MB free";
         if( mem_cached_mb || mem_buffers_mb )
         {
-            stream << " (cache " << mem_cached_mb << " Mb";
-            stream << ", buffers " << mem_buffers_mb << " Mb)";
+            stream << " (cache " << mem_cached_mb << " MB";
+            stream << ", buffers " << mem_buffers_mb << " MB)";
         }
-        stream << "\n   Swap: " << swap_total_mb << " Mb / " << swap_used_mb << " Mb used";
+        stream << "\n   Swap: " << swap_total_mb << " MB / " << swap_used_mb << " MB used";
         stream << "\n   Network: Received " << net_recv_kbsec << " Kb/sec, Send " << net_send_kbsec  << " Kb/sec",
         stream << "\n   IO: Read " << hdd_rd_kbsec << " Kb/sec, Write " << hdd_wr_kbsec << " Kb/sec, Busy = " << int(hdd_busy) << "%";
-        stream << "\n   HDD: " << hdd_total_gb << " Gb / " << hdd_free_gb  << " Gb free";
-        
+        stream << "\n   HDD: " << hdd_total_gb << " GB / " << hdd_free_gb  << " GB free";
+
+		if (gpu_string.size())
+		{
+			stream << "\n   GPU = \"" << gpu_string << "\"";
+			stream << "\n       Utilization: " << int(gpu_gpu_util) << "%, Temperature: " << int(gpu_gpu_temp) << "C";
+			stream << "\n       Memory: " << gpu_mem_total_mb << " MB / " << gpu_mem_used_mb << " MB used";
+		}
+
         if( logged_in_users.size())
 		{
 			stream << ",\n   Logged in users = ";

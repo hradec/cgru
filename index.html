@@ -9,6 +9,7 @@
 <script type="text/javascript" src="lib/js/md5.js"></script>
 <script type="text/javascript" src="rules/activity.js"></script>
 <script type="text/javascript" src="rules/admin.js"></script>
+<script type="text/javascript" src="rules/artbook.js"></script>
 <script type="text/javascript" src="rules/asset.js"></script>
 <script type="text/javascript" src="rules/bookmarks.js"></script>
 <script type="text/javascript" src="rules/comments.js"></script>
@@ -23,6 +24,7 @@
 <script type="text/javascript" src="rules/network.js"></script>
 <script type="text/javascript" src="rules/news.js"></script>
 <script type="text/javascript" src="rules/playlist.js"></script>
+<script type="text/javascript" src="rules/profile.js"></script>
 <script type="text/javascript" src="rules/search.js"></script>
 <script type="text/javascript" src="rules/statistics.js"></script>
 <script type="text/javascript" src="rules/status.js"></script>
@@ -62,6 +64,7 @@ Use [ART],[TAG],[ANN] buttons
 to show/hide folder status info."
 			></div>
 		<div class="button" style="width:16px;" title="Scroll to current" onclick="g_NavigScrollCurrent()">&gt;&lt;</div>
+		<div class="button" id="navig_show_thumbs"     title="Show thumbnails" onclick="g_NavigShowInfo(this)">TMB</div>
 		<div class="button" id="navig_show_tasks"      title="Show tasks"      onclick="g_NavigShowInfo(this)">TSK</div>
 		<div class="button" id="navig_show_tasks_only_my" title="Show only my tasks" onclick="g_NavigShowInfo(this)">MYT</div>
 		<div class="button" id="navig_show_flags"      title="Show flags"      onclick="g_NavigShowInfo(this)">FLG</div>
@@ -595,6 +598,10 @@ Link with hidden folder will not works.">
 			</div>
 		</div>
 		<div style="position:absolute; left: 700px; width: 200px; top:5px;bottom:0; /*border: 1px solid #000;*/">
+			<div class="button" id="artbook_button"
+				style="_display:none; background: rgba(250,250,100,.2); margin: 14px;"
+				title="All artists bookmarks."
+				onclick="ab_OpenWindow(true)">ArtBook</div>
 			<div class="button" id="admin_button"
 				style="display:none; background: rgba(200,0,0,.2)"
 				title="Administrate all users"
@@ -606,8 +613,6 @@ Link with hidden folder will not works.">
 			<div style="text-align:center; padding: 10px 0 0 0;">
 				<a id="afanasy_webgui" target="_blank" onclick="u_OpenCloseHeader()">
 					AFANASY</a></div>
-			<!--div style="text-align:center; padding: 10px 0 0 0;">
-				<a href="afanasy/webvisor/" target="_blank">Database Statistics</a></div-->
 		</div>
 	</div>
 	<div id="headeropenbtn" class="headeropenbtn button" onclick="u_OpenCloseHeader()"
@@ -623,8 +628,8 @@ Link with hidden folder will not works.">
 			<a class="button" id="navigate_next" title="Navigate to the next folder (shot)"
 				style="background-image:url(rules/icons/next.png);"></a>
 		</div>
-		<div id="panel_logo"></div>
-		<div id="profile_settings" title="Edit Profile Settings" onclick="ad_ProfileOpen()">
+		<div id="panel_logo" ondblclick="ab_OpenWindow()"></div>
+		<div id="profile_settings" title="Edit Profile Settings" onclick="prof_Open()">
 			<img id="profile_settings_avatar"></img>
 			<div id="profile_settings_name">Guest</div>
 		</div>

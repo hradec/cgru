@@ -21,13 +21,8 @@ function debianArch(){
 	packages="$packages p7zip-full"
 	packages="$packages libzip-dev"
 	# Qt5:
-	packages="$packages qt5-default"
+	packages="$packages qtbase5-dev"
 	packages="$packages qtmultimedia5-dev"
-	# Qt5-AFermer:
-	packages="$packages libboost-filesystem-dev"
-	packages="$packages qtdeclarative5-dev"
-	# EXRJoin:
-	packages="$packages libopenexr-dev"
 
 	pkg_manager_cmd="apt-get install"
 	pkg_extension=""
@@ -54,8 +49,7 @@ function redhatArch(){
 function fedoraArch(){
 	packages="$packages vim"
 	packages="$packages gcc-c++"
-	packages="$packages postgresql-devel"
-	packages="$packages postgresql-server-devel"
+	packages="$packages libpq-devel"
 	packages="$packages qt5-qtmultimedia-devel"
 	packages="$packages rpm-build"
 	packages="$packages git"
@@ -112,10 +106,7 @@ function mageiaArch(){
 	packages="$packages lib64python3-devel"
 	packages="$packages python3-pyside"
 	packages="$packages postgresql-devel"
-	packages="$packages lib64qt5base5-devel"
-	packages="$packages lib64qt5multimedia-devel"
-	packages="$packages qtmultimedia5"
-	packages="$packages lib64openexr-devel"
+	packages="$packages qt5-devel lib64qt5multimedia-devel"
 	packages="$packages rpm-build"
 	packages="$packages libzip libzip-devel"
 
@@ -167,13 +158,13 @@ case ${DISTRIBUTIVE} in
 	AltLinux)
 		altArch
 		;;
-	Debian|Ubuntu|Mint)
+	Debian|Ubuntu|Mint|Astra)
 		debianArch
 		;;
 	openSUSE)
 		suseArch
 		;;
-	Mageia)
+	Mageia|ROSA)
 		mageiaArch
 		;;
 	Fedora)

@@ -81,6 +81,7 @@ std::string Environment::render_cmd_reboot =           AFRENDER::CMD_REBOOT;
 std::string Environment::render_cmd_shutdown =         AFRENDER::CMD_SHUTDOWN;
 std::string Environment::render_cmd_wolsleep =         AFRENDER::CMD_WOLSLEEP;
 std::string Environment::render_cmd_wolwake =          AFRENDER::CMD_WOLWAKE;
+std::string Environment::render_gpuinfo_nvidia_cmd =   AFRENDER::GPUINFO_NVIDIA_CMD;
 std::string Environment::render_networkif =            AFRENDER::NETWORK_IF;
 std::string Environment::render_hddspace_path =        AFRENDER::HDDSPACE_PATH;
 std::string Environment::render_iostat_device =        AFRENDER::IOSTAT_DEVICE;
@@ -169,8 +170,8 @@ std::string Environment::http_directory_index;
 
 Address Environment::serveraddress;
 
-bool Environment::god_mode       = false;
-bool Environment::visor_mode     = false;
+bool Environment::m_god_mode     = false;
+bool Environment::m_visor_mode   = false;
 bool Environment::m_help_mode    = false;
 bool Environment::m_demo_mode    = false;
 bool Environment::m_valid        = false;
@@ -183,7 +184,7 @@ bool Environment::m_server          = false;
 std::vector<std::string> Environment::m_config_files;
 std::string Environment::m_config_data;
 
-Passwd * Environment::passwd = NULL;
+Passwd * Environment::m_passwd = NULL;
 
 std::vector<std::string> Environment::platform;
 std::vector<std::string> Environment::previewcmds;
@@ -286,6 +287,7 @@ void Environment::getVars( const JSON * i_obj)
 	getVar( i_obj, render_cmd_wolsleep,               "af_render_cmd_wolsleep"               );
 	getVar( i_obj, render_cmd_wolwake,                "af_render_cmd_wolwake"                );
 	getVar( i_obj, render_hddspace_path,              "af_render_hddspace_path"              );
+	getVar( i_obj, render_gpuinfo_nvidia_cmd,         "af_render_gpuinfo_nvidia_cmd"         );
 	getVar( i_obj, render_networkif,                  "af_render_networkif"                  );
 	getVar( i_obj, render_iostat_device,              "af_render_iostat_device"              );
 	getVar( i_obj, render_resclasses,                 "af_render_resclasses"                 );
@@ -411,6 +413,15 @@ void Environment::getVar( const JSON * i_obj, std::vector<std::string> & o_value
 	{
 		if( af::jr_stringvec( i_name, o_value, *i_obj))
 			found = true;
+	}
+	else
+	{
+		std::string env_val = getVarEnv(i_name);
+		if (env_val.size())
+		{
+			o_value = af::strSplit(env_val, ",");
+			found = true;
+		}
 	}
 
 	if( found && m_verbose_init )
@@ -698,7 +709,9 @@ Environment::Environment( uint32_t flags, int argc, char** argv )
 
 Environment::~Environment()
 {
-	if( passwd != NULL) delete passwd;
+	if (m_passwd != NULL)
+		delete m_passwd;
+
 	printUsage();
 }
 
@@ -711,7 +724,8 @@ void Environment::load()
 	customconfig = af::getenv("CGRU_CUSTOM_CONFIG");
 
 	loadFile( cgrulocation + "/config_default.json");
-	loadFile( customconfig);
+	if (customconfig.size())
+		loadFile(customconfig);
 	loadFile( home_afanasy + "/config.json");
 
 	PRINT("Getting variables from environment:\n");
@@ -740,7 +754,7 @@ void Environment::loadFile( const std::string & i_filename)
 	for(int i = 0; i < m_config_files.size(); i++)
 		if(m_config_files[i] == i_filename)
 		{
-			AF_ERR << "Config file already included: " << i_filename;
+			AF_ERR << "Config file already included: \"" << i_filename << "\"";
 			return;
 		}
 
@@ -749,7 +763,7 @@ void Environment::loadFile( const std::string & i_filename)
 
 	if(false == pathFileExists(i_filename))
 	{
-		AF_WARN << "Config file does not exist: " << i_filename;
+		AF_WARN << "Config file does not exist: \"" << i_filename << "\"";
 		return;
 	}
 
@@ -821,7 +835,80 @@ bool Environment::reload()
 	return m_valid;
 }
 
-bool Environment::checkKey( const char key) { return passwd->checkKey( key, visor_mode, god_mode); }
+bool Environment::passwdCheckKey(const char i_key)
+{
+	bool visor_mode = false;
+	bool god_mode = false;
+
+	if (false == m_passwd->checkKey(i_key, visor_mode, god_mode))
+		return false;
+
+	if (visor_mode)
+	{
+		if (m_visor_mode)
+		{
+			m_visor_mode  = false;
+			printf("VISOR MODE OFF\n");
+			if (m_god_mode)
+				printf("GOD MODE OFF\n");
+			m_god_mode = false;
+		}
+		else
+		{
+			m_visor_mode  = true;
+			printf("VISOR MODE ON\n");
+			if (m_god_mode)
+				printf("GOD MODE OFF\n");
+			m_god_mode = false;
+		}
+		return true;
+	}
+
+	if (god_mode)
+	{
+		if (m_god_mode)
+		{
+			m_god_mode = false;
+			printf("GOD MODE OFF\n");
+			if (m_visor_mode)
+				printf("VISOR MODE OFF\n");
+			m_visor_mode = false;
+		}
+		else
+		{
+			m_god_mode  = true;
+			printf("GOD MODE ON\n");
+			if (!m_visor_mode)
+				printf("VISOR MODE ON\n");
+			m_visor_mode = true;
+		}
+		return true;
+	}
+
+	return false;
+}
+bool Environment::passwdCheckVisor(const std::string & i_passwd)
+{
+	if (m_passwd->checkPassVisor(i_passwd))
+	{
+		m_visor_mode = true;
+		m_god_mode = false;
+		return true;
+	}
+
+	return false;
+}
+bool Environment::passwdCheckGOD(const std::string & i_passwd)
+{
+	if (m_passwd->checkPassGOD(i_passwd))
+	{
+		m_visor_mode = true;
+		m_god_mode = true;
+		return true;
+	}
+
+	return false;
+}
 
 // Initialize environment after all variables are loaded (set to default values)
 bool Environment::initAfterLoad()
@@ -884,8 +971,9 @@ bool Environment::initAfterLoad()
 		 serveraddress = af::solveNetName( servername, serverport, AF_UNSPEC, m_verbose_init ? VerboseOn : VerboseOff);
 
 	// VISOR and GOD passwords:
-	if( passwd != NULL) delete passwd;
-	passwd = new Passwd( pswd_visor, pswd_god);
+	if (m_passwd != NULL)
+		delete m_passwd;
+	m_passwd = new Passwd(pswd_visor, pswd_god);
 
 	return true;
 }

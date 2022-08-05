@@ -366,7 +366,9 @@ function Monitor(i_args)
 
 	// Add other node type to monitor:
 	if (this.type == 'renders')
-		this.types.push('pools');
+	{
+		this.types = ['pools','renders'];
+	}
 
 	if (this.type == 'tasks')
 	{
@@ -375,11 +377,8 @@ function Monitor(i_args)
 		return;
 	}
 
-	for (let type of this.types)
-	{
-		nw_Subscribe(type, true);
-		nw_GetNodes(type);
-	}
+	nw_Subscribe(this.types[0], true);
+	nw_GetNodes(this.types[0]);
 
 	g_refreshers.push(this);
 }
@@ -569,10 +568,19 @@ Monitor.prototype.processMsg = function(obj) {
 			this.cur_item = updated_items[updated_items.length - 1];
 	}
 
-	if ((this.firstNodesReceived != true) && new_items.length && (g_VISOR() != true))
+	if ((this.firstNodesReceived != true) && new_items.length)
 	{
-		this.items[this.items.length - 1].element.scrollIntoView();
 		this.firstNodesReceived = true;
+
+		if (g_VISOR() != true)
+			this.items[this.items.length - 1].element.scrollIntoView();
+
+		if (this.types.length == 2)
+		{
+			// Farm monitor has 2 node types:
+			nw_Subscribe(this.types[1],true);
+			nw_GetNodes(this.types[1]);
+		}
 	}
 
 	if (this.nodeConstructor.updatingFinished)
@@ -842,7 +850,9 @@ Monitor.prototype.setSelected = function(i_item, on) {
 
 		this.cur_item = i_item;
 
-		this.updatePanels(null, {'hide_params': true});
+		// Function updatePanels was here at first.
+		// But for muiltiselection summary info, it should be called after selected_items changed.
+		//this.updatePanels(null, {'hide_params': true});
 
 		this.info(this.cur_item.params.name);
 
@@ -852,6 +862,10 @@ Monitor.prototype.setSelected = function(i_item, on) {
 		i_item.selected = true;
 		i_item.element.classList.add('selected');
 		this.selected_items.push(i_item);
+
+		// For muiltiselection summary info,
+		// updatePanels  should be called after selected_items changed.
+		this.updatePanels(null, {'hide_params': true});
 
 		if (this.type == 'jobs')
 			this.setWindowTitle();
@@ -1006,50 +1020,27 @@ Monitor.prototype.updatePanels = function(i_item, i_args) {
 		}
 	}
 
-	var els = this.elPanelR.getElementsByClassName('section');
-	for (var i = 0; i < els.length; i++)
+	let els = this.elPanelR.getElementsByClassName('section');
+	for (let i = 0; i < els.length; i++)
 		els[i].classList.add('active');
 
-	var elParams = this.elPanelR.m_elParams.m_elPMap;
-	for (var p in elParams)
+	let elParams = this.elPanelR.m_elParams.m_elPMap;
+	for (let p in elParams)
 	{
-		if (i_item.params[p] == null)
+		let value = cm_ValueToString(i_item.params[p], this.nodeConstructor.params[p].type);
+
+		if (value == '')
 		{
 			if (this.elPanelR.m_elParams.m_all_shown != true)
 				elParams[p].style.display = 'none';
-			elParams[p].m_elValue.textContent = '';
-			continue;
 		}
-
-		var value = i_item.params[p];
-		if (this.nodeConstructor.params[p].type == 'hrs')
-		{
-			value = cm_TimeStringFromSeconds(value, true);
-		}
-		else if (this.nodeConstructor.params[p].type == 'tim')
-		{
-			value = cm_DateTimeStrFromSec(value);
-		}
-		else if ((typeof value) == 'string')
-		{
-			// word-wrap long regular expressions:
-			value = value.replace(/\./g, '.&shy;');
-			value = value.replace(/\|/g, '|&shy;');
-			value = value.replace(/\)/g, ')&shy;');
-		}
-		else if (this.nodeConstructor.params[p].type == 'msi')
-		{
-			let msi = value;
-			value = '';
-			for (let s in msi)
-				value += ' <b>' + s + '</b>:' + msi[s];
-		}
+		else
+			elParams[p].style.display = 'block';
 
 		elParams[p].m_elValue.innerHTML = value;
-		elParams[p].style.display = 'block';
 	}
 	if (i_item.updatePanels)
-		i_item.updatePanels();
+		i_item.updatePanels(this.selected_items);
 };
 
 Monitor.prototype.panelShowAllParameters = function() {

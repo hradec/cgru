@@ -703,10 +703,13 @@ function st_SetElColorTextFromBack(i_clr, i_el)
 		i_el.style.color = '#FFF';
 }
 
-function st_SetElStatus(i_el, i_status, i_show_all_tasks = false)
+function st_SetElStatus(i_el, i_status, i_show_all_tasks, i_user = null)
 {
 	if (null == i_el)
 		return;
+
+	if (null == i_user)
+		i_user = g_auth_user;
 
 	let elStatus = document.createElement('div');
 	i_el.appendChild(elStatus);
@@ -719,6 +722,7 @@ function st_SetElStatus(i_el, i_status, i_show_all_tasks = false)
 		let elFlags = document.createElement('div');
 		elStatus.appendChild(elFlags);
 		elFlags.classList.add('flags');
+		st_SetElFlags(i_status, elFlags);
 	}
 
 
@@ -739,7 +743,7 @@ function st_SetElStatus(i_el, i_status, i_show_all_tasks = false)
 			if (task.deleted)
 				continue;
 
-			if (task.artists && (task.artists.indexOf(g_auth_user.id) == -1))
+			if (task.artists && (task.artists.indexOf(i_user.id) == -1))
 				continue;
 
 			tasks[task.name] = task;
@@ -770,12 +774,15 @@ function st_SetElStatus(i_el, i_status, i_show_all_tasks = false)
 	}
 
 	// Status color:
+	st_SetElColor(i_status, i_el, i_el, false);
+	/*
 	if (i_status && i_status.color)
 	{
 		let c = i_status.color;
 		i_el.style.backgroundColor = 'rgba('+c[0]+','+c[1]+','+c[2]+')';
 		st_SetElColorTextFromBack(c, i_el);
 	}
+	*/
 }
 
 function st_SetElFinish(i_status, i_elFinish, i_full)

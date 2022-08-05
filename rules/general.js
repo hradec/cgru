@@ -31,8 +31,8 @@ var g_navigating_path = null;
 var g_arguments = null;
 
 var g_navig_infos = {
-	all     : ['annotation', 'size', 'flags', 'artists', 'tags', 'tasks','tasks_only_my', 'duration', 'price', 'frames', 'percent'],
-	default : ['annotation', 'flags', 'tags', 'artists', 'tasks', 'percent'],
+	all     : ['annotation', 'size', 'flags', 'artists', 'tags', 'thumbs', 'tasks','tasks_only_my', 'duration', 'price', 'frames', 'percent'],
+	default : ['annotation', 'flags', 'tags', 'artists', 'thumbs', 'tasks', 'percent'],
 	current : []
 };
 
@@ -259,12 +259,15 @@ function g_NavigatePost()
 
 	if (g_nav_clicked == false)
 	{
-		g_elCurFolder.scrollIntoView();
+		g_elCurFolder.scrollIntoView({behavior:'auto',block:'center',inline:'center'});
 	}
+
 	g_nav_clicked = false;
 
-	nw_NavigatePost();
+	// Do bookmarks Post first.
+	// As we should scroll to current bookmark if clicked not news and not bookmark item
 	bm_NavigatePost();
+	nw_NavigatePost();
 	p_NavigatePost();
 
 	$('navigate_up').href = '#' + c_PathDir(g_CurPath());
@@ -786,6 +789,15 @@ function g_AppendFolder(i_elParent, i_fobject)
 	elFlags.classList.add('flags');
 	elFlags.classList.add('info');
 
+	if (i_fobject.thumbnail)
+	{
+		let elThumb = document.createElement('div');
+		elFBody.appendChild(elThumb);
+		elFolder.m_elThumb = elThumb;
+		elThumb.classList.add('thumb');
+		elThumb.classList.add('info');
+	}
+
 	var elTasks = document.createElement('div');
 	elFBody.appendChild(elTasks);
 	elFolder.m_elTasks = elTasks;
@@ -804,7 +816,10 @@ function g_AppendFolder(i_elParent, i_fobject)
 		elFolder.m_path = '/' + folder;
 	else
 		elFolder.m_path = i_elParent.m_path + '/' + folder;
+
 	elName.href = '#' + elFolder.m_path;
+	if (i_fobject.thumbnail)
+		elFolder.m_elThumb.style.backgroundImage = 'url(' + c_GetRuFilePath(RULES.thumbnail.filename, elFolder.m_path) + ')';
 
 	elFolder.onclick = g_FolderOnClick;
 	elFolder.oncontextmenu = function(e) {
@@ -844,8 +859,13 @@ function g_AppendFolder(i_elParent, i_fobject)
 		elBody = i_elParent;
 
 	// Insert element to parent body:
-	if (i_elParent.m_elFolders.length)
+	if (i_elParent.m_elFolders.length && i_elParent.m_elFolders[index])
+	{
+		// There can be a folders group:
+		// (this is most probably a dummy folder)
+		elBody = i_elParent.m_elFolders[index].parentNode;
 		elBody.insertBefore(elFolder, i_elParent.m_elFolders[index]);
+	}
 	else
 		elBody.appendChild(elFolder);
 
@@ -1005,9 +1025,18 @@ function g_CompareFolders(a, b)
 		}
 	}
 
+	// Move COMMON folder to top:
+	let a_cmn = c_PathBase(a.name) == 'COMMON';
+	let b_cmn = c_PathBase(b.name) == 'COMMON';
+
+	if (a_cmn && (false == b_cmn))
+		return -1;
+	if (b_cmn && (false == a_cmn))
+		return 1;
+
 	// Move auxiliary folders to bottom:
-	var a_aux = c_AuxFolder(a);
-	var b_aux = c_AuxFolder(b);
+	let a_aux = c_AuxFolder(a);
+	let b_aux = c_AuxFolder(b);
 
 	if (a_aux && (false == b_aux))
 		return 1;

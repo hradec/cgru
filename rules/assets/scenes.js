@@ -10,20 +10,20 @@ sc_thumb_params.skip_movies = {"width":'30%',"lwidth":'150px','type':"bool",'def
 
 sc_thumb_params_values = {};
 
-sc_scenes = false;
+sc_area = false;
 
-if( ASSETS.scene && ( ASSETS.scene.path == g_CurPath()))
+if (ASSETS.scene && (ASSETS.scene.path == g_CurPath()))
 {
 	a_SetLabel('Scene');
-	sc_scenes = false;
+	sc_area = false;
 
 	sc_Init();
 }
 
-if( ASSETS.scenes && ( ASSETS.scenes.path == g_CurPath()))
+if (ASSETS.area && (ASSETS.area.path == g_CurPath()))
 {
-	a_SetLabel('Scenes');
-	sc_scenes = true;
+	a_SetLabel('Area');
+	sc_area = true;
 
 	sc_Init();
 }
@@ -39,10 +39,31 @@ function sc_InitHTML( i_data)
 {
 	$('asset').innerHTML = i_data;
 
+	// Show top buttons:
+	if (c_CanCreateShot())
+	{
+		let el = document.createElement('div');
+		$('asset_top_left').appendChild(el);
+		el.classList.add('button');
+		el.textContent = 'NEW SCENE';
+		el.title = 'Create new scene.';
+		el.onclick = sc_Create_Scene;
+
+		if (sc_area == false)
+		{
+			el = document.createElement('div');
+			$('asset_top_left').appendChild(el);
+			el.classList.add('button');
+			el.textContent = 'NEW SHOT';
+			el.title = 'Create new shot.';
+			el.onclick = sc_Create_Shot;
+		}
+	}
+
 	gui_Create( $('scenes_make_thumbnails'), sc_thumb_params);
 	gui_CreateChoices({"wnd":$('scenes_make_thumbnails'),"name":'colorspace',"value":RULES.thumbnail.colorspace,"label":'Colorspace:',"keys":RULES.dailies.colorspaces});
 
-	if( sc_scenes )
+	if (sc_area)
 	{
 		$('scenes_load_btn').textContent = 'Load All Shots';
 		$('scenes_load_btn').onclick = function()
@@ -53,13 +74,57 @@ function sc_InitHTML( i_data)
 	}
 	else
 	{
-		$('scenes_load_btn').textContent = 'Load Scene Shots';
+		$('scenes_load_btn').textContent = 'Show Scene Shots';
 		$('scenes_load_btn').onclick = function()
 		{
 			sc_Show_Loaded();
 			scene_Show();
 		}
 	}
+}
+
+function sc_Create_Shot()
+{
+	let args = {};
+	args.title = 'Create New Shot';
+	args.template = RULES.assets.shot.template;
+	args.destination = g_CurPath();
+	args.name = ASSET.name + '_SHOT_0010';
+	a_Copy(args);
+}
+
+function sc_Create_Scene()
+{
+	let args = {};
+	args.title = 'Create New Scene';
+	args.template = RULES.assets.scene.template;
+	args.destination = g_CurPath();
+
+	if (sc_area)
+	{
+		args.name = 'SCENE_01';
+	}
+	else
+	{
+		args.destination = c_PathDir(args.destination);
+
+		// Try to increment latest number in name:
+		// Find all numbers
+		let numbers = ASSET.name.match(/\d+/g);
+		if ((numbers != null) && numbers.length)
+		{
+			let number = numbers[numbers.length-1];
+			let numplus = '' + (parseInt(number) + 1);
+			// Apply padding
+			while (numplus.length < number.length)
+				numplus = '0' + numplus;
+			// Lenght may be bigger on 'SHOT_990'
+			if (numplus.length == number.length)
+				args.name = ASSET.name.replace(number, numplus);
+		}
+	}
+
+	a_Copy(args);
 }
 
 function sc_Show_Loaded()
@@ -266,7 +331,7 @@ function sc_BodyReceived( i_data, i_args)
 
 function scenes_Show()
 {
-	n_WalkDir({"paths":[ASSET.path],"wfunc":scenes_Received,"info":'walk scenes',"depth":1,"rufiles":['rules','status'],"lookahead":['status'],"local":true});
+	n_WalkDir({"paths":[ASSET.path],"wfunc":scenes_Received,"info":'walk area',"depth":1,"rufiles":['rules','status'],"lookahead":['status'],"local":true});
 	$('asset').classList.add('waiting');
 	scenes_elWaiting = document.createElement('div');
 	scenes_elWaiting.innerHTML = '<h3 style="text-align:center">Loading all project shots...</h3>';
@@ -731,6 +796,12 @@ function sc_FilterShots(i_args)
 			for (let t in st_obj.tasks)
 			{
 				let task = st_obj.tasks[t];
+				if (task.deleted)
+				{
+					found = false;
+					continue;
+				}
+
 				for (let key of keys)
 					if (task[key])
 					{
@@ -853,6 +924,11 @@ function sc_FilterShots(i_args)
 				for (let t in st_obj.tasks)
 				{
 					let task = st_obj.tasks[t];
+					if (task.deleted)
+					{
+						found = false;
+						continue;
+					}
 					found = true;
 
 					if (found && i_args.flags && i_args.flags.length)
@@ -1055,7 +1131,7 @@ function sc_DisplayStatistics()
 
 	info += '<br>Frames count: ' + frames_count + ' = ' + c_DT_DurFromSec( frames_count / RULES.fps) + ' at ' + RULES.fps + ' FPS';
 
-	if( ASSET.type == 'scenes')
+	if (ASSET.type == 'area')
 	{
 		var scenes_count = 0;
 		for( var i = 0; i < sc_elScenes.length; i++)

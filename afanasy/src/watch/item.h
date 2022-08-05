@@ -53,6 +53,8 @@ public:
 	virtual const QString  v_getSelectString() const { return m_name;      }
 	virtual const QString  v_getInfoText()     const { return m_info_text; }
 
+	virtual const QString v_getMultiSelecedText(const QList<Item*> & i_selected) const {return QString();}
+
 	inline void lock()                const { setLock( true);  }
 	inline void unLock()              const { setLock( false); }
 	inline bool isLocked()            const { return m_locked;   }
@@ -88,7 +90,8 @@ public:
 		int posx, int posy, int width, int height,
 		int whole,
 		int part_a, int part_b = 0, int part_c = 0,
-		bool drawBorder = true
+		bool drawBorder = true,
+		QColor * i_done_color = NULL
 	);
 
 	static void calcutaleStarPoints();

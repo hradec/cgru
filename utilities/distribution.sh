@@ -2,8 +2,8 @@
 
 echo "Detecting UNIX distribution..."
 
-distskeys="Debian Ubuntu CentOS Red Fedora openSUSE Simply Gentoo Mint SUSE Mageia Arch Manjaro"
-knowndists="Debian Ubuntu CentOS RedHat Fedora openSUSE AltLinux MacOSX Gentoo Mint SUSE Mageia Arch Manjaro"
+distskeys="Debian Ubuntu Rocky CentOS Red Fedora openSUSE Simply Gentoo Mint SUSE Mageia Arch Manjaro ROSA Astra"
+knowndists="Debian Ubuntu Rocky CentOS RedHat Fedora openSUSE AltLinux MacOSX Gentoo Mint SUSE Mageia Arch Manjaro ROSA Astra"
 
 # MacOSX
 if [ `uname` == "Darwin" ]; then
@@ -108,6 +108,10 @@ case ${DISTRIBUTIVE} in
 	Mint)
 		debianArch
 		export VERSION_NAME="mint${DISTRIBUTIVE_VERSION}_${ARCHITECTURE}"
+		;;
+	Astra)
+		debianArch
+		export VERSION_NAME="astra${DISTRIBUTIVE_VERSION}_${ARCHITECTURE}"
 		;;
 	openSUSE)
 		redhatArch

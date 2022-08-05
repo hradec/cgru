@@ -20,11 +20,11 @@ popd > /dev/null
 options=""
 sql="REQUIRED"
 gui="YES"
-fermer="YES"
+fermer="NO"
 for arg in "$@"; do
 	[ $arg == "--nosql" ] && sql="NO" && shift
 	[ $arg == "--nogui" ] && gui="NO" && shift
-	[ $arg == "--nofermer" ] && fermer="NO" && shift
+	[ $arg == "--fermer" ] && fermer="YES" && shift
 	[ $arg == "--debug" ] && debug="-g" && shift
 done
 
@@ -49,9 +49,9 @@ case ${DISTRIBUTIVE} in
     SUSE)
         export AF_ADD_LFLAGS="$AF_ADD_LFLAGS -lpthread -ldl"
         ;;
-    Debian)
+    Debian|Astra)
         export ADD_CMAKE_MODULE_PATH="$PWD"
-        export AF_ADD_LFLAGS="$AF_ADD_LFLAGS -lpthread -lrt"
+        export AF_EXTRA_LIBS="pthread"
         ;;
     Gentoo)
 	export AF_EXTRA_LIBS="pthread"
@@ -80,10 +80,10 @@ case ${DISTRIBUTIVE} in
 			export AF_ADD_CFLAGS="$AF_ADD_CFLAGS -std=c++11"
 		fi
         ;;
-    RedHat)
+    RedHat|Rocky)
         export AF_ADD_LFLAGS="$AF_ADD_LFLAGS -lpthread -ldl"
         ;;
-    Mageia)
+    Mageia|ROSA)
         export AF_EXTRA_LIBS="pthread"
         ;;
     Arch|Manjaro)

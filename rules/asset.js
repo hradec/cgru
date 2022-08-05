@@ -283,34 +283,16 @@ function a_ShowHeaders()
 function a_Copy(i_args)
 {
 	// console.log(JSON.stringify(i_args));
-	var wnd = new cgru_Window({"name": 'copy', "title": 'Copy Asset'});
+	let title = i_args.title;
+	if (title == null)
+		title = 'Create Asset';
+	let wnd = new cgru_Window({"name": 'copy_asset', "title": title});
 	wnd.m_args = i_args;
 
-	var params = {};
+	let params = {};
 	params.template = c_PathPM_Server2Client(i_args.template);
 
 	params.name = i_args.name;
-	if (params.name == null)
-	{
-		// Try to increment latest number in name by 10:
-		// Find all numbers
-		let numbers = ASSET.name.match(/\d+/g);
-		if ((numbers != null) && numbers.length)
-		{
-			let number = numbers[numbers.length-1];
-			let numplus = '' + (parseInt(number) + 10);
-			// Apply padding
-			while (numplus.length < number.length)
-				numplus = '0' + numplus;
-			// Lenght may be bigger on 'SHOT_990'
-			if (numplus.length == number.length)
-				params.name = ASSET.name.replace(number, numplus);
-				// Check if such folder already exists:
-				if (g_elCurFolder.m_elNext)
-					if (c_PathBase(g_elCurFolder.m_elNext.m_path) == params.name)
-						params.name = null;
-		}
-	}
 	if (params.name == null)
 		params.name = ASSET.name + '-01';
 
@@ -320,19 +302,19 @@ function a_Copy(i_args)
 
 	gui_Create(wnd.elContent, a_copy_params, [params]);
 
-	var elBtns = document.createElement('div');
+	let elBtns = document.createElement('div');
 	wnd.elContent.appendChild(elBtns);
 	elBtns.style.clear = 'both';
 	elBtns.classList.add('buttons');
 
-	var elCreate = document.createElement('div');
+	let elCreate = document.createElement('div');
 	elBtns.appendChild(elCreate);
 	elCreate.textContent = 'Create';
 	elCreate.classList.add('button');
 	elCreate.m_wnd = wnd;
-	elCreate.onclick = function(e) { a_CopySend(e.currentTarget.m_wnd); };
+	elCreate.onclick = function(e) {a_CopySend(e.currentTarget.m_wnd); };
 
-	var elResults = document.createElement('div');
+	let elResults = document.createElement('div');
 	wnd.elContent.appendChild(elResults);
 	wnd.m_elResults = elResults;
 	elResults.classList.add('output');
@@ -340,15 +322,15 @@ function a_Copy(i_args)
 
 function a_CopySend(i_wnd)
 {
-	var params = gui_GetParams(i_wnd.elContent, a_copy_params);
+	let params = gui_GetParams(i_wnd.elContent, a_copy_params);
 	// console.log(JSON.stringify(params));
 
-	var elWait = document.createElement('div');
+	let elWait = document.createElement('div');
 	i_wnd.elContent.appendChild(elWait);
 	i_wnd.m_elWait = elWait;
 	elWait.classList.add('wait');
 
-	var cmd = 'rules/bin/copy_template.py';
+	let cmd = 'rules/bin/copy_template.py';
 	cmd += ' -t "' + c_PathPM_Client2Server(params.template) + '"';
 	cmd += ' -d "' + c_PathPM_Rules2Server(params.destination) + '"';
 	cmd += ' ' + params.name;
@@ -365,23 +347,29 @@ function a_CopyReceived(i_data, i_args)
 {
 	// console.log(JSON.stringify(i_data));
 	i_args.wnd.elContent.removeChild(i_args.wnd.m_elWait);
-	var elResults = i_args.wnd.m_elResults;
+	let elResults = i_args.wnd.m_elResults;
 	elResults.textContent = '';
 
-	if ((i_data.cmdexec == null) || (!i_data.cmdexec.length) || (i_data.cmdexec[0].copy == null))
+	if ((i_data.cmdexec == null) || (!i_data.cmdexec.length))
 	{
 		elResults.textContent = (JSON.stringify(i_data));
 		return;
 	}
 
-	var copy = i_data.cmdexec[0].copy;
+	if (i_data.cmdexec[0].error)
+	{
+		elResults.innerHTML = '<b>ERROR:</b><br>' + i_data.cmdexec[0].error.replace(/\n/g,'<br>');
+		return;
+	}
+
+	let copy = i_data.cmdexec[0].copy;
 	if (copy.error)
 	{
 		elResults.textContent = 'Error: ' + copy.error;
 		return;
 	}
 
-	var copies = copy.copies;
+	let copies = copy.copies;
 	if (copies == null)
 	{
 		elResults.textContent = 'Error: Copies are null.';
@@ -391,6 +379,20 @@ function a_CopyReceived(i_data, i_args)
 	{
 		elResults.textContent = 'Error: Copies are empty.';
 		return;
+	}
+
+	for (let item of copies)
+	{
+		if (item.error)
+		{
+			elResults.innerHTML = '<b>ERROR:</b><br>' + item.error.replace(/\n/g,'<br>');
+			return;
+		}
+		if (item.exist)
+		{
+			elResults.innerHTML = 'Asset already exists: ' + item.dest;
+			return;
+		}
 	}
 
 	i_args.wnd.destroy();

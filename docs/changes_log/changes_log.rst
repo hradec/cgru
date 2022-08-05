@@ -11,7 +11,111 @@ If Afanasy **network protocol changed**, it became incompatible with old one.
 - The third number versions are fully compatible.
   You can upgrade only one client or server for changes.
 
+
 .. _changes-log-latest:
+
+v3.3.0
+======
+
+2022.07.25
+
+- AfRender can send to server `GPU resources <../afanasy/render.html#gpu-string>`_:
+  utilization, temperature, memory total and used.
+
+  .. note::
+
+    This feature is sponsored by SMF Animation Studio, LLC
+
+  For now, just NVIDIA is supported.
+
+- New job block need parameters:
+  `GPU Memory <../afanasy/job_block.html#need-gpu-mem-mb>`_,
+  `CPU Frequency <../afanasy/job_block.html#need-cpu-freq-mgz>`_,
+  `CPU Cores <../afanasy/job_block.html#need-cpu-cores>`_ and
+  `CPU Cores*Frequency <../afanasy/job_block.html#need-cpu-freq-cores>`_.
+
+- AfWatch and WebGUI shows some summary info, when several jobs are selected.
+
+- AfWatch got and "Administration" menu to switch to super user mode with password.
+
+- AfWatch warning and error messages and super user mode label highlighted to attract more attention.
+  When selection is not allowed, nodes list displays a warning message.
+
+- Now parser checks whether the task progress was changed.
+  Later server had to compare previous and new percentage value.
+  And this behaviour was build-in.
+  Now you can override it by parser.
+  A new `progress_changed <../afanasy/render.html#self-progress-changed-false-true>`_ variable for it was added.
+  And by default, progress is changed if task produced any output.
+
+- New task state flag `Wait Dependencies <../afanasy/job_task.html#state>`_ appeared.
+  Now tasks that wait some other tasks will be marked with this flag.
+  Tasks with this flag are skipped during job solving.
+  So now task dependencies will not wait the last frame of unbroken sequence.
+
+- **Bugfixes:**
+
+    - AfServer and job block with no task crash fixed.
+      The crash was very rare, another block with tasks should follow a block without tasks.
+
+
+v3.2.2
+======
+
+2022.02.09
+
+- AfServer ``JOB_CREATED`` event added.
+
+- Afanasy config: Parameter of a string array type can be overridden by command arguments or environment by a string contains a comma separated items.
+
+- AfWatch
+
+	- Task window uses mono-space font for task output and log.
+
+	- Scroll step size preferences option. Later scroll size was only by item height.
+
+- Houdini Afanasy ROP:
+
+	- Pre and post submission scripts execution.
+
+	- Separate Mantra rendering: Generate IFD block parameters.
+
+- Houdini Afanasy TOP:
+
+	- "Keep Job On Cancel Cook" option added. You can check tasks outputs, compare different jobs after cooking stop.
+
+	- **Changed to work with Houdini 19 version, will not work with 18.5.**
+
+- Nuke: Submission and render scripts support rendering a movie.
+
+- Afanasy new services and parsers added: *shotgun, ftrack*.
+
+- **Bugfixes:**
+
+	- AfServer:
+
+		- Change running job owner or branch fixed.
+
+		- On start set WARNING tasks to READY.
+
+		- Fixed task progress sending to GUIs mixing task and block numbers.
+
+	- AfWatch: Skipped tasks does not affect job block average running timings.
+
+	- Keeper: Refresh when local render deleted now does not produce an error in server log.
+
+	- Houdini:
+
+		- USD ROP now can works like Alembic ROP. One render session for all frame range.
+
+		- MS Windows launch scripts fixed to work with 19 version.
+
+		- Afanasy ROP:
+
+			- Custom command mode block naming fix.
+
+			- Separate Mantra rendering Auto Tickets fixed.
+
 
 v3.2.1
 ======

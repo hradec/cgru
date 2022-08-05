@@ -54,6 +54,10 @@ Example: "UNI5_v001"'});
 		"re":new RegExp('^' + ASSET.name + '_v\\d{3,3}_.*\\.(mp4|mov)$'),
 		"bg":'rgba(   0, 255, 0, .2)',
 		"tip":'Correct results movie name.'});
+	shot_results_masks.push({
+		"re":new RegExp('^' + ASSET.name + '_(\\w+)_v\\d{3,3}_.*\\.(mp4|mov)$'),
+		"bg":'rgba(   0, 255, 0, .2)',
+		"tip":'Correct results movie name with activity.'});
 
 
 	// Get page:
@@ -69,16 +73,16 @@ function shot_InitHTML( i_data)
 		var el = document.createElement('div');
 		$('asset_top_left').appendChild(el);
 		el.classList.add('button');
-		el.textContent = 'NEW';
+		el.textContent = 'NEW SHOT';
 		el.title = 'Create new shot.';
-		el.onclick = shot_Copy;
+		el.onclick = shot_Create;
 	}
 	if( g_admin )
 	{
 		var el = document.createElement('div');
 		$('asset_top_left').appendChild(el);
 		el.classList.add('button');
-		el.textContent = 'RENAME';
+		el.textContent = 'RENAME SHOT';
 		el.title = 'Rename new shot.';
 		el.onclick = shot_Rename;
 	}
@@ -509,12 +513,29 @@ function shot_SourceWalkFind( i_walk, o_walk, i_path, i_parent_walk)
 	}
 }
 
-function shot_Copy()
+function shot_Create()
 {
-	var args = {};
+	let args = {};
+	args.title = 'Create New Shot';
 	args.template = RULES.assets.shot.template;
-	args.destination = c_PathDir( g_CurPath());
-	a_Copy( args);
+	args.destination = c_PathDir(g_CurPath());
+
+	// Try to increment latest number in name by 10:
+	// Find all numbers
+	let numbers = ASSET.name.match(/\d+/g);
+	if ((numbers != null) && numbers.length)
+	{
+		let number = numbers[numbers.length-1];
+		let numplus = '' + (parseInt(number) + 10);
+		// Apply padding
+		while (numplus.length < number.length)
+			numplus = '0' + numplus;
+		// Lenght may be bigger on 'SHOT_990'
+		if (numplus.length == number.length)
+			args.name = ASSET.name.replace(number, numplus);
+	}
+
+	a_Copy(args);
 }
 
 shot_rename_params = {};

@@ -30,17 +30,18 @@ BlockInfo::BlockInfo(const af::BlockData * i_data, Item * i_item, ListItems * i_
 	m_listitems(i_listitems),
 
 	p_percentage(0),
-	p_tasksready(0),
-	p_tasksrunning(0),
-	p_capacitytotal(0),
-	p_tasksdone(0),
-	p_taskserror(0),
-	p_tasksskipped(0),
-	p_taskswarning(0),
-	p_taskswaitrec(0),
-	p_errorhosts(0),
-	p_avoidhosts(0),
-	p_taskssumruntime(0),
+	p_tasks_ready(0),
+	p_tasks_running(0),
+	p_capacity_total(0),
+	p_tasks_done(0),
+	p_tasks_error(0),
+	p_tasks_skipped(0),
+	p_tasks_waitdep(0),
+	p_tasks_warning(0),
+	p_tasks_waitrec(0),
+	p_error_hosts(0),
+	p_avoid_hosts(0),
+	p_tasks_sumruntime(0),
 
 	errors_retries(-1),
 	errors_avoid_host(-1),
@@ -70,7 +71,11 @@ BlockInfo::BlockInfo(const af::BlockData * i_data, Item * i_item, ListItems * i_
 	addParam_separator();
 	addParam_REx("hosts_mask",                   "Hosts Mask",            "Host names pattern that block can run on");
 	addParam_REx("hosts_mask_exclude",           "Hosts Mask Exclude",    "Host names pattern that block will not run");
-	addParam_MiB("need_memory",                  "Need Memory",           "Host free memory needed to run tasks (MB)");
+	addParam_MiB("need_memory",                  "Need Memory",           "Host free memory needed to run tasks (GB)");
+	addParam_MiB("need_gpu_mem_mb",              "Need GPU Memory",       "Host free GPU memory needed to run tasks (GB)");
+	addParam_Meg("need_cpu_freq_mgz",            "Need CPU Frequency",    "Host CPU freqency to run tasks (GHz)");
+	addParam_Num("need_cpu_cores",               "Need CPU Cores",        "Host CPU cores number to run tasks");
+	addParam_Meg("need_cpu_freq_cores",          "Need CPU Cores*Freq",   "Host CPU cores*freqency to run tasks (GHz)");
 	addParam_GiB("need_hdd",                     "Need HDD Space",        "Host free HDD space needed to run tasks (GB)");
 	addParam_REx("need_properties",              "Need Properties",       "Host \"Properties\" needed to run tasks");
 	addParam_Num("need_power",                   "Need Power",            "Host \"Power\" needed to run tasks");
@@ -137,6 +142,16 @@ bool BlockInfo::update( const af::BlockData* block, int type)
 		m_var_map["hosts_mask_exclude"]           = afqt::stoq(block->getHostsMaskExclude());
 		           need_memory                    = block->getNeedMemory();
 		m_var_map["need_memory"]                  = block->getNeedMemory();
+
+		           need_gpu_mem_mb                = block->getNeedGPUMemMb();
+		m_var_map["need_gpu_mem_mb"]              = block->getNeedGPUMemMb();
+		           need_cpu_freq_mgz              = block->getNeedCPUFreqMHz();
+		m_var_map["need_cpu_freq_mgz"]            = block->getNeedCPUFreqMHz();
+		           need_cpu_cores                 = block->getNeedCPUCores();
+		m_var_map["need_cpu_cores"]               = block->getNeedCPUCores();
+		           need_cpu_freq_cores            = block->getNeedCPUFreqCores();
+		m_var_map["need_cpu_freq_cores"]          = block->getNeedCPUFreqCores();
+
 		           need_hdd                       = block->getNeedHDD();
 		m_var_map["need_hdd"]                     = block->getNeedHDD();
 		           need_properties                = afqt::stoq(block->getNeedProperties());
@@ -194,18 +209,19 @@ bool BlockInfo::update( const af::BlockData* block, int type)
 
 		state = block->getState();
 
-		p_percentage      = block->getProgressPercentage();
-		p_tasksready      = block->getProgressTasksReady();
-		p_tasksrunning    = block->getRunningTasksNumber();
-		p_capacitytotal   = block->getRunningCapacityTotal();
-		p_tasksdone       = block->getProgressTasksDone();
-		p_taskserror      = block->getProgressTasksError();
-		p_tasksskipped    = block->getProgressTasksSkipped();
-		p_taskswarning    = block->getProgressTasksWarning();
-		p_taskswaitrec    = block->getProgressTasksWaitReconn();
-		p_avoidhosts      = block->getProgressAvoidHostsNum();
-		p_errorhosts      = block->getProgressErrorHostsNum();
-		p_taskssumruntime = block->getProgressTasksSumRunTime();
+		p_percentage       = block->getProgressPercentage();
+		p_tasks_ready      = block->getProgressTasksReady();
+		p_tasks_running    = block->getRunningTasksNumber();
+		p_capacity_total   = block->getRunningCapacityTotal();
+		p_tasks_done       = block->getProgressTasksDone();
+		p_tasks_error      = block->getProgressTasksError();
+		p_tasks_skipped    = block->getProgressTasksSkipped();
+		p_tasks_waitdep    = block->getProgressTasksWaitDep();
+		p_tasks_warning    = block->getProgressTasksWarning();
+		p_tasks_waitrec    = block->getProgressTasksWaitReconn();
+		p_avoid_hosts      = block->getProgressAvoidHostsNum();
+		p_error_hosts      = block->getProgressErrorHostsNum();
+		p_tasks_sumruntime = block->getProgressTasksSumRunTime();
 
 		server_info = afqt::stoq(block->getSrvInfo());
 
@@ -232,7 +248,7 @@ if( type == af::Msg::TBlocksProgress)
 }
 #endif
 
-	if( p_tasksrunning || p_taskserror || ((p_tasksdone != 0) && (p_tasksdone != tasksnum))) return true;
+	if (p_tasks_running || p_tasks_error || ((p_tasks_done != 0) && (p_tasks_done != tasksnum))) return true;
 
 	return false;
 }
@@ -326,9 +342,9 @@ void BlockInfo::refresh()
 	str_right_top.clear();
 	if( Watch::isPadawan())
 	{
-		if( p_tasksdone) str_right_top += QString(" Render Timings: Sum:%1 / Average:%2")
-			.arg( af::time2strHMS( p_taskssumruntime, true).c_str())
-			.arg( af::time2strHMS( p_taskssumruntime/p_tasksdone, true).c_str());
+		if ((p_tasks_done - p_tasks_skipped) > 0) str_right_top += QString(" Render Timings: Sum:%1 / Average:%2")
+			.arg(af::time2strHMS(p_tasks_sumruntime, true).c_str())
+			.arg(af::time2strHMS(p_tasks_sumruntime/(p_tasks_done - p_tasks_skipped), true).c_str());
 
 		if(( errors_avoid_host >= 0 ) || ( errors_task_same_host >= 0 ) || ( errors_retries >= 0 ))
 			str_right_top += Item::generateErrorsSolvingInfo( errors_avoid_host, errors_task_same_host, errors_retries);
@@ -343,6 +359,10 @@ void BlockInfo::refresh()
 		if( false == hosts_mask_exclude.isEmpty()  ) str_right_top += QString(" ExcludeHosts(%1)").arg( hosts_mask_exclude );
 		if( false == need_properties.isEmpty()    ) str_right_top += QString(" Properties(%1)").arg( need_properties   );
 		if (need_memory > 0) str_right_top += QString(" Mem>%1").arg(afqt::stoq(af::toKMG(int64_t(need_memory)*(1<<20), 1<<10)));
+		if (need_gpu_mem_mb > 0) str_right_top += QString(" GPUMem>%1").arg(afqt::stoq(af::toKMG(int64_t(need_gpu_mem_mb)*1000000, 1000)));
+		if (need_cpu_freq_mgz > 0) str_right_top += QString(" CPUGHz>%1").arg(afqt::stoq(af::toKMG(int64_t(need_cpu_freq_mgz)*1000000, 1000)));
+		if (need_cpu_cores > 0) str_right_top += QString(" CPUCores>%1").arg(need_cpu_cores);
+		if (need_cpu_freq_cores > 0) str_right_top += QString(" CPUCoresGHz>%1").arg(afqt::stoq(af::toKMG(int64_t(need_cpu_freq_cores)*1000000, 1000)));
 		if (need_hdd    > 0) str_right_top += QString(" HDD>%1").arg(afqt::stoq(af::toKMG(int64_t(need_hdd   )*(1<<30), 1<<10)));
 		if( need_power  > 0 ) str_right_top += QString(" Power>%1").arg( need_power);
 		if( multihost )
@@ -380,9 +400,9 @@ void BlockInfo::refresh()
 	}
 	else if( Watch::isJedi())
 	{
-		if( p_tasksdone) str_right_top += QString(" Timings: Sum:%1/Avg:%2")
-			.arg( af::time2strHMS( p_taskssumruntime, true).c_str())
-			.arg( af::time2strHMS( p_taskssumruntime/p_tasksdone, true).c_str());
+		if ((p_tasks_done - p_tasks_skipped) > 0) str_right_top += QString(" Timings: Sum:%1/Avg:%2")
+			.arg(af::time2strHMS(p_tasks_sumruntime, true).c_str())
+			.arg(af::time2strHMS(p_tasks_sumruntime/(p_tasks_done - p_tasks_skipped), true).c_str());
 
 		if(( errors_avoid_host >= 0 ) || ( errors_task_same_host >= 0 ) || ( errors_retries >= 0 ))
 			str_right_top += Item::generateErrorsSolvingInfo( errors_avoid_host, errors_task_same_host, errors_retries);
@@ -397,6 +417,10 @@ void BlockInfo::refresh()
 		if( false == hosts_mask_exclude.isEmpty()  ) str_right_top += QString(" Exclude(%1)").arg( hosts_mask_exclude );
 		if( false == need_properties.isEmpty()    ) str_right_top += QString(" Props(%1)").arg( need_properties   );
 		if (need_memory > 0) str_right_top += QString(" Mem>%1").arg(afqt::stoq(af::toKMG(int64_t(need_memory)*(1<<20), 1<<10)));
+		if (need_gpu_mem_mb > 0) str_right_top += QString(" GMem>%1").arg(afqt::stoq(af::toKMG(int64_t(need_gpu_mem_mb)*1000000, 1000)));
+		if (need_cpu_freq_mgz > 0) str_right_top += QString(" GHz>%1").arg(afqt::stoq(af::toKMG(int64_t(need_cpu_freq_mgz)*1000000, 1000)));
+		if (need_cpu_cores > 0) str_right_top += QString(" Cores>%1").arg(need_cpu_cores);
+		if (need_cpu_freq_cores > 0) str_right_top += QString(" CoresGHz>%1").arg(afqt::stoq(af::toKMG(int64_t(need_cpu_freq_cores)*1000000, 1000)));
 		if (need_hdd    > 0) str_right_top += QString(" HDD>%1").arg(afqt::stoq(af::toKMG(int64_t(need_hdd   )*(1<<30), 1<<10)));
 		if( need_power  > 0 ) str_right_top += QString(" Pow>%1").arg( need_power);
 		if( multihost )
@@ -434,9 +458,9 @@ void BlockInfo::refresh()
 	}
 	else
 	{
-		if( p_tasksdone) str_right_top += QString(" rt:s%1/a%2")
-			.arg( af::time2strHMS( p_taskssumruntime, true).c_str())
-			.arg( af::time2strHMS( p_taskssumruntime/p_tasksdone, true).c_str());
+		if ((p_tasks_done - p_tasks_skipped) > 0) str_right_top += QString(" rt:s%1/a%2")
+			.arg(af::time2strHMS(p_tasks_sumruntime, true).c_str())
+			.arg(af::time2strHMS(p_tasks_sumruntime/(p_tasks_done - p_tasks_skipped), true).c_str());
 
 		if(( errors_avoid_host >= 0 ) || ( errors_task_same_host >= 0 ) || ( errors_retries >= 0 ))
 			str_right_top += Item::generateErrorsSolvingInfo( errors_avoid_host, errors_task_same_host, errors_retries);
@@ -451,6 +475,10 @@ void BlockInfo::refresh()
 		if( false == hosts_mask_exclude.isEmpty()  ) str_right_top += QString(" e(%1)").arg( hosts_mask_exclude );
 		if( false == need_properties.isEmpty()    ) str_right_top += QString(" p(%1)").arg( need_properties   );
 		if (need_memory > 0) str_right_top += QString(" m>%1").arg(afqt::stoq(af::toKMG(int64_t(need_memory)*(1<<20), 1<<10)));
+		if (need_gpu_mem_mb > 0) str_right_top += QString(" gm>%1").arg(afqt::stoq(af::toKMG(int64_t(need_gpu_mem_mb)*1000000, 1000)));
+		if (need_cpu_freq_mgz > 0) str_right_top += QString(" ghz>%1").arg(afqt::stoq(af::toKMG(int64_t(need_cpu_freq_mgz)*1000000, 1000)));
+		if (need_cpu_cores > 0) str_right_top += QString(" cr>%1").arg(need_cpu_cores);
+		if (need_cpu_freq_cores > 0) str_right_top += QString(" cr*ghz>%1").arg(afqt::stoq(af::toKMG(int64_t(need_cpu_freq_cores)*1000000, 1000)));
 		if (need_hdd    > 0) str_right_top += QString(" h>%1").arg(afqt::stoq(af::toKMG(int64_t(need_hdd   )*(1<<30), 1<<10)));
 		if( need_power  > 0 ) str_right_top += QString(" p>%1").arg( need_power);
 		if( multihost )
@@ -492,56 +520,59 @@ void BlockInfo::refresh()
 	str_left_bottom = QString::number( p_percentage) + "%";
 	if( Watch::isPadawan())
 	{
-		if (p_tasksrunning ) str_left_bottom += QString(" Running:%1"         ).arg(p_tasksrunning);
-		if (p_capacitytotal) str_left_bottom += QString(" Capacity:%1"        ).arg(af::toKMG(p_capacitytotal).c_str());
-		if (p_tasksdone    ) str_left_bottom += QString(" Done:%1"            ).arg(p_tasksdone);
-		if (p_taskserror   ) str_left_bottom += QString(" Errors:%1"          ).arg(p_taskserror);
-		if (p_tasksskipped ) str_left_bottom += QString(" Skipped:%1"         ).arg(p_tasksskipped);
-		if (p_taskswarning ) str_left_bottom += QString(" Warnings:%1"        ).arg(p_taskswarning);
-		if (p_taskswaitrec ) str_left_bottom += QString(" WaitingReconnect:%1").arg(p_taskswaitrec);
+		if (p_tasks_running ) str_left_bottom += QString(" Running:%1"         ).arg(p_tasks_running);
+		if (p_capacity_total) str_left_bottom += QString(" Capacity:%1"        ).arg(af::toKMG(p_capacity_total).c_str());
+		if (p_tasks_done    ) str_left_bottom += QString(" Done:%1"            ).arg(p_tasks_done);
+		if (p_tasks_error   ) str_left_bottom += QString(" Errors:%1"          ).arg(p_tasks_error);
+		if (p_tasks_skipped ) str_left_bottom += QString(" Skipped:%1"         ).arg(p_tasks_skipped);
+		if (p_tasks_waitdep ) str_left_bottom += QString(" WaitDepends:%1"     ).arg(p_tasks_waitdep);
+		if (p_tasks_warning ) str_left_bottom += QString(" Warnings:%1"        ).arg(p_tasks_warning);
+		if (p_tasks_waitrec ) str_left_bottom += QString(" WaitingReconnect:%1").arg(p_tasks_waitrec);
 	}
 	else if( Watch::isJedi())
 	{
-		if (p_tasksrunning ) str_left_bottom += QString(" Run:%1" ).arg(p_tasksrunning);
-		if (p_capacitytotal) str_left_bottom += QString(" Cap:%1" ).arg(af::toKMG(p_capacitytotal).c_str());
-		if (p_tasksdone    ) str_left_bottom += QString(" Done:%1").arg(p_tasksdone);
-		if (p_taskserror   ) str_left_bottom += QString(" Err:%1" ).arg(p_taskserror);
-		if (p_tasksskipped ) str_left_bottom += QString(" Skp:%1" ).arg(p_tasksskipped);
-		if (p_taskswarning ) str_left_bottom += QString(" Wrn:%1" ).arg(p_taskswarning);
-		if (p_taskswaitrec ) str_left_bottom += QString(" WRC:%1" ).arg(p_taskswaitrec);
+		if (p_tasks_running ) str_left_bottom += QString(" Run:%1" ).arg(p_tasks_running);
+		if (p_capacity_total) str_left_bottom += QString(" Cap:%1" ).arg(af::toKMG(p_capacity_total).c_str());
+		if (p_tasks_done    ) str_left_bottom += QString(" Done:%1").arg(p_tasks_done);
+		if (p_tasks_error   ) str_left_bottom += QString(" Err:%1" ).arg(p_tasks_error);
+		if (p_tasks_skipped ) str_left_bottom += QString(" Skp:%1" ).arg(p_tasks_skipped);
+		if (p_tasks_waitdep ) str_left_bottom += QString(" WDP:%1" ).arg(p_tasks_waitdep);
+		if (p_tasks_warning ) str_left_bottom += QString(" Wrn:%1" ).arg(p_tasks_warning);
+		if (p_tasks_waitrec ) str_left_bottom += QString(" WRC:%1" ).arg(p_tasks_waitrec);
 	}
 	else
 	{
-		if (p_tasksrunning ) str_left_bottom += QString(" r%1"  ).arg(p_tasksrunning);
-		if (p_capacitytotal) str_left_bottom += QString(" c%1"  ).arg(af::toKMG(p_capacitytotal).c_str());
-		if (p_tasksdone    ) str_left_bottom += QString(" d%1"  ).arg(p_tasksdone);
-		if (p_taskserror   ) str_left_bottom += QString(" e%1"  ).arg(p_taskserror);
-		if (p_tasksskipped ) str_left_bottom += QString(" s%1"  ).arg(p_tasksskipped);
-		if (p_taskswarning ) str_left_bottom += QString(" w%1"  ).arg(p_taskswarning);
-		if (p_taskswaitrec ) str_left_bottom += QString(" wrc%1").arg(p_taskswaitrec);
+		if (p_tasks_running ) str_left_bottom += QString(" r%1"  ).arg(p_tasks_running);
+		if (p_capacity_total) str_left_bottom += QString(" c%1"  ).arg(af::toKMG(p_capacity_total).c_str());
+		if (p_tasks_done    ) str_left_bottom += QString(" d%1"  ).arg(p_tasks_done);
+		if (p_tasks_error   ) str_left_bottom += QString(" e%1"  ).arg(p_tasks_error);
+		if (p_tasks_skipped ) str_left_bottom += QString(" s%1"  ).arg(p_tasks_skipped);
+		if (p_tasks_waitdep ) str_left_bottom += QString(" wdp%1").arg(p_tasks_waitdep);
+		if (p_tasks_warning ) str_left_bottom += QString(" w%1"  ).arg(p_tasks_warning);
+		if (p_tasks_waitrec ) str_left_bottom += QString(" wrc%1").arg(p_tasks_waitrec);
 	}
 
 	if (server_info.size()) str_left_bottom += QString(" %1").arg(server_info);
 
-	if (m_jobid == AFJOB::SYSJOB_ID ) str_left_bottom += QString(" Ready:%1").arg( p_tasksready);
+	if (m_jobid == AFJOB::SYSJOB_ID ) str_left_bottom += QString(" Ready:%1").arg( p_tasks_ready);
 
 
 	// Right bottom: server info, errors&avoids
 	str_right_bottom.clear();
 	if(Watch::isPadawan())
 	{
-		if(p_errorhosts) str_right_bottom += QString(" Error Hosts:%1").arg(p_errorhosts);
-		if(p_avoidhosts) str_right_bottom += QString("/%1:Avoiding").arg(p_avoidhosts);
+		if(p_error_hosts) str_right_bottom += QString(" Error Hosts:%1").arg(p_error_hosts);
+		if(p_avoid_hosts) str_right_bottom += QString("/%1:Avoiding").arg(p_avoid_hosts);
 	}
 	else if(Watch::isJedi())
 	{
-		if(p_errorhosts) str_right_bottom += QString(" ErrHosts:%1").arg(p_errorhosts);
-		if(p_avoidhosts) str_right_bottom += QString("/%1:Avoid").arg(p_avoidhosts);
+		if(p_error_hosts) str_right_bottom += QString(" ErrHosts:%1").arg(p_error_hosts);
+		if(p_avoid_hosts) str_right_bottom += QString("/%1:Avoid").arg(p_avoid_hosts);
 	}
 	else
 	{
-		if(p_errorhosts) str_right_bottom += QString(" eh:%1").arg(p_errorhosts);
-		if(p_avoidhosts) str_right_bottom += QString("/%1:a").arg(p_avoidhosts);
+		if(p_error_hosts) str_right_bottom += QString(" eh:%1").arg(p_error_hosts);
+		if(p_avoid_hosts) str_right_bottom += QString("/%1:a").arg(p_avoid_hosts);
 	}
 }
 
@@ -605,7 +636,7 @@ void BlockInfo::paint( QPainter * i_painter, const QStyleOptionViewItem &option,
 
 	// Setup font size and color:
 	i_painter->setFont(afqt::QEnvironment::f_info);
-	QPen pen(Item::clrTextInfo(p_tasksrunning, option.state & QStyle::State_Selected, m_item->isLocked()));
+	QPen pen(Item::clrTextInfo(p_tasks_running, option.state & QStyle::State_Selected, m_item->isLocked()));
 
 	// Draw tickets:
 	int tk_w = 0;
@@ -641,9 +672,9 @@ void BlockInfo::paint( QPainter * i_painter, const QStyleOptionViewItem &option,
 	int right_bottom_text_width = 0;
 	if (str_right_bottom.size())
 	{
-		if (p_avoidhosts)
+		if (p_avoid_hosts)
 			i_painter->setPen(afqt::QEnvironment::clr_error.c);
-		else if (p_errorhosts)
+		else if (p_error_hosts)
 			i_painter->setPen(afqt::QEnvironment::clr_errorready.c);
 
 		QRect rect;
@@ -662,8 +693,8 @@ void BlockInfo::paint( QPainter * i_painter, const QStyleOptionViewItem &option,
 	Item::drawPercent
 	(
 		i_painter, x+xoffset, y+y_bars, w-xoffset-2, 4,
-		m_jobid == AFJOB::SYSJOB_ID ? p_tasksrunning + p_tasksready + p_taskserror : tasksnum,
-		m_jobid == AFJOB::SYSJOB_ID ? 0 : p_tasksdone, p_taskserror, p_tasksrunning,
+		m_jobid == AFJOB::SYSJOB_ID ? p_tasks_running + p_tasks_ready + p_tasks_error : tasksnum,
+		m_jobid == AFJOB::SYSJOB_ID ? 0 : p_tasks_done, p_tasks_error, p_tasks_running,
 		false
 	);
 	Item::drawPercent
@@ -889,4 +920,7 @@ void BlockInfo::addParam_MiB(const QString & i_name, const QString & i_label, co
 
 void BlockInfo::addParam_GiB(const QString & i_name, const QString & i_label, const QString & i_tip, int i_min, int i_max) {
 	m_params.append(new Param(Param::TGiB, Item::TAny, i_name, i_label, i_tip, i_min, i_max));}
+
+void BlockInfo::addParam_Meg(const QString & i_name, const QString & i_label, const QString & i_tip, int i_min, int i_max) {
+	m_params.append(new Param(Param::TMeg, Item::TAny, i_name, i_label, i_tip, i_min, i_max));}
 

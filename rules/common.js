@@ -184,9 +184,17 @@ function c_RulesMergeDir(o_rules, i_dir)
 		return;
 	if (i_dir.rules == null)
 		return;
-	for (var attr in i_dir.rules)
+
+	// We should sort rufiles alphabetically.
+	// So "rules.10.local" will override "rules.00.general".
+	let keys = [];
+	for (let key in i_dir.rules)
+		keys.push(key);
+	keys.sort();
+
+	for (let k = 0; k < keys.length; k++)
 	{
-		var obj = i_dir.rules[attr];
+		let obj = i_dir.rules[keys[k]];
 		if (obj == null)
 			c_Error('RULES file "' + attr + '" in "' + g_CurPath() + '/' + RULES.rufolder + '" is invalid.');
 		else
@@ -214,7 +222,9 @@ function c_RulesMergeObjs(o_rules, i_rules_new)
 					c_RulesMergeObjs(o_rules, i_rules_new[attr]);
 			continue;
 		}
-		if ((typeof(i_rules_new[attr]) == 'object') && (o_rules[attr] != null))
+		if ((typeof(i_rules_new[attr]) == 'object') &&
+				(false == Array.isArray(i_rules_new[attr])) &&
+				(o_rules[attr] != null))
 		{
 			c_RulesMergeObjs(o_rules[attr], i_rules_new[attr]);
 			continue;
@@ -534,6 +544,13 @@ function c_CanCreateShot(i_user)
 		return false;
 
 	if ((['admin', 'coord', 'user']).indexOf(i_user.role) != -1)
+		return true;
+	return false;
+}
+
+function c_CanCreateProject(i_user)
+{
+	if (g_admin)
 		return true;
 	return false;
 }
@@ -968,6 +985,15 @@ function c_PathBase(i_file)
 function c_PathDir(i_file)
 {
 	return i_file.substr(0, i_file.lastIndexOf('/'));
+}
+
+function c_PathSplitExt(i_file)
+{
+	let split = [i_file,''];
+	let dot = i_file.lastIndexOf('.');
+	if (dot != -1)
+		split = [i_file.substr(0, dot), i_file.substr(dot+1)];
+	return split;
 }
 
 function c_PathPM_Rules2Server(i_path)

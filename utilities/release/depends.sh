@@ -6,7 +6,7 @@ echo "Depends for $DISTRIBUTIVE:"
 
 # Case distribution:
 case ${DISTRIBUTIVE} in
-	Ubuntu | Mint )
+	Ubuntu | Mint | Astra )
 		export DEPENDS_AFANASY="libpq5"
 		export DEPENDS_QTGUI="libqt5network5 libqt5widgets5 libqt5multimedia5"
 		export DEPENDS_CGRU="python3-pyqt5 openexr imagemagick"
@@ -33,13 +33,14 @@ case ${DISTRIBUTIVE} in
 		export DEPENDS_AFANASY="libpqxx"
 		export DEPENDS_CGRU="python3 python3-module-PyQt5 openexr ImageMagick ffmpeg"
 		;;
-	Mageia )
+	Mageia | ROSA )
 		export DEPENDS_AFANASY="lib64pq5 lib64qt5core5 lib64qt5gui5 lib64qt5multimedia5 lib64qt5network5 lib64qt5widgets5"
-		export DEPENDS_CGRU="python3-qt5 openexr imagemagick ffmpeg"
+		export DEPENDS_CGRU="python3-shiboken2 python3-pyside2 imagemagick ffmpeg"
 		;;
 	*)
-		export DEPENDS_AFANASY="libpq5"
-		export DEPENDS_CGRU="PyQt5"
+		export DEPENDS_AFANASY="python3 libpq"
+		export DEPENDS_QTGUI="qt5-qtbase-gui qt5-qtmultimedia"
+		export DEPENDS_CGRU="python3-qt5"
 		;;
 esac
 

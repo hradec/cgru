@@ -1,3 +1,15 @@
+/* ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''' *\
+ *        .NN.        _____ _____ _____  _    _                 This file is part of CGRU
+ *        hMMh       / ____/ ____|  __ \| |  | |       - The Free And Open Source CG Tools Pack.
+ *       sMMMMs     | |   | |  __| |__) | |  | |  CGRU is licensed under the terms of LGPLv3, see files
+ * <yMMMMMMMMMMMMMMy> |   | | |_ |  _  /| |  | |    COPYING and COPYING.lesser inside of this folder.
+ *   `+mMMMMMMMMNo` | |___| |__| | | \ \| |__| |          Project-Homepage: http://cgru.info
+ *     :MMMMMMMM:    \_____\_____|_|  \_\\____/        Sourcecode: https://github.com/CGRU/cgru
+ *     dMMMdmMMMd     A   F   A   N   A   S   Y
+ *    -Mmo.  -omM:                                           Copyright © by The CGRU team
+ *    '          '
+\* ....................................................................................................... */
+
 #include "parserhost.h"
 
 #include "../libafanasy/service.h"
@@ -41,6 +53,7 @@ ParserHost::ParserHost( af::Service * i_service):
 	m_percent( 0),
 	m_frame( 0),
 	m_percentframe( 0),
+	m_progress_changed(false),
 	m_error( false),
 	m_warning( false),
 	m_badresult( false),
@@ -175,6 +188,7 @@ void ParserHost::parse(const std::string & i_mode, int i_pid, std::string & io_o
 			io_output, m_resources,
 			m_percent, m_frame, m_percentframe,
 			m_activity, m_report,
+			m_progress_changed,
 			_warning, _error, _badresult, _finishedsuccess);
 
 	if ( _error           ) m_error           = true;

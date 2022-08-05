@@ -266,7 +266,7 @@ function cm_TimeStringFromSeconds(i_seconds, i_full)
 	if (i_seconds == 0)
 		return '0';
 
-	var seconds = i_seconds;
+	var seconds = Math.round(i_seconds);
 	var days = 0;
 	var hours = 0;
 	var minutes = Math.floor(seconds / 60);
@@ -385,6 +385,45 @@ function cm_ToKMG(i_value, i_args)
 	str += lables[pow];
 
 	return str;
+}
+
+function cm_ValueToString(i_value, i_type)
+{
+	if (i_value == null)
+		return '';
+
+	let o_str = '' + i_value;
+	if (i_type == 'hrs')
+	{
+		o_str = cm_TimeStringFromSeconds(i_value, true);
+	}
+	else if (i_type == 'tim')
+	{
+		o_str = cm_DateTimeStrFromSec(i_value);
+	}
+	else if (i_type == 'mib')
+	{
+		o_str = (i_value / 1024.0).toFixed(1);
+	}
+	else if (i_type == 'meg')
+	{
+		o_str = (i_value / 1000.0).toFixed(1);
+	}
+	else if ((typeof i_value) == 'string')
+	{
+		// word-wrap long regular expressions:
+		o_str = i_value.replace(/\./g, '.&shy;');
+		o_str =   o_str.replace(/\|/g, '|&shy;');
+		o_str =   o_str.replace(/\)/g, ')&shy;');
+	}
+	else if (i_type == 'msi')
+	{
+		o_str = '';
+		for (let s in i_value)
+			o_str += ' <b>' + s + '</b>:' + i_value[s];
+	}
+
+	return o_str;
 }
 
 function cm_GetState(i_state, o_state, o_element)

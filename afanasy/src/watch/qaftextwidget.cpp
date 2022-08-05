@@ -1,5 +1,6 @@
 #include "qaftextwidget.h"
 
+#include <QFontDatabase>
 #include <QKeyEvent>
 #include <QLayout>
 #include <QPushButton>
@@ -10,6 +11,7 @@
 
 QAfTextWidget::QAfTextWidget( QWidget * i_parent):
 	QWidget( i_parent),
+	m_font(QFontDatabase::systemFont(QFontDatabase::FixedFont)),
 	m_empty( true),
 	m_find_opened( false)
 {
@@ -17,6 +19,8 @@ QAfTextWidget::QAfTextWidget( QWidget * i_parent):
 
 	m_text_edit = new QTextEdit( this);
 	layout->addWidget( m_text_edit);
+	m_text_edit->setCurrentFont(m_font);
+
 
 	m_find_wnd = new QFrame( this);
 	layout->addWidget( m_find_wnd);
@@ -123,7 +127,7 @@ void QAfTextWidget::findNext() { findSearch( true); }
 void QAfTextWidget::findPrevious() { findSearch( false); }
 void QAfTextWidget::findSearch( bool i_next)
 {
-	QTextDocument::FindFlags flags = 0;
+	QTextDocument::FindFlags flags;
 	if( false == i_next )
 	{
 		flags |= QTextDocument::FindBackward;

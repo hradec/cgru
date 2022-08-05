@@ -1,3 +1,15 @@
+/* ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''' *\
+ *        .NN.        _____ _____ _____  _    _                 This file is part of CGRU
+ *        hMMh       / ____/ ____|  __ \| |  | |       - The Free And Open Source CG Tools Pack.
+ *       sMMMMs     | |   | |  __| |__) | |  | |  CGRU is licensed under the terms of LGPLv3, see files
+ * <yMMMMMMMMMMMMMMy> |   | | |_ |  _  /| |  | |    COPYING and COPYING.lesser inside of this folder.
+ *   `+mMMMMMMMMNo` | |___| |__| | | \ \| |__| |          Project-Homepage: http://cgru.info
+ *     :MMMMMMMM:    \_____\_____|_|  \_\\____/        Sourcecode: https://github.com/CGRU/cgru
+ *     dMMMdmMMMd     A   F   A   N   A   S   Y
+ *    -Mmo.  -omM:                                           Copyright © by The CGRU team
+ *    '          '
+\* ....................................................................................................... */
+
 #include "pyres.h"
 
 #include <stdio.h>
@@ -29,7 +41,7 @@ PyRes::PyRes(const std::string & i_className, af::HostRes * i_hostRes):
 	if (m_PyObj_FuncUpdate == NULL)
 		return;
 
-	m_hres->custom.push_back(new af::HostResMeter());
+	m_hres->custom.push_back(new af::HostResCustom());
 	m_initialized = true;
 }
 
@@ -59,7 +71,11 @@ void PyRes::update()
 	std::string err = std::string("PyRes::update['" + m_name + "']: ");
 
 
-	int value, valuemax, width, height, graphr, graphg, graphb, labelsize, labelr, labelg, labelb, bgcolorr, bgcolorg, bgcolorb = 0;
+	int value = 0, valuemax = 0;
+	int width = 0, height = 0;
+	int graphr = 0, graphg = 0, graphb = 0;
+	int labelsize = 0, labelr = 0, labelg = 0, labelb = 0;
+	int bgcolorr = 0, bgcolorg = 0, bgcolorb = 0;
 	std::string label, tooltip;
 
 	if (false == af::PyGetAttrInt(pClass,"value",     value,     err)) return;
