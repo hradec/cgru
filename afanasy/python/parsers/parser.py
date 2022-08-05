@@ -16,6 +16,10 @@ class parser(object):
     """
 
     def __init__(self):
+        self.str_warning = []
+        self.str_error = []
+        self.str_badresult = []
+        self.str_finishedsuccess = []
         self.percent = 0
         self.frame = 0
         self.percentframe = 0
@@ -73,11 +77,11 @@ class parser(object):
         self.files_all.append(i_file)
 
         i_file = os.path.join(self.taskInfo['wdir'], i_file)
-        if os.path.isfile(i_file):
-            if i_onthefly:
-                self.files_onthefly.append(i_file)
-            else:
-                self.files.append(i_file)
+        # if os.path.isfile(i_file):
+        if i_onthefly:
+            self.files_onthefly.append(i_file)
+        else:
+            self.files.append(i_file)
 
     def getFiles(self):
         """Missing DocString

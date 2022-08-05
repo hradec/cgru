@@ -221,9 +221,9 @@ class service(object):  # TODO: Class names should follow CamelCase naming conve
         # taskInfo does not have parsed files on render,
         # afserver set parsed files parameter on TaskExec for GUIs only,
         # it needed for GUIs only to transfer files paths to view
-        if len(self.taskInfo['parsed_files']):
-            return self.taskInfo['parsed_files']
-        elif self.parser is not None:
+        #if len(self.taskInfo['parsed_files']):
+        #    return self.taskInfo['parsed_files']
+        if self.parser is not None:
             files = self.parser.getFiles()
             for i in range(0, len(files)):
                 files[i] = self.pm.toServer(files[i])
@@ -331,9 +331,13 @@ class service(object):  # TODO: Class names should follow CamelCase naming conve
 
         # we want to fail a task depending on error detected by the parser
         if self.parser:
-            if hasattr(self.parser, 'checkExitStatus'):
+            if self.parser.error:
+               status = False
+            elif hasattr(self.parser, 'checkExitStatus'):
                 if not self.parser.checkExitStatus(i_status):
                     status = False
+#            elif not self.checkRenderedFiles():
+#               status = False
 
         if self.verbose:
             msg = 'ERROR'

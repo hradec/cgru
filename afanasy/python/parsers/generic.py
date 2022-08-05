@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from parsers import parser
+import sys
 
 FRAME    = 'FRAME: '
 PERCENT  = 'PROGRESS: '
@@ -22,8 +23,10 @@ class generic(parser.parser):
         self.str_expected_in_log = ['pipeLog:']
         self.expected = False
         self.fullLog = ''
+        self.converted=[]
 
     def do(self, i_args):
+        sys.stdout.flush()
         data = i_args['data']
 
         needcalc = False
@@ -60,12 +63,17 @@ class generic(parser.parser):
                 self.expected = True
 
         for l in data.split('\n'):
-            if '@IMAGE@' in l: # Will be used in CGRU render scripts
-                line = l.split('"')[1]
+            # Will be used in CGRU render scripts
+            if '@IMAGE@' in l:
+                line = l.split('"')[1].replace('//','/')
                 self.appendFile(line.strip(), False)
                 self.appendFile(line.strip(), True)
+            # if 'OK -> ' in l:
+            #     line = l.split(' ')[-1]
+            #     self.appendFile(line.strip(), False)
+            #     self.appendFile(line.strip(), True)
 
-            print("===>"+l+"<===" );sys.stdout.flush()
+            print("===>"+l+"<===");sys.stdout.flush()
         print("-----> self.error:", self.error,
                 "| needcalc:", needcalc,
                 '| self.percentframe:', self.percentframe,
@@ -101,18 +109,28 @@ class generic(parser.parser):
 
         :return:
         """
-        return self.files
+        ret = self.returnAOVs4Thumbs(self.files, ['_variance'])
+        return ret #self.getFilesOnTheFly()
+        #return self.files
 
     def getFilesOnTheFly(self):
         """Missing DocString
 
         :return:
         """
-        ret = self.returnAOVs4Thumbs(self.files_onthefly, ['_variance','diffuse','specular'])
+        #ret = self.returnAOVs4Thumbs(self.files, ['_variance','diffuse','specular'])
+        ret = self.returnAOVs4Thumbs(self.files, ['_variance'])
         if ret:
             for each in ret:
-                del self.files_onthefly[ self.files_onthefly.index(each) ]
-        else:
-            ret = self.files_onthefly
-            self.files_onthefly = []
+                if each not in self.converted:
+                    self.converted += [each]
+                    # print("=====> ", ret, self.files, self.files_onthefly);sys.stdout.flush()
+#                else:
+#                    del ret[ ret.index(each) ]
+#                if each in self.files_onthefly:
+#                    del self.files_onthefly[ self.files_onthefly.index(each) ]
+#        else:
+#            ret = self.files_onthefly
+#            self.files_onthefly = []
+
         return ret
