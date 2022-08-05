@@ -329,6 +329,12 @@ class service(object):  # TODO: Class names should follow CamelCase naming conve
         if i_status == 0:
             status = True
 
+        # we want to fail a task depending on error detected by the parser
+        if self.parser:
+            if hasattr(self.parser, 'checkExitStatus'):
+                if not self.parser.checkExitStatus(i_status):
+                    status = False
+
         if self.verbose:
             msg = 'ERROR'
             if status:
