@@ -76,6 +76,7 @@
 
 "execute":[
 	{
+		"name":"terminal",
 		"label":"Terminal",
 		"icon":"icons/terminal.png",
 		"title":"Open terminal in this location.",
@@ -145,7 +146,7 @@
 			}
 		},
 		"scripts":["shot.js"],
-		"subfolders_status_hide":true,
+		"-subfolders_status_hide":true,
 		"subfolders_dailies_hide":false,
 		"post":"shot_Post",
 			"":"custom post function",
