@@ -9,9 +9,11 @@ import time
 
 import af
 
+import mediainfo
+
 from optparse import OptionParser
 
-Extensions = ['jpg', 'png', 'dpx']
+Extensions = ['jpg','jpeg','png','dpx','exr','tif','tiff']
 TmpFiles = 'img.%07d.jpg'
 
 Parser = OptionParser(
@@ -23,6 +25,8 @@ Parser = OptionParser(
 Parser.add_option('-i', '--inputs',     dest='inputs',      type  ='string', default='RESULT/JPG',help='Inputs')
 Parser.add_option('-n', '--cutname',    dest='cutname',     type  ='string', default='',          help='Cut name')
 Parser.add_option('-s', '--skipnosrc',  dest='skipnosrc',   action='store_true', default=False,   help='Skip sources not found')
+Parser.add_option('--flipversion',      dest='flipversion', action='store_true', default=False,   help='Find the lowest versions')
+Parser.add_option('--getcomments',      dest='getcomments', action='store_true', default=False,   help='Get comments from sequence.')
 Parser.add_option('-f', '--fps',        dest='fps',         type  ='string', default='24',        help='FPS')
 Parser.add_option('-r', '--resolution', dest='resolution',  type  ='string', default='1280x720',  help='Resolution: 1280x720')
 Parser.add_option('-c', '--codec',      dest='codec',       type  ='string', default='h264_good', help='Codec')
@@ -121,8 +125,12 @@ for shot in Shots:
                 continue
             ver = item.replace(name, '').strip('_. ')
             if version is not None:
-                if version >= ver:
-                    continue
+                if Options.flipversion:
+                    if version <= ver:
+                        continue
+                else:
+                    if version >= ver:
+                        continue
             version = ver
             folder = os.path.join(inp, item)
 
@@ -164,6 +172,20 @@ for shot in Shots:
 
     print('{"sequence":"%s","first":%d,"last":%d,"count":%d},' % (sequence, frame_first, frame_last, len(files)))
 
+    # Get comments:
+    comments = None
+    if Options.getcomments:
+        obj = mediainfo.processExif(files[0])
+        if obj and 'mediainfo' in obj:
+            obj = obj['mediainfo']
+            if 'exif' in obj:
+                obj = obj['exif']
+            if 'comments' in obj:
+                comments = obj['comments']
+
+    if comments is not None:
+        print('{"comments":"%s"},' % comments)
+
     f = frame_first
     while f <= frame_last:
         num_frames = len(files)
@@ -178,7 +200,11 @@ for shot in Shots:
         cmd += ' --project "%s"' % CutName
         cmd += ' --shot "%s"' % name
         cmd += ' --ver "%s"' % version
-        cmd += ' --moviename "%s"' % os.path.basename(movie_name)
+        if comments is not None:
+            cmd += ' --moviename ":"'
+            cmd += ' --comments "%s"' % comments
+        else:
+            cmd += ' --moviename "%s"' % os.path.basename(movie_name)
         cmd += ' --frame_input %d' % f
         cmd += ' --frame_output %d' % file_counter
         cmd += ' --frames_num %d' % num_frames

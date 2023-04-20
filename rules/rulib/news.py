@@ -1,21 +1,76 @@
 import os
 import time
 
-from rusrv import functions
+import rulib
 
-def makenews(i_args, io_users, o_out):
-    news = i_args['news']
+def makeNewsAndBookmarks(i_args, i_uid, out=dict(), nonews=False):
+    # Read all users:
+    users = rulib.functions.readAllUsers(out, True)
+    if 'error' in out:
+        return
+
+    if len(users) == 0:
+        out['error'] = 'No users found.'
+        return
+
+    users_changed = []
+
+    bookmarks = []
+    # TODO
+    i_news = []
+    if 'news' in i_args:
+        i_news = i_args['news']
+    elif 'news_requests' in i_args:
+        i_news = i_args['news_requests']
+    for news in i_news:
+        if 'news' in news:
+            news = news['news']
+
+        bookmarks.append({'status':news['status'],'path':news['path']})
+
+        if nonews:
+            continue
+
+        ids = makeNewsUno(news, users, i_uid, out)
+        if 'error' in out:
+            return
+
+        if ids is not None:
+            for id in ids:
+                if not id in users_changed:
+                    users_changed.append(id)
+
+    if 'bookmarks' in i_args:
+        bookmarks = i_args['bookmarks']
+    for bm in bookmarks:
+        ids = makeBookmarks(i_uid, bm, users, out)
+        if 'error' in out:
+            return
+
+        if ids is not None:
+            for id in ids:
+                if not id in users_changed:
+                    users_changed.append(id)
+
+    # Write changed users:
+    for id in users_changed:
+        rulib.functions.writeUser(users[id], True)
+
+    out['users_changed'] = users_changed
+
+def makeNewsUno(i_args, io_users, i_uid, out):
+    news = i_args
 
     # Ensure that news has a path:
     if not 'path' in news:
-        o_out['error'] = 'News can`t be without a path.'
+        out['error'] = 'News can`t be without a path.'
         return False
 
     path = news['path']
 
     # Path should not be an empty string:
     if len(path) == 0:
-        o_out['error'] = 'Path is an empty string.'
+        out['error'] = 'Path is an empty string.'
         return False
 
     # Ensure that the first path character is '/':
@@ -33,11 +88,11 @@ def makenews(i_args, io_users, o_out):
             break
 
         # Get existing recent:
-        rfile = i_args['root'] + path + '/' + i_args['rufolder'] + '/' + i_args['recent_file']
-        rarray = functions.readObj(rfile)
+        rfile = rulib.functions.getRuFilePath(rulib.RECENT_FILENAME, path)
+        rarray = rulib.functions.readObj(rfile)
         if rarray is None:
             rarray = []
-        
+
         count = len(rarray)
         if len(rarray):
             if i:
@@ -55,7 +110,7 @@ def makenews(i_args, io_users, o_out):
                 if rarray[0]['path'] == news['path'] and rarray[0]['title'] == news['title'] and rarray[0]['user'] == news['user']:
                     del rarray[0]
 
-            while len(rarray) >= i_args['recent_max']:
+            while len(rarray) >= rulib.RULES_TOP['news']['recent']:
                 del rarray[-1]
 
         # Add new recent:
@@ -66,13 +121,12 @@ def makenews(i_args, io_users, o_out):
             try:
                 os.makedirs(os.path.dirname(rfile))
             except PermissionError:
-                o_out['error'] = 'Permission denied: "%s"' % os.path.dirname(rfile)
-                return
+                out['info'] = 'Permission denied to make folder for recent: "%s"' % os.path.dirname(rfile)
+                continue
             except:
-                o_out['error'] = 'Unable to create folder: "%s"' % os.path.dirname(rfile)
-                o_out['info'] = '%s' % traceback.format_exc()
-                return False
-        functions.writeObj(rfile, rarray)
+                out['info'] = 'Unable to create folder for recent: "%s"' % traceback.format_exc()
+                continue
+        rulib.functions.writeObj(rfile, rarray)
 
         # Exit cycle if path is root:
         if len(path) == 0:
@@ -92,7 +146,7 @@ def makenews(i_args, io_users, o_out):
 
     # User may be does not want to receive own news:
     ignore_own = False
-    if 'ignore_own' in i_args and i_args['ignore_own']:
+    if i_uid in io_users and 'ignore_own' in io_users[i_uid] and io_users[i_uid]['ignore_own']:
         ignore_own = True
 
     # Get subscribed users:
@@ -151,9 +205,7 @@ def makenews(i_args, io_users, o_out):
         user['news'].insert(0, news)
 
         # Delete news above the limit:
-        limit = 99
-        if 'limit' in i_args and i_args['limit'] > 0:
-            limit = i_args['limit']
+        limit = rulib.RULES_TOP['news']['limit']
         if 'news_limit' in user and user['news_limit'] > 0:
             limit = user['news_limit']
 
@@ -175,10 +227,12 @@ def makenews(i_args, io_users, o_out):
 #        $out = array();
 #        jsf_sendmail($mail, $out);
 
+    out['users_subscribed'] = sub_users
+
     return changed_users
 
 
-def makebookmarks(i_user_id, i_bm, io_users, o_out):
+def makeBookmarks(i_user_id, i_bm, io_users, out):
     changed_users = []
     for id in io_users:
         user = io_users[id]
@@ -274,3 +328,33 @@ def isUserAssignedInStatus(i_user, i_obj):
 
     return False
 
+
+# Remove not needed status fields:
+def filterStatus(i_sdata):
+    sdata = dict()
+    skip_keys = ['body']
+    for key in i_sdata:
+        if not key in skip_keys:
+            sdata[key] = i_sdata[key]
+    return sdata
+
+
+def statusChanged(i_status, out=dict(), nonews=False):
+    news = createNews(title='status', path=i_status.path, uid=i_status.muser, status=i_status.data)
+    makeNewsAndBookmarks({'news':[news]}, i_status.muser, out=out, nonews=nonews)
+
+
+def createNews(title='news',uid=None,path=None,status=None):
+    if uid is None: uid = rulib.functions.getCurUser()
+    if path is None: path = os.getcwd()
+    if status is None: rulib.status.getStatusData()
+
+    news = dict()
+    news['title'] = title
+    news['path'] = path
+    news['user'] = uid
+    news['status'] = filterStatus(status)
+    news['time'] = rulib.functions.getCurSeconds()
+    news['id'] = news['user'] + '_' + str(news['time']) + '_' + news['path']
+
+    return news

@@ -24,8 +24,12 @@ namespace AFGENERAL
 {
 #ifdef WINNT
 const char STORE_FOLDER[] = "\\afanasy";
+const char OPEN_FOLDER_CMD[] = "explorer";
+const char PATH_SEPARATOR = '\\';
 #else
 const char STORE_FOLDER[] = "/var/tmp/afanasy";
+const char OPEN_FOLDER_CMD[] = "openfolder";
+const char PATH_SEPARATOR = '/';
 #endif
 
 const char TIME_FORMAT[] = "%a %d %b %H:%M.%S"; ///< Default time output format.
@@ -36,11 +40,6 @@ const int MAX_RUNNING_TASKS      = -1;  ///< Default maximum running tasks numbe
 const int MAX_RUN_TASKS_PER_HOST = -1;  ///< Default maximum running tasks per host.
 const int JOBS_LIFE_TIME         = -1;  ///< Default user jobs life time.
 const int FILE_NAME_SIZE_MAX     = 250; ///< Maximum filename size.
-#ifdef WINNT
-const char PATH_SEPARATOR = '\\';
-#else
-const char PATH_SEPARATOR = '/';
-#endif
 const char FILENAME_INVALID_CHARACTERS[] = "\"\\ /|!$&?()[]{}*^<>%`',:;";
 const size_t FILENAME_INVALID_CHARACTERS_LENGTH = strlen(FILENAME_INVALID_CHARACTERS);
 const char FILENAME_INVALID_CHARACTER_REPLACE = '_';
@@ -84,6 +83,7 @@ const int ERRORS_FORGIVETIME = 18000;
 ///< Time from last error to remove host from error list (18000 seconds = 5 hours).
 const int TASK_ERROR_RETRIES = 3;	///< Maximum number of errors in task to retry it automatically.
 const int TASK_ERRORS_SAME_HOST = 3; ///< Maximum number or errors on same host for task NOT to avoid host.
+const bool CUT_DOMAIN_NAME       = true; ///< "user.local" will be just "user"
 }
 
 /// Server options:
@@ -141,6 +141,7 @@ const char NETWORK_IF[] /**********/ = ".*";		///< Network interface(s) pattern 
 const char HDDSPACE_PATH[] /*******/ = "/";			///< Path to query total and free space.
 const char IOSTAT_DEVICE[] /*******/ = "sda";		///< Device to monitor IO.
 const int TASK_READ_BUFFER_SIZE /**/ = 1024 * 1024; ///< Task process read buffer.
+const bool CUT_DOMAIN_NAME           = true;        ///< "render.local" will be just "render"
 }
 
 /// Watch options:

@@ -20,8 +20,9 @@
 
 var SERVER = null;
 var RULES = {};
-RULES.rufolder = 'rules';
+var RUFOLDER = '.rules';
 var RULES_TOP = {};
+var ROOT = null;
 
 var c_movieTypes =
 	['mpg', 'mpeg', 'mov', 'avi', 'mp4', 'm4v', 'webm', 'ogg', 'ogv', 'mxf', 'flv', 'mkv', 'cine'];
@@ -196,9 +197,21 @@ function c_RulesMergeDir(o_rules, i_dir)
 	{
 		let obj = i_dir.rules[keys[k]];
 		if (obj == null)
-			c_Error('RULES file "' + attr + '" in "' + g_CurPath() + '/' + RULES.rufolder + '" is invalid.');
-		else
-			c_RulesMergeObjs(o_rules, obj);
+        {
+			c_Error('RULES file "' + keys[k] + '" in "' + g_CurPath() + '/' + RUFOLDER + '" is invalid.');
+            continue;
+        }
+        if (obj.ruerror)
+        {
+            if (obj.ruerror.info)
+                c_Log(obj.ruerror.info);
+            if (obj.ruerror.error)
+                c_Error(obj.ruerror.error);
+			c_ConstantError(obj.ruerror.error);
+            continue;
+        }
+
+		c_RulesMergeObjs(o_rules, obj);
 	}
 }
 
@@ -296,6 +309,13 @@ function c_LogClear()
 	c_lastLogCount = 1;
 
 	u_el.log.innerHTML = '';
+}
+
+function c_ConstantError(i_msg)
+{
+	let el = $('constant_error');
+	el.style.display = 'block';
+	el.innerHTML = i_msg;
 }
 
 function c_AuxFolder(i_folder)
@@ -506,6 +526,7 @@ function c_CanAssignArtists(i_user)
 
 function c_CanEditTasks(i_user)
 {
+// Not used now. Was used in OLD tasks.
 	return c_IsUserStateSet(i_user, 'edittasks');
 }
 
@@ -548,6 +569,36 @@ function c_CanCreateShot(i_user)
 
 	if ((['admin', 'coord', 'user']).indexOf(i_user.role) != -1)
 		return true;
+	return false;
+}
+
+function c_CanEditShot(i_user)
+{
+	if (i_user == null)
+		i_user = g_auth_user;
+	if (i_user == null)
+		return false;
+
+	if ((['admin', 'coord', 'user']).indexOf(i_user.role) != -1)
+		return true;
+	return false;
+}
+
+function c_CanEditTask(i_task, i_user)
+{
+	if (i_user == null)
+		i_user = g_auth_user;
+	if (i_user == null)
+		return false;
+
+	if ((['admin', 'coord', 'user']).indexOf(i_user.role) != -1)
+		return true;
+
+	if ((i_task == null) || (i_task.artists == null))
+		return false;
+	if (i_task.artists.indexOf(i_user.id) != -1)
+		return true;
+
 	return false;
 }
 
@@ -802,7 +853,7 @@ function c_GetRuFilePath(i_file, i_path)
 	if (path == null)
 		path = g_CurPath();
 
-	path += '/' + RULES.rufolder + '/' + i_file;
+	path += '/' + RUFOLDER + '/' + i_file;
 	path = RULES.root + path;
 
 	return path;
@@ -916,7 +967,7 @@ function c_GetThumbFileName(i_file)
 {
 	var name = c_PathBase(i_file);
 	var path = c_PathDir(i_file);
-	return path + '/' + RULES.rufolder + '/thumbnail.' + name + '.jpg';
+	return path + '/' + RUFOLDER + '/thumbnail.' + name + '.jpg';
 }
 
 function c_MakeThumbnail(i_file, i_func)
@@ -1001,8 +1052,8 @@ function c_PathSplitExt(i_file)
 
 function c_PathPM_Rules2Server(i_path)
 {
-	if (RULES.root_link)
-		return (RULES.root_link + i_path);
+	if (ROOT)
+		return (ROOT + i_path);
 	else
 		return (RULES.root + i_path);
 }

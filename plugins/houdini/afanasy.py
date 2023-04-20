@@ -258,7 +258,7 @@ class BlockParameters:
                 taskname += ' ' + str(self.frame_first)
                 taskname += '-' + str(self.frame_last)
                 self.tasks_names.append(taskname)
-                self.tasks_cmds.append(self.frame_first)
+                self.tasks_cmds.append('%d' % self.frame_first)
                 
             elif roptype == 'Redshift_ROP':
                 self.service = 'hbatch_redshift'
@@ -290,9 +290,9 @@ class BlockParameters:
 
             # If this is a "rez" configured environment supply the same environment to
             # the render command
-            if "REZ_USED_REQUEST" in os.environ:
+            if "REZ_USED_RESOLVE" in os.environ:
                 self.cmd = 'rez-env {} -- {}'.format(
-                    os.environ["REZ_USED_REQUEST"],
+                    os.environ["REZ_USED_RESOLVE"],
                     self.cmd
                 )
 
@@ -356,6 +356,15 @@ class BlockParameters:
                         cmd_files.evalAsStringAtFrame(self.frame_last)
                     ))
 
+                # Create preview
+                if self.afnode.parm('cmd_preview').eval():
+                    cmd_preview = self.afnode.parm('cmd_preview')
+                    self.preview = \
+                        afcommon.patternFromPaths(
+                            cmd_preview.evalAsStringAtFrame(self.frame_first),
+                            cmd_preview.evalAsStringAtFrame(self.frame_last)
+                        )
+                        
             elif not for_job_only:
                 hou.ui.displayMessage('Can\'t process "%s"' % afnode.path())
                 return
@@ -1115,3 +1124,26 @@ def computeWedge(ropnode, roptype):
         if not numWedgeJobs:
             raise hou.OperationFailed("The specified wedge node does not compute anything.")
     return numWedgeJobs
+
+
+def getHoudiniEnvironment(i_afnode):
+    environment_dict = i_afnode.parm('environment_dict').eval()
+    environment_dict['HOUDINI_LOCATION'] = os.getenv('HFS')
+
+    keys = ['HOUDINI_VERSION','HOUDINI_MAJOR_RELEASE','HOUDINI_MINOR_RELEASE','HOUDINI_BUILD_VERSION']
+    for key in keys:
+        value = os.getenv(key)
+        if value is not None:
+            environment_dict[key] = value
+
+    i_afnode.parm('environment_dict').set(environment_dict)
+
+def removeHoudiniEnvironment(i_afnode):
+    prev_dict = i_afnode.parm('environment_dict').eval()
+    new_dict = dict()
+
+    for key in prev_dict:
+        if key.find('HOUDINI_') == -1:
+            new_dict[key] = prev_dict[key]
+
+    i_afnode.parm('environment_dict').set(new_dict)

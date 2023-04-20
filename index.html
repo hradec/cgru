@@ -7,31 +7,31 @@
 <link type="text/css" rel="stylesheet" href="rules/styles.css">
 <script type="text/javascript" src="lib/js/cgru.js"></script>
 <script type="text/javascript" src="lib/js/md5.js"></script>
-<script type="text/javascript" src="rules/activity.js"></script>
-<script type="text/javascript" src="rules/admin.js"></script>
-<script type="text/javascript" src="rules/artbook.js"></script>
-<script type="text/javascript" src="rules/asset.js"></script>
-<script type="text/javascript" src="rules/bookmarks.js"></script>
-<script type="text/javascript" src="rules/comments.js"></script>
-<script type="text/javascript" src="rules/common.js"></script>
-<script type="text/javascript" src="rules/dailies.js"></script>
-<script type="text/javascript" src="rules/editcontent.js"></script>
-<script type="text/javascript" src="rules/editlist.js"></script>
-<script type="text/javascript" src="rules/filesutils.js"></script>
-<script type="text/javascript" src="rules/filesview.js"></script>
-<script type="text/javascript" src="rules/general.js"></script>
-<script type="text/javascript" src="rules/gui.js"></script>
-<script type="text/javascript" src="rules/network.js"></script>
-<script type="text/javascript" src="rules/news.js"></script>
-<script type="text/javascript" src="rules/playlist.js"></script>
-<script type="text/javascript" src="rules/profile.js"></script>
-<script type="text/javascript" src="rules/search.js"></script>
-<script type="text/javascript" src="rules/statistics.js"></script>
-<script type="text/javascript" src="rules/status.js"></script>
-<script type="text/javascript" src="rules/table.js"></script>
-<script type="text/javascript" src="rules/task.js"></script>
-<script type="text/javascript" src="rules/ui.js"></script>
-<script type="text/javascript" src="rules/upload.js"></script>
+<script type="text/javascript" src="rules/js/activity.js"></script>
+<script type="text/javascript" src="rules/js/admin.js"></script>
+<script type="text/javascript" src="rules/js/artbook.js"></script>
+<script type="text/javascript" src="rules/js/asset.js"></script>
+<script type="text/javascript" src="rules/js/bookmarks.js"></script>
+<script type="text/javascript" src="rules/js/comments.js"></script>
+<script type="text/javascript" src="rules/js/common.js"></script>
+<script type="text/javascript" src="rules/js/dailies.js"></script>
+<script type="text/javascript" src="rules/js/editcontent.js"></script>
+<script type="text/javascript" src="rules/js/editlist.js"></script>
+<script type="text/javascript" src="rules/js/filesutils.js"></script>
+<script type="text/javascript" src="rules/js/filesview.js"></script>
+<script type="text/javascript" src="rules/js/general.js"></script>
+<script type="text/javascript" src="rules/js/gui.js"></script>
+<script type="text/javascript" src="rules/js/network.js"></script>
+<script type="text/javascript" src="rules/js/news.js"></script>
+<script type="text/javascript" src="rules/js/playlist.js"></script>
+<script type="text/javascript" src="rules/js/profile.js"></script>
+<script type="text/javascript" src="rules/js/search.js"></script>
+<script type="text/javascript" src="rules/js/statistics.js"></script>
+<script type="text/javascript" src="rules/js/status.js"></script>
+<script type="text/javascript" src="rules/js/table.js"></script>
+<script type="text/javascript" src="rules/js/task.js"></script>
+<script type="text/javascript" src="rules/js/ui.js"></script>
+<script type="text/javascript" src="rules/js/upload.js"></script>
 <script type="text/javascript">
 
 if( document.location.host.indexOf('rules.cgru.info') != -1 )
@@ -84,6 +84,7 @@ Refresh browser to sort by size" onclick="g_NavigShowInfo(this)">SIZE</div>
 </div>
 
 <div id="content">
+    <div id="constant_error"></div>
 	<div id="panel">
 		<div id="annotations"></div>
 		<div id="search_panel" style="float:right">
@@ -220,8 +221,8 @@ Supervisor can assign artist by creating a task."
 			<div id="status_adinfo" style="clear:both; display: none;"></div>
 			<div id="status_tasks_div">
 				<div id="status_tasks_buttons">
-					<div id="status_tasks_btn_add" class="button" onclick="task_AddTask()">Add Task</div>
-					<div id="status_tasks_btn_add_artist" class="button" onclick="task_AddArtistTask()">Add Artist Task</div>
+					<div id="status_tasks_btn_add" class="button" onclick="task_AddTask()" style="display:none">Add Task</div>
+					<div id="status_tasks_btn_add_artist" class="button" onclick="task_AddArtistTask()" style="display:none">Add Artist Task</div>
 				</div>
 				<div id="status_tasks_label">Tasks:</div>
 				<div id="status_tasks"></div>
@@ -389,13 +390,13 @@ Remember any delete operation buttons in RULES requires double-click.
 					<div class="button" id="news_settings_btn"
 						title="Click to open/close subscribed locations"
 						style="background-image:url(rules/icons/news_channels.png);"
-						onclick="c_ElDisplayToggle(document.getElementById('chanset'));
+						onclick="c_ElDisplayToggle(document.getElementById('news_settings'));
 						this.classList.toggle('pushed')"></div>
 					<div class="button" title="Change news sorting order"
 						style="background-image:url(rules/icons/sort_order_toggle.png);"
 						onclick="nw_SortOrderToggle()"></div>
 				</div>
-				<div id="chanset" style="display:none">
+				<div id="news_settings" style="display:none">
 					<div id="subscribe_path"
 						title="Subscribed parent location"></div>
 					<div id="subscribe_btn" class="button" onclick="nw_Subscribe()"
@@ -411,6 +412,12 @@ Remember any delete operation buttons in RULES requires double-click.
 						style="background-image:url(rules/icons/megaphone.png); float: right;"
 						title="Create some custom news"></div>
 					<div id="channels"></div>
+                    <!--div id="news_filter_div">
+                        <div>Include Tags:</div>
+                        <div>Exclude Tags:</div>
+                        <div>Include Flags:</div>
+                        <div>Exclude Flags:</div>
+                    </div-->
 				</div>
 			</div>
 			<div class="news_filter" style="font-size: 12px" title="News filter">

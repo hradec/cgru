@@ -935,23 +935,44 @@ function sc_FilterShots(i_args)
 					{
 						found = false;
 						if (task.flags && task.flags.length)
-						{
 							for (let i = 0; i < i_args.flags.length; i++)
 								if (task.flags.includes(i_args.flags[i]))
-									{ found = true; break; }
-						}
+								{
+									found = true;
+									if (false == flags_and)
+										break;
+								}
+								else
+								{
+									found = false;
+									if (flags_and)
+										break;
+								}
 					}
 
 					if (found && i_args.tags && i_args.tags.length)
 					{
 						found = false;
 						if (task.tags && task.tags.length)
-						{
 							for (let i = 0; i < i_args.tags.length; i++)
 								if (task.tags.includes(i_args.tags[i]))
-									{ found = true; break; }
-						}
+								{
+									found = true;
+									if (false == tags_and)
+										break;
+								}
+								else
+								{
+									found = false;
+									if (tags_and)
+										break;
+								}
 					}
+
+					// We found one task matching flags and tags.
+					// One matching task it is enough to show entire shot.
+					if (found)
+						break;
 				}
 			}
 			else
@@ -1245,19 +1266,21 @@ function scenes_makeThumbnail( i_data, i_args)
 
 function scenes_Put()
 {
-	var args = {};
+	let args = {};
 	args.paths = [];
-	var paths = scenes_GetSelectedShots();
-	for( var i = 0; i < paths.length; i++)
-		args.paths.push( paths[i].m_path);
+	let elShots = scenes_GetSelectedShots();
+	if (elShots.length < 1)
+		elShots = sc_elShots;
+	for (let i = 0; i < elShots.length; i++)
+		args.paths.push(elShots[i].m_path);
 
-	if( args.paths.length < 1 )
+	if (args.paths.length < 1 )
 	{
 		c_Error('Select at least one shot.');
 		return;
 	}
 
-	fu_PutMultiDialog( args);
+	fu_PutMultiDialog(args);
 }
 
 function scenes_Convert()
@@ -1277,6 +1300,28 @@ function scenes_Convert()
 	args.results = true;
 
 	d_Convert( args);
+}
+
+function scenes_MakeCut()
+{
+	let args = {};
+	args.shots = [];
+	let elShots = scenes_GetSelectedShots();
+	if (elShots.length < 1)
+		elShots = sc_elShots;
+	for (let i = 0; i < elShots.length; i++)
+		args.shots.push(elShots[i].m_path);
+
+	if (args.shots.length < 2)
+	{
+		c_Error('There should be at least two shots to make cut.');
+		return;
+	}
+
+	args.cut_name = ASSET.name;
+	args.output = ASSET.path + '/' + RULES.cut.output;
+
+	d_MakeCut(args);
 }
 
 function scenes_ExportTable()

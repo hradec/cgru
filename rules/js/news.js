@@ -343,8 +343,7 @@ function nw_MakeNewsDialogApply(i_title)
 
 function nw_MakeNews(i_news, i_args)
 {
-	var request = nw_CreateNews(i_news);
-	nw_SendNews([request], i_args);
+	nw_SendNews([nw_CreateNews(i_news)], i_args);
 }
 
 function nw_FilterStatus(i_status)
@@ -361,8 +360,8 @@ function nw_FilterStatus(i_status)
 
 function nw_StatusesChanged(i_statuses)
 {
-	var news_requests = [];
-	var bookmarks = [];
+	let news = [];
+	let bookmarks = [];
 
 	for (let i = 0; i < i_statuses.length; i++)
 	{
@@ -371,7 +370,7 @@ function nw_StatusesChanged(i_statuses)
 		let request = nw_CreateNews(
 			{'title':'status','path':i_statuses[i].path,'status':st});
 		if (request)
-			news_requests.push(request);
+			news.push(request);
 
 		let bm = {};
 		bm.status = st;
@@ -379,10 +378,10 @@ function nw_StatusesChanged(i_statuses)
 		bookmarks.push(bm);
 	}
 
-	var obj = {};
+	let obj = {};
 	obj.send = {};
 	obj.send.makenews = {};
-	obj.send.makenews.news_requests = news_requests;
+	obj.send.makenews.news = news;
 	obj.send.makenews.bookmarks = bookmarks;
 	obj.func = nw_MakeNewsFinished;
 	obj.args = {'func': bm_StatusesChanged};
@@ -402,19 +401,16 @@ function nw_CreateNews(i_news)
 	if (nw_disabled)
 		return;
 
-	var news = i_news;
+	let news = i_news;
 
-	if (news.user_id == null)
+	if (g_auth_user)
 	{
-		if (g_auth_user)
-		{
-			news.user = g_auth_user.id;
-		}
-		else
-		{
-			c_Error('Can`t make news with no user.');
-			return;
-		}
+		news.user = g_auth_user.id;
+	}
+	else
+	{
+		c_Error('Can`t make news with no user.');
+		return;
 	}
 
 	if (news.path == null)
@@ -426,7 +422,7 @@ function nw_CreateNews(i_news)
 	// If news status is not set, we get the current:
 	if (news.status == null)
 		news.status = RULES.status;
-
+/*
 	var email_subject = c_GetUserTitle(news.user) + ' - ' + news.title;
 	var email_body = '<a href="';
 	email_body += document.location.protocol + '//' + document.location.host + document.location.pathname;
@@ -441,32 +437,27 @@ function nw_CreateNews(i_news)
 	request.email_from_title = c_EmailFromTitle();
 	request.email_subject = email_subject;
 	request.email_body = email_body;
-	request.root = RULES.root;
-	request.rufolder = RULES.rufolder;
-	request.limit = RULES.news.limit;
-	request.recent_max = RULES.news.recent;
-	request.recent_file = nw_recent_file;
-	if (nw_ignore_own)
-		request.ignore_own = true;
 
 	return request;
+*/
+	return news;
 }
 
-function nw_SendNews(i_requests, i_args)
+function nw_SendNews(i_news, i_args)
 {
-	if (i_requests == null)
+	if (i_news == null)
 	{
 		c_Error('Can`t send news from "null" requests.');
 		return;
 	}
-	if (i_requests.length == 0)
+	if (i_news.length == 0)
 	{
 		c_Error('Can`t send news from zero size request.');
 		return;
 	}
-	for (var i = 0; i < i_requests.length; i++)
+	for (let i = 0; i < i_news.length; i++)
 	{
-		if (i_requests[i] == null)
+		if (i_news[i] == null)
 		{
 			c_Error('Can`t send news from "null" request[' + i + '].');
 			return;
@@ -474,7 +465,7 @@ function nw_SendNews(i_requests, i_args)
 	}
 
 	n_Request({
-		'send': {'makenews': {'news_requests': i_requests}},
+		'send': {'makenews': {'news': i_news}},
 		'info': 'news make',
 		'func': nw_MakeNewsFinished,
 		'args': i_args
@@ -498,16 +489,19 @@ function nw_MakeNewsFinished(i_data, i_args)
 		nw_RecentLoad({"file_check": false});
 	}
 
-	if (i_data.users.length == 0)
+	if ((i_data.users_subscribed == null) || (i_data.users_subscribed.length == 0))
 	{
 		c_Log('No subscribed users found.');
 		return;
 	}
 
-	var info = 'Subscribed users:';
-	for (var i = 0; i < i_data.users.length; i++)
-		info += ' ' + i_data.users[i];
-	c_Log(info);
+	let info = 'Subscribed users: ';
+	for (let i = 0; i < i_data.users_subscribed.length; i++)
+	{
+		if (i) info += ', ';
+		info += c_GetUserTitle(i_data.users_subscribed[i]);
+	}
+	c_Info(info);
 
 	if (i_args.args && i_args.args.func)
 		i_args.args.func(i_args.args);
@@ -576,6 +570,21 @@ function nw_NewsReceived(i_data)
 			g_auth_user.news.push(news[i]);
 
 	nw_NewsShow();
+
+	// Update current location status:
+	for (let i = 0; i < g_auth_user.news.length; i++)
+	{
+		let news = g_auth_user.news[i];
+
+		if (news.path != g_CurPath()) continue;
+		if (news.status == null) break;
+
+		if (RULES.status && RULES.status.mtime && (RULES.status.mtime >= news.status.mtime))
+			break;
+
+		st_UpdateCurrent(news.status);
+		break;
+	}
 }
 
 function nw_NewsShow(i_update_folders)
@@ -706,13 +715,6 @@ function nw_NewsShow(i_update_folders)
 
 			// Update folder status:
 			g_FolderSetStatus(news.status, el);
-
-			// Update current location status:
-			if (news.path == g_CurPath())
-			{
-				RULES.status = news.status;
-				st_Update(news.status);
-			}
 
 			// Remove walk cache:
 			if (n_walks[news.path])

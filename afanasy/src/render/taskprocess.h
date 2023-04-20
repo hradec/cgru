@@ -82,9 +82,13 @@ private:
 	pid_t m_pid;
 
 	int m_commands_launched;
+	int64_t m_command_launch_time;
 
 	bool m_doing_post;
 	std::vector<std::string> m_post_cmds;
+	int m_post_limit_sec;
+
+	std::string m_append_to_server_task_log;
 
 	std::string m_listened;
 

@@ -94,7 +94,7 @@
 		"show_files":true
 	},
 	"area":{
-		"seek":["[project]/SCENE.*","[project]/EPISODE.*","[project]/SHOT.*","[project]/ASSETS.*","[project]/ANIM.*","[project]/RND.*","[project]/FREELANCE.*"],
+		"seek":["[project]/SCENE.*","[project]/EPISODE.*","[project]/SHOT.*","[project]/ASSETS.*","[project]/CONCEPT.*","[project]/ANIM.*","[project]/RND.*","[project]/FREELANCE.*"],
 		"uploads":{
 			"upload":{
 				"masks":[".*"],
@@ -265,8 +265,8 @@
 	"codec":"h264_mid",
 	"container":"DEFAULT",
 	"colorspace":"auto",
-	"template":"dailies_withlogo",
-	"slate":"dailies_slate",
+	"template":"dailies",
+	"slate":"noslate",
 	"-font":"DejaVuSans",
 	"naming":"(s)_(a)_(v)_(d)",
 	"logo_slate_path":"logo.png",
@@ -275,7 +275,11 @@
 	"logo_frame_path":"logo.png",
 	"logo_frame_size":10,
 	"logo_frame_grav":"North",
+
 	"activity":"comp",
+
+	"comment_annotation":true,
+	"comment_body":false,
 
 	"-imgcmd":"convert",
 		"":"Specify image convert and draw command, default is 'convert'",
@@ -354,8 +358,8 @@
 },
 
 "cut":{
-	"input":"RESULT/ANIM,RESULT/PNG,RESULT/JPG,RESULT/TIF,RESULT/DPX",
-	"output":"COMMON/_cut",
+	"input":"RESULT/ANIM,RESULT/PNG,RESULT/JPG,RESULT/TIF,RESULT/DPX,RESULT/EXR",
+	"output":"COMMON/RESULT/JPG",
 	"af_capacity":500,
 	"af_maxtasks":10,
 	"af_perhost":-1,
@@ -368,8 +372,8 @@
 },
 
 "put":{
-	"input":"RESULT/PNG,RESULT/TIF,RESULT/DPX",
-	"dest":"FINAL",
+	"input":"RESULT/PNG,RESULT/TIF,RESULT/DPX,RESULT/EXR,RESULT/MOV",
+	"dest":"OUT",
 	"-dest":"/incoming",
 	"cmd":"python3 /cgru/utilities/put.py",
 	"-ftp":{

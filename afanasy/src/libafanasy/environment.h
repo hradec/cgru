@@ -101,7 +101,7 @@ public:
 	static inline const std::string & getCGRULocation(){ return cgrulocation;  } ///< Get CGRU root directory.
 	static inline const std::string & getAfRoot()      { return afroot;        } ///< Get Afanasy root directory.
 	static inline const std::string & getServerName()  { return servername;    } ///< Get Afanasy server name.
-	static inline const int isIPv6Disabled()           { return ipv6_disable;  }
+	static inline int isIPv6Disabled() {return ipv6_disable;}
 	static inline const std::string & getUserName()    { return username;      } ///< Get current user name.
 	static inline const std::string & getHostName()    { return hostname;      } ///< Get Render host name.
 	static inline const std::string & getComputerName(){ return computername;  } ///< Get local computer name.
@@ -158,6 +158,8 @@ public:
 	static inline const std::string & getSysEventsService()  { return sysjob_events_service;     }
 
 	static inline int getWOLWakeInterval() { return wolwake_interval; }
+
+	static inline std::string & getOpenFolderCmd() {return open_folder_cmd;}
 
 	static inline std::string & getCmdShell()          { return cmd_shell;}
  
@@ -282,6 +284,7 @@ private:
 /** Try to get \c USERNAME or \c USER environment variable at first.
 *** If failes "unknown" user name will be used.**/
 	static std::string username;
+	static std::string loginname; // Real logged in user.
 
 /// Local computer name
 	static std::string computername;
@@ -333,6 +336,8 @@ private:
 	static int render_nice;       ///< Render task process nice factor.
 	static std::vector<std::string> render_windowsmustdie;
 
+	static std::string open_folder_cmd;
+
 	static std::string cmd_shell;
 	static std::string render_cmd_reboot;
 	static std::string render_cmd_shutdown;
@@ -344,6 +349,8 @@ private:
 	static std::string render_gpuinfo_nvidia_cmd;
 	static std::string render_networkif;
 
+	static bool render_cut_domain_name;
+
 	static int render_overflow_mem;
 	static int render_overflow_swap;
 	static int render_overflow_hdd;
@@ -352,6 +359,7 @@ private:
 	static int task_error_retries;
 	static int task_errors_same_host;
 	static int errors_forgivetime;
+	static bool user_cut_domain_name;
 
 	static int sysjob_tasksmax;
 	static int sysjob_tasklife;

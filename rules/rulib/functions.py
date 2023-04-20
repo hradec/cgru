@@ -1,18 +1,93 @@
 import cgi
 import json
+import getpass
 import os
 import sys
+import time
 import traceback
 
-from rusrv import environ
-from rusrv import editobj
-
+import rulib
 
 def randMD5():
     hashlib = __import__('hashlib', globals(), locals(), [])
     random = __import__('random', globals(), locals(), [])
     return hashlib.md5(str(random.random()).encode()).hexdigest()
 
+def getCurSeconds():
+    return round(time.time())
+
+def getCurUser():
+    return getpass.getuser()
+
+def outError(i_err, o_out = None):
+    if o_out is not None:
+        o_out['error'] = i_err
+    else:
+        print(i_err)
+
+def getRuFilePath(i_file, i_path = None):
+    path = i_path
+    if path is None:
+        path = os.getcwd()
+    path = os.path.join(path, rulib.RUFOLDER, i_file)
+    path = getAbsPath(path)
+    return path
+
+
+def getRootPath(i_path = None):
+    path = i_path
+    if path is None:
+        path = os.getcwd()
+    else:
+        path = os.path.abspath(path)
+    if path.find(rulib.ROOT) == 0:
+        path = path[len(rulib.ROOT):]
+    return path
+
+
+def getAbsPath(i_path):
+    if len(i_path) == 0:
+        return rulib.ROOT
+    if i_path[0] == '/':
+        return rulib.ROOT + i_path
+    return rulib.ROOT + '/' + i_path
+
+
+def getRuFiles(i_path = None, i_ruFolder = None):
+    if i_path is None: i_path = os.getcwd()
+    if i_ruFolder is None: i_ruFolder = rulib.RUFOLDER
+
+    ruFolder = os.path.join(i_path, i_ruFolder)
+
+    if not os.path.isdir(ruFolder):
+        return []
+    ruFiles = []
+    for afile in os.listdir(ruFolder):
+        if afile.find('rules') != 0:
+            continue
+        if afile.find('.json') == -1:
+            continue
+        ruFiles.append(os.path.join(ruFolder, afile))
+    ruFiles.sort()
+
+    return ruFiles
+
+def getRulesUno(i_path = None, i_ruFolder =  None):
+    rules = dict()
+    for afile in getRuFiles(i_path, i_ruFolder):
+        out = dict()
+        obj = readObj(afile, out)
+        if obj is None:
+            errobj = dict()
+            errobj['error'] = 'Invalid rules file: "%s"' % afile
+            if 'error' in out:
+                errobj['error'] = out['error']
+            if 'info' in out:
+                errobj['info'] = out['info']
+            rules['ruerror'] = errobj
+            break
+        rulib.editobj.mergeObjs(rules, obj)
+    return rules
 
 def fileRead(i_file, i_lock = True, i_verbose = False):
     try:
@@ -20,7 +95,7 @@ def fileRead(i_file, i_lock = True, i_verbose = False):
     except:
         return None
 
-    data = f.read(environ.FILE_MAX_LENGTH)
+    data = f.read(rulib.FILE_MAX_LENGTH)
     f.close()
 
     if i_verbose:
@@ -28,16 +103,23 @@ def fileRead(i_file, i_lock = True, i_verbose = False):
 
     return data
 
-def fileWrite(i_file, i_data, i_lock = True, i_verbose = False):
+def fileWrite(i_file, i_data, o_out=None):
     tmp_name = ('%s-%s') % (i_file, os.getpid())
     try:
         if isinstance(i_data, str):
             f = open(tmp_name, mode='w', encoding='utf-8')
         else:
             f = open(tmp_name, mode='wb')
+    except PermissionError:
+        err = 'Permissions denied to write file: ' + tmp_name
+        if o_out is not None: o_out['error'] = err
+        else: print(err)
+        return False
     except:
-        print('fileWrite: Unable open for writing: ' + tmp_name)
-        print('%s' % traceback.format_exc())
+        err = 'Unable open for writing: ' + tmp_name
+        err += '\n%s' % traceback.format_exc()
+        if o_out is not None: o_out['error'] = err
+        else: print(err)
         return False
 
     #if ($i_lock) _flock_($fHandle, LOCK_EX)
@@ -47,32 +129,38 @@ def fileWrite(i_file, i_data, i_lock = True, i_verbose = False):
 
     os.rename(tmp_name, i_file)
 
-    if i_verbose:
-        print('fileWrite: Written %d bytes to: %s' % (len(i_data), i_file))
-
     return True
 
 
 def readObj(i_file, o_out = None, i_lock = True):
     if not os.path.isfile(i_file):
-        if o_out:
-            o_out['error'] = 'No such file %s' % i_file
+        error = 'No such file %s' % i_file
+        if o_out is not None:
+            o_out['error'] = error
         return
 
     data = fileRead(i_file, i_lock)
     obj = None
-    if data:
+
+    if data is None:
+        error = 'Unable to read file %s' % i_file
+        if o_out is not None:
+            o_out['error'] = error
+        return
+
+    try:
         obj = json.loads(data)
-        return obj
+    except:
+        obj = None
+        if o_out is not None:
+            o_out['error'] = 'Can`t read json object from "%s".' % i_file
+            o_out['info'] = '%s' % traceback.format_exc()
 
-    if o_out:
-        o_out['error'] = 'Unable to read file %s' % i_file
-
-    return
+    return obj
 
 
-def writeObj(i_file, i_obj, i_lock = True, i_verbose = False):
-    if fileWrite(i_file, json.dumps(i_obj, indent='\t', sort_keys=True), i_lock, i_verbose):
+def writeObj(i_file, i_obj, o_out=None):
+    if fileWrite(i_file, json.dumps(i_obj, indent='\t', sort_keys=True), o_out):
         return True
 
     return False
@@ -96,9 +184,9 @@ def readConfig(i_file, o_out):
 
 
 def readUser(i_uid, i_full):
-    ufile_main = 'users/%s/%s.json' % (i_uid, i_uid)
-    ufile_news = 'users/%s/%s-news.json' % (i_uid, i_uid)
-    ufile_bookmarks = 'users/%s/%s-bookmarks.json' % (i_uid, i_uid)
+    ufile_main = '%s/users/%s/%s.json' % (rulib.CGRU_LOCATION, i_uid, i_uid)
+    ufile_news = '%s/users/%s/%s-news.json' % (rulib.CGRU_LOCATION, i_uid, i_uid)
+    ufile_bookmarks = '%s/users/%s/%s-bookmarks.json' % (rulib.CGRU_LOCATION, i_uid, i_uid)
 
     if not os.path.isfile(ufile_main):
         return None
@@ -134,8 +222,9 @@ def readUser(i_uid, i_full):
 
 
 def readAllUsers(o_out, i_full):
+    users_dir = os.path.join(rulib.CGRU_LOCATION, 'users')
     try:
-        listdir = os.listdir('users')
+        listdir = os.listdir(users_dir)
     except:
         o_out['error'] = 'Can`t open users folder.'
         o_out['info'] = '%s' % traceback.format_exc()
@@ -143,7 +232,7 @@ def readAllUsers(o_out, i_full):
 
     users = dict()
     for entry in listdir:
-        if not os.path.isdir(os.path.join('users', entry)):
+        if not os.path.isdir(os.path.join(users_dir, entry)):
             continue;
 
         user = readUser(entry, i_full);
@@ -155,7 +244,7 @@ def readAllUsers(o_out, i_full):
 
 def writeUser(i_user, i_full):
     uid = i_user['id']
-    udir = 'users/%s' % uid
+    udir = '%s/users/%s' % (rulib.CGRU_LOCATION, uid)
     ufile_main = '%s/%s.json' % (udir, uid)
     ufile_news = '%s/%s-news.json' % (udir, uid)
     ufile_bookmarks = '%s/%s-bookmarks.json' % (udir, uid)
@@ -200,7 +289,7 @@ def writeUser(i_user, i_full):
 
 
 def skipFile(i_filename):
-    if i_filename in environ.SKIPFILES:
+    if i_filename in rulib.SKIPFILES:
         return True
     return False
 
@@ -213,7 +302,7 @@ def walkDir(admin, i_recv, i_dir, o_out, i_depth):
         o_out['error'] = 'No such folder.'
         return
 
-    rufolder = None
+    rufolder = rulib.RUFOLDER
     if 'rufolder' in i_recv:
         rufolder = i_recv['rufolder']
     rufiles = None
@@ -298,9 +387,18 @@ def walkDir(admin, i_recv, i_dir, o_out, i_depth):
                     continue
 
                 # Read object from rufile
-                obj = readObj(os.path.join(path, ruentry), None, False)
-                if obj:
+                out = dict()
+                obj = readObj(os.path.join(path, ruentry), out, False)
+                if obj is not None:
                     o_out['rules'][ruentry] = obj
+                else:
+                    err = dict()
+                    if 'error' in out:
+                        err['ruerror'] = out
+                    else:
+                        err['ruerror'] = dict()
+                        err['ruerror']['error'] = 'Unable to read json object'
+                    o_out['rules'][ruentry] = err
 
             continue
 
@@ -325,7 +423,7 @@ def walkDir(admin, i_recv, i_dir, o_out, i_depth):
         if rufolder and lookahead:
             for sfile in lookahead:
                 sfilepath = os.path.join(path, rufolder, sfile) + '.json'
-                editobj.mergeObjs(folderObj, readObj(sfilepath))
+                rulib.editobj.mergeObjs(folderObj, readObj(sfilepath))
             thumbpath = os.path.join(path, rufolder, 'thumbnail.jpg')
             if os.path.isfile(thumbpath):
                 folderObj['thumbnail'] = True
