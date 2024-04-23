@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 if [ -e x264.tar.gz ] ; then
         tar xvf x264.tar.gz

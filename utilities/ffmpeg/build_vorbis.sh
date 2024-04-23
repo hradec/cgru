@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 libogg=$PWD/libogg
 cd $(ls -1drt libogg* | grep -v tar | tail -1)
