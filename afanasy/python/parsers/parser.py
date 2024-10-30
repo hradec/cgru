@@ -24,6 +24,7 @@ class parser(object):
         self.frame = 0
         self.percentframe = 0
         self.error = False
+        self.fatalerror = False
         self.warning = False
         self.badresult = False
         self.finishedsuccess = False
@@ -40,6 +41,8 @@ class parser(object):
         if not hasattr(self, 'str_warning'):
             self.str_warning = []
         if not hasattr(self, 'str_error'):
+            self.str_error = []
+        if not hasattr(self, 'str_fatalerror'):
             self.str_error = []
         if not hasattr(self, 'str_badresult'):
             self.str_badresult = []
@@ -125,6 +128,9 @@ class parser(object):
         for string in self.str_error:
             if lower.find(string.lower()) != -1:
                 self.error = True
+        for string in self.str_fatalerror:
+            if lower.find(string.lower()) != -1:
+                self.fatalerror = True
         for string in self.str_badresult:
             if lower.find(string.lower()) != -1:
                 self.badresult = True
