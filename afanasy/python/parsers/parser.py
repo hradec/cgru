@@ -43,7 +43,7 @@ class parser(object):
         if not hasattr(self, 'str_error'):
             self.str_error = []
         if not hasattr(self, 'str_fatalerror'):
-            self.str_error = []
+            self.str_fatalerror = []
         if not hasattr(self, 'str_badresult'):
             self.str_badresult = []
         if not hasattr(self, 'str_finishedsuccess'):
