@@ -1,0 +1,10 @@
+{
+
+"has_filesystem":true,
+"afanasy_enabled":true,
+
+"put":{
+    "input":"RESULT/JPG,RESULT/DPX"
+}
+
+}

@@ -2,7 +2,7 @@ p_PLAYER = true;
 
 p_savepath = '.commented';
 
-p_imgTypes = ['jpg','jpeg','png'];
+p_imgTypes = ['jpg','jpeg','png', 'exr'];
 
 p_path = null;
 p_args = {};
@@ -298,7 +298,7 @@ function p_WalkSequenceReceived( i_data)
 		var type = file.split('.').pop().toLowerCase();
 		if( p_imgTypes.indexOf( type ) == -1 ) continue;
 		var img = new Image();
-		img.src = RULES.root + p_path + '/' + file;
+		img.src = '/convert.php?f=' + RULES.root + p_path + '/' + file + '.jpg';
 		img.onload = function(e){p_ImgLoaded(e);}
 		img.onerror = function(e){p_ImgLoadError(e);}
 		img.m_file = walk.files[i];

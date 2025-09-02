@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export MAKEFLAGS="-j 32"
+
 im=$PWD/ImageMagick
 
 exr=`dirname $PWD`/openexr
