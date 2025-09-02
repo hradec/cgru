@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+export MAKEFLAGS="-j 32"
+
 for folder in `ls`; do
    [ ! -d $folder ] && continue
    [ $folder == "qt" ] && continue

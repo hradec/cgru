@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-CD=$PWD
+export MAKEFLAGS="-j 32"
+
 im=$PWD/ImageMagick
 
 exr=`dirname $PWD`/openexr
