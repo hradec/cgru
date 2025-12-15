@@ -204,6 +204,30 @@ float: left;
 .panel.right .section .param .value {
 float: right;
 }
+.panel.right .section.mesh_preview .mesh_preview_holder {
+	border: 1px solid #333;
+	border-radius: 3px;
+	background: #101010;
+	height: 260px;
+	position: relative;
+	overflow: hidden;
+}
+.panel.right .section.mesh_preview .mesh_preview_canvas {
+	width: 100%;
+	height: 100%;
+}
+.panel.right .section.mesh_preview .mesh_preview_holder canvas {
+	width: 100% !important;
+	height: 100% !important;
+	display: block;
+}
+.panel.right .section.mesh_preview .mesh_preview_message {
+	margin-top: 4px;
+	font-size: 11px;
+	color: #bbb;
+	text-align: center;
+	min-height: 14px;
+}
 .panel.right .section.folders .rules_link {
 float: right;
 display: none;

@@ -1618,6 +1618,23 @@ JobNode.prototype.updatePanels = function(i_selected) {
 */
 
 	}
+
+	this.updateMeshPreview();
+};
+
+JobNode.prototype.updateMeshPreview = function() {
+	if ((this.monitor == null) || (this.monitor.elPanelR == null))
+		return;
+
+	var preview = this.monitor.elPanelR.m_meshPreview;
+	if (preview == null)
+		return;
+
+	var sources = JobNode.buildMeshPreviewSources(this.params);
+	if (sources)
+		preview.load(sources);
+	else
+		preview.load(null);
 };
 
 JobNode.getMultiSelectionInfo = function(i_selected)
@@ -1663,6 +1680,219 @@ JobNode.getMultiSelectionInfo = function(i_selected)
 	return info;
 };
 
+JobNode.meshPreviewDefaults = {
+	"obj_extensions": ['obj'],
+	"texture_extensions": ['png', 'jpg', 'jpeg', 'webp'],
+	"obj_folder_keys": ['mesh_preview', 'mesh', 'geo', 'geometry', 'model', 'output'],
+	"texture_folder_keys": ['mesh_preview', 'mesh', 'texture', 'textures', 'output'],
+	"obj_candidates": ['@JOB@.obj', 'mesh.obj', 'preview.obj'],
+	"texture_candidates": [
+		'@JOB@.png', 'mesh.png', 'preview.png',
+		'@JOB@.jpg', 'mesh.jpg', 'preview.jpg'
+	]
+};
+
+JobNode.buildMeshPreviewSources = function(i_params)
+{
+	if ((i_params == null) || (i_params.folders == null))
+		return null;
+
+	var folders = i_params.folders;
+	var opts = JobNode.getMeshPreviewOptions(i_params.name);
+
+	var obj_path = JobNode.findPathWithExtensions(folders, opts.obj_extensions);
+	var tex_path = JobNode.findPathWithExtensions(folders, opts.texture_extensions);
+
+	if ((obj_path == null) && opts.obj_folder_keys.length)
+		obj_path = JobNode.buildPreviewPathFromKeys(
+			folders, opts.obj_folder_keys, opts.obj_candidates);
+
+	if ((tex_path == null) && opts.texture_folder_keys.length)
+		tex_path = JobNode.buildPreviewPathFromKeys(
+			folders, opts.texture_folder_keys, opts.texture_candidates);
+
+	var obj_url = JobNode.pathToPreviewUrl(obj_path);
+	if (obj_url == null)
+		return null;
+
+	var tex_url = tex_path ? JobNode.pathToPreviewUrl(tex_path) : null;
+
+	return {"obj": obj_url, "texture": tex_url};
+};
+
+JobNode.getMeshPreviewOptions = function(i_job_name)
+{
+	var cfg = cgru_Config.mesh_preview ? cgru_Config.mesh_preview : {};
+	var defaults = JobNode.meshPreviewDefaults;
+
+	var opts = {};
+	opts.obj_extensions = JobNode.cloneArray(cfg.obj_extensions, defaults.obj_extensions);
+	opts.texture_extensions = JobNode.cloneArray(cfg.texture_extensions, defaults.texture_extensions);
+
+	var obj_keys = cfg.obj_folder_keys ? cfg.obj_folder_keys : cfg.folder_keys;
+	var tex_keys = cfg.texture_folder_keys ? cfg.texture_folder_keys : cfg.folder_keys;
+	opts.obj_folder_keys = JobNode.cloneArray(obj_keys, defaults.obj_folder_keys);
+	opts.texture_folder_keys = JobNode.cloneArray(tex_keys, defaults.texture_folder_keys);
+
+	opts.obj_candidates =
+		JobNode.resolveCandidateNames(JobNode.cloneArray(cfg.obj_candidates, defaults.obj_candidates),
+			i_job_name, 'obj');
+	opts.texture_candidates = JobNode.resolveCandidateNames(
+		JobNode.cloneArray(cfg.texture_candidates, defaults.texture_candidates), i_job_name, 'png');
+	return opts;
+};
+
+JobNode.cloneArray = function(i_value, i_default)
+{
+	if (Array.isArray(i_value) && i_value.length)
+		return i_value.slice(0);
+	if (Array.isArray(i_default))
+		return i_default.slice(0);
+	return [];
+};
+
+JobNode.resolveCandidateNames = function(i_candidates, i_job_name, i_default_ext)
+{
+	var candidates = [];
+	var safe_name = JobNode.sanitizeName(i_job_name);
+	var has_placeholder = false;
+
+	for (var i = 0; i < i_candidates.length; i++)
+	{
+		var candidate = i_candidates[i];
+		if ((candidate == null) || (candidate.length == 0))
+			continue;
+
+		if (candidate.indexOf('@JOB@') != -1)
+			has_placeholder = true;
+
+		if (safe_name.length)
+			candidate = candidate.replace(/@JOB@/gi, safe_name);
+		else
+			candidate = candidate.replace(/@JOB@/gi, '');
+
+		if (candidate.length)
+			candidates.push(candidate);
+	}
+
+	if ((safe_name.length) && (false == has_placeholder))
+	{
+		var suffix = i_default_ext ? '.' + i_default_ext : '';
+		var lower = safe_name.toLowerCase();
+		if (suffix.length && (false == JobNode.endsWith(lower, suffix.toLowerCase())))
+			candidates.push(safe_name + suffix);
+		else
+			candidates.push(safe_name);
+	}
+
+	return candidates;
+};
+
+JobNode.sanitizeName = function(i_value)
+{
+	if (i_value == null)
+		return '';
+	return i_value.toString().replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+};
+
+JobNode.findPathWithExtensions = function(i_folders, i_extensions)
+{
+	if ((i_folders == null) || (i_extensions == null) || (i_extensions.length == 0))
+		return null;
+
+	for (var name in i_folders)
+	{
+		var path = cgru_PM(i_folders[name]);
+		if (JobNode.pathHasExtension(path, i_extensions))
+			return path;
+	}
+
+	return null;
+};
+
+JobNode.buildPreviewPathFromKeys = function(i_folders, i_keys, i_candidates)
+{
+	if ((i_folders == null) || (i_keys == null) || (i_keys.length == 0))
+		return null;
+
+	for (var k = 0; k < i_keys.length; k++)
+	{
+		var key = i_keys[k];
+		if (false == Object.prototype.hasOwnProperty.call(i_folders, key))
+			continue;
+
+		var base = cgru_PM(i_folders[key]);
+		if (base == null)
+			continue;
+
+		if ((i_candidates == null) || (i_candidates.length == 0))
+			return base;
+
+		for (var c = 0; c < i_candidates.length; c++)
+		{
+			var candidate = i_candidates[c];
+			if ((candidate == null) || (candidate.length == 0))
+				continue;
+
+			var full = JobNode.joinPaths(base, candidate);
+			if (full)
+				return full;
+		}
+	}
+
+	return null;
+};
+
+JobNode.joinPaths = function(i_base, i_addition)
+{
+	if ((i_base == null) || (i_addition == null))
+		return null;
+
+	var base = i_base.replace(/[/\\]+$/g, '');
+	var addition = i_addition.replace(/^[/\\]+/g, '');
+	return base + '/' + addition;
+};
+
+JobNode.pathHasExtension = function(i_path, i_extensions)
+{
+	if ((i_path == null) || (i_extensions == null) || (i_extensions.length == 0))
+		return false;
+
+	var lower = i_path.toLowerCase();
+	for (var e = 0; e < i_extensions.length; e++)
+	{
+		var ext = '.' + i_extensions[e].toLowerCase();
+		if (JobNode.endsWith(lower, ext))
+			return true;
+	}
+	return false;
+};
+
+JobNode.endsWith = function(i_value, i_suffix)
+{
+	if ((i_value == null) || (i_suffix == null))
+		return false;
+	if (i_suffix.length > i_value.length)
+		return false;
+	return i_value.indexOf(i_suffix, i_value.length - i_suffix.length) ==
+		i_value.length - i_suffix.length;
+};
+
+JobNode.pathToPreviewUrl = function(i_path)
+{
+	if ((i_path == null) || (i_path.length == 0))
+		return null;
+
+	if ((i_path.indexOf('http://') == 0) || (i_path.indexOf('https://') == 0))
+		return i_path;
+
+	var path = cgru_PM(i_path);
+	if ((path == null) || (path.length == 0))
+		return null;
+	var url = cgru_RulesLink(path);
+	return url;
+};
+
 JobNode.resetPanels = function(i_monitor) {
 	i_monitor.ctrl_btns.errors.classList.remove('errors');
 	i_monitor.ctrl_btns.errors.classList.add('hide_childs');
@@ -1674,6 +1904,9 @@ JobNode.resetPanels = function(i_monitor) {
 			elFolders.removeChild(elFolders.m_elFolders[i]);
 	elFolders.m_elFolders = [];
 	elFolders.m_elRules.style.display = 'none';
+
+	if (i_monitor.elPanelR.m_meshPreview)
+		i_monitor.elPanelR.m_meshPreview.load(null);
 };
 
 JobNode.createPanels = function(i_monitor) {
@@ -1813,6 +2046,24 @@ JobNode.createPanels = function(i_monitor) {
 	elPanelR.m_elFolders.appendChild(el);
 	el.textContent = 'Folders';
 	el.classList.add('caption');
+
+	// Mesh preview:
+	var elMeshSection = document.createElement('div');
+	elPanelR.appendChild(elMeshSection);
+	elMeshSection.classList.add('section');
+	elMeshSection.classList.add('mesh_preview');
+
+	var elMeshCaption = document.createElement('div');
+	elMeshSection.appendChild(elMeshCaption);
+	elMeshCaption.classList.add('caption');
+	elMeshCaption.textContent = 'Mesh Preview';
+
+	var elMeshContainer = document.createElement('div');
+	elMeshSection.appendChild(elMeshContainer);
+	elMeshContainer.classList.add('mesh_preview_holder');
+
+	elPanelR.m_meshPreviewSection = elMeshSection;
+	elPanelR.m_meshPreview = new MeshPreview(elMeshContainer, elMeshSection);
 
 
 	// Work:

@@ -5,6 +5,13 @@
 
 	"af_serverport":51000,
 
+	"mesh_preview":{
+		"obj_folder_keys":["mesh_preview","output"],
+		"texture_folder_keys":["mesh_preview","output"],
+		"obj_candidates":["scene_dense_mesh_refine_texture_high.obj","mesh.obj"],
+		"texture_candidates":["scene_dense_mesh_refine_texture_high_material0000_map_Kd.png","@JOB@.png","mesh.png","preview.png","@JOB@.jpg","mesh.jpg","preview.jpg"]
+	},
+	
 		"":"Afanasy server will use IPv6 if it is configured on server interface",
 	"af_ipv6_disable":1,
 		"":"IPv6 is disabled by default, to enable it, set this parameter value to 0",
@@ -27,6 +34,7 @@
 		"":"@ARG@ - will be replaced with render name:",
 		"":"@ASK@ - raise dialog to ask a string:",
 		"":"@IP@  - will be replaced with render ip address:",
+
 
 	"OS_unix":{
 		"af_store_folder":"/var/tmp/afanasy",

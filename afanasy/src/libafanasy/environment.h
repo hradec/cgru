@@ -169,7 +169,7 @@ public:
 
 	static inline bool hasRULES() { return rules_url.size(); }
 	static inline std::vector<std::string> & getRenderWindowsMustDie() { return render_windowsmustdie; }
-//	static inline std::vector<std::string> & getProjectsRoot()         { return projects_root;         }
+	static inline const std::vector<std::string> & getProjectsRoot()   { return projects_root;         }
 
 	static inline const std::string & getRenderCmdReboot()     { return render_cmd_reboot;      }
 	static inline const std::string & getRenderCmdShutdown()   { return render_cmd_shutdown;    }

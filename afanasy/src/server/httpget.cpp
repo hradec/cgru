@@ -16,6 +16,8 @@
 
 #include "httpget.hpp"
 
+#include <cctype>
+
 #include "../include/afanasy.h"
 
 #include "../libafanasy/environment.h"
@@ -44,6 +46,110 @@ static const char * http_get_blacklist_files[http_get_blacklist_files_len] = {
 	"htaccess", // do not allow access to the .htaccess file
 	".json"		// do not allow access to any json file
 };
+
+static int hexCharToInt(char c)
+{
+	if ((c >= '0') && (c <= '9'))
+		return c - '0';
+	c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+	if ((c >= 'a') && (c <= 'f'))
+		return 10 + (c - 'a');
+	return -1;
+}
+
+static std::string urlDecode(const std::string &i_value)
+{
+	std::string result;
+	result.reserve(i_value.size());
+
+	for (size_t i = 0; i < i_value.size(); i++)
+	{
+		char c = i_value[i];
+		if (c == '%' && (i + 2 < i_value.size()))
+		{
+			int hi = hexCharToInt(i_value[i+1]);
+			int lo = hexCharToInt(i_value[i+2]);
+			if ((hi >= 0) && (lo >= 0))
+			{
+				result.push_back(static_cast<char>((hi << 4) | lo));
+				i += 2;
+				continue;
+			}
+		}
+		else if (c == '+')
+		{
+			result.push_back(' ');
+			continue;
+		}
+
+		result.push_back(c);
+	}
+
+	return result;
+}
+
+static void normalizeLeadingSlash(std::string &io_path)
+{
+	if (io_path.empty())
+		return;
+
+	if ((io_path[0] != '/') && (io_path[0] != '\\'))
+		return;
+
+	size_t pos = 0;
+	while ((pos < io_path.size()) && ((io_path[pos] == '/') || (io_path[pos] == '\\')))
+		pos++;
+
+	if (pos > 1)
+	{
+		io_path.erase(0, pos - 1);
+		if (io_path.empty())
+			io_path = "/";
+		else
+			io_path[0] = '/';
+	}
+	else if (io_path[0] == '\\')
+		io_path[0] = '/';
+}
+
+static bool isProjectsRootAllowed(const std::string &i_path)
+{
+	if (false == af::pathIsAbsolute(i_path))
+		return false;
+
+	std::string normalized = i_path;
+	normalizeLeadingSlash(normalized);
+	af::pathFilter(normalized);
+
+	const std::vector<std::string> &roots = af::Environment::getProjectsRoot();
+	for (size_t r = 0; r < roots.size(); r++)
+	{
+		if (roots[r].empty())
+			continue;
+
+		std::string root = roots[r];
+		af::pathFilter(root);
+		if (root.empty())
+			continue;
+
+		std::string compare_root = root;
+		if ((compare_root.back() != '/') && (compare_root.back() != '\\'))
+			compare_root += '/';
+
+		if (normalized.compare(0, root.size(), root) == 0)
+		{
+			if (normalized.size() == root.size())
+				return true;
+			char next = normalized[root.size()];
+			if ((next == '/') || (next == '\\'))
+				return true;
+		}
+		if (normalized.compare(0, compare_root.size(), compare_root) == 0)
+			return true;
+	}
+
+	return false;
+}
 
 af::Msg *HttpGet::process(const af::Msg *i_msg)
 {
@@ -93,6 +199,8 @@ std::string HttpGet::getFileNameFromInMsg(const af::Msg *i_msg)
 
 	static const char tasks_file[] = "@TMP@";
 	static const int tasks_file_len = strlen(tasks_file);
+	static const char project_file[] = "@PROJECT@";
+	static const int project_file_len = strlen(project_file);
 
 	char *get = i_msg->data();
 	int get_len = i_msg->dataLen();
@@ -127,6 +235,35 @@ std::string HttpGet::getFileNameFromInMsg(const af::Msg *i_msg)
 			}
 			// printf("GET TMP FILE: %s\n", file_name.c_str());
 		}
+		else if (file_name.find(project_file) == 0)
+		{
+			std::string encoded = file_name.substr(project_file_len);
+			encoded = urlDecode(encoded);
+			normalizeLeadingSlash(encoded);
+			if (encoded.empty())
+			{
+				AFCommon::QueueLogError("GET: Empty @PROJECT@ path from "
+					+ i_msg->getAddress().v_generateInfoString());
+				file_name.clear();
+			}
+			else if (false == af::pathIsAbsolute(encoded))
+			{
+				AFCommon::QueueLogError("GET: Invalid @PROJECT@ path (not absolute): "
+					+ encoded);
+				file_name.clear();
+			}
+			else if (false == isProjectsRootAllowed(encoded))
+			{
+				AFCommon::QueueLogError("GET: Access to '" + encoded +
+					"' denied, not within projects_root.");
+				file_name.clear();
+			}
+			else
+			{
+				af::pathFilter(encoded);
+				file_name = encoded;
+			}
+		}
 		else
 		{
 			// Add a directory index
@@ -154,8 +291,13 @@ std::string HttpGet::getMimeTypeFromFileName(const std::string &filename)
 	if (extension == "png") return "image/png";
 	if (extension == "jpeg" || extension == "jpg") return "image/jpeg";
 	if (extension == "gif") return "image/gif";
+	if (extension == "htm" || extension == "html") return "text/html; charset=UTF-8";
+	if (extension == "obj" || extension == "mtl") return "text/plain";
+	if (extension == "exr") return "image/exr";
+	if (extension == "tif" || extension == "tiff") return "image/tiff";
+	if (extension == "bmp") return "image/bmp";
 
-	return "text/html; charset=UTF-8";
+	return "application/octet-stream";
 }
 
 bool HttpGet::getValidateFileName(const std::string &i_name)
