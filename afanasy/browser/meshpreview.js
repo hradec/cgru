@@ -276,17 +276,37 @@ MeshPreview.prototype.onMeshLoaded = function(i_object, i_texture)
 			map.magFilter = THREE.LinearFilter;
 		}
 
-		map.needsUpdate = true;
+			map.needsUpdate = true;
 
-		console.log('MeshPreview: texture info',
-			width + 'x' + height,
-			'max', maxTexture,
-			'minFilter', map.minFilter,
-			'wrap', map.wrapS + '/' + map.wrapT,
-			'mipmaps', map.generateMipmaps);
+			console.log('MeshPreview: texture info',
+				width + 'x' + height,
+				'max', maxTexture,
+				'minFilter', map.minFilter,
+				'wrap', map.wrapS + '/' + map.wrapT,
+				'mipmaps', map.generateMipmaps);
 
-		return map;
-	};
+			try
+			{
+				if (width > 0 && height > 0)
+				{
+					var sampleCanvas = document.createElement('canvas');
+					sampleCanvas.width = 1;
+					sampleCanvas.height = 1;
+					var sampleCtx = sampleCanvas.getContext('2d');
+					var sx = Math.max(0, Math.min(width - 1, Math.floor(width * 0.5)));
+					var sy = Math.max(0, Math.min(height - 1, Math.floor(height * 0.5)));
+					sampleCtx.drawImage(map.image, sx, sy, 1, 1, 0, 0, 1, 1);
+					var sample = sampleCtx.getImageData(0, 0, 1, 1).data;
+					console.log('MeshPreview: texture sample RGBA', sample[0], sample[1], sample[2], sample[3]);
+				}
+			}
+			catch (err)
+			{
+				console.warn('MeshPreview: texture sample failed', err);
+			}
+
+			return map;
+		};
 
 	var applyMaterial = function(map)
 	{
@@ -307,30 +327,44 @@ MeshPreview.prototype.onMeshLoaded = function(i_object, i_texture)
 					self.elCanvas.style.backgroundImage = 'url(' + previewUrl + ')';
 				else
 					self.elCanvas.style.backgroundImage = '';
-			material = new THREE.ShaderMaterial({
-				uniforms: {
-					uMap: { type: "t", value: map }
-				},
-				vertexShader: `
-					varying vec2 vUv;
-					void main() {
-					  vUv = uv;
-					  vUv.r = 1.0-vUv.r;
-					  vUv.g = 1.0-vUv.g;
-					  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-					}
-				`,
-				fragmentShader: `
-					uniform sampler2D uMap;
-					varying vec2 vUv;
-					void main() {
-					  vec4 tex = texture2D(uMap, vUv);
-					  gl_FragColor = vec4(tex.r, tex.g, tex.b, 1.0);
-					//   gl_FragColor = vec4(vUv.r,vUv.g,0.0, 1.0);
-					}
-				`,
-				side: THREE.DoubleSide
-			});
+					material = new THREE.ShaderMaterial({
+						uniforms: {
+							uMap: { value: map },
+							// xy = scale, zw = offset
+							uUvTransform: { value: new THREE.Vector4(1, 1, 0, 0) },
+							// 0.0 = no flip, 1.0 = flip
+							uFlipU: { value: 0.0 },
+						uFlipV: { value: 0.0 }
+					},
+					vertexShader: `
+						varying vec2 vUv;
+						void main() {
+						  vUv = uv;
+						  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+						}
+					`,
+					fragmentShader: `
+						uniform sampler2D uMap;
+						uniform vec4 uUvTransform;
+						uniform float uFlipU;
+						uniform float uFlipV;
+						varying vec2 vUv;
+						void main() {
+						  vec2 uv = vUv * uUvTransform.xy + uUvTransform.zw;
+						  if (uFlipU > 0.5) uv.x = 1.0 - uv.x;
+						  if (uFlipV > 0.5) uv.y = 1.0 - uv.y;
+
+						  // If UVs are outside 0..1 (very common), wrap them in shader.
+						  // This also works around WebGL1 NPOT limitations (texture wrap must be ClampToEdge).
+						  uv = fract(uv);
+
+						  vec4 tex = texture2D(uMap, uv);
+						  gl_FragColor = vec4(tex.r, tex.g, tex.b, 1.0);
+						//   gl_FragColor = vec4(vUv.r,vUv.g,0.0, 1.0);
+						}
+					`,
+					side: THREE.DoubleSide
+				});
 		}
 		else
 		{
@@ -357,11 +391,38 @@ MeshPreview.prototype.onMeshLoaded = function(i_object, i_texture)
 		i_object.traverse(function(child) {
 			if (child.isMesh)
 			{
-				ensureGeometryNormals(child);
-				var mat = material.clone();
-				child.material = mat;
-				child.castShadow = false;
-				child.receiveShadow = false;
+					ensureGeometryNormals(child);
+					var mat = material.clone();
+					if (map && mat.uniforms && mat.uniforms.uMap)
+						mat.uniforms.uMap.value = map;
+					child.material = mat;
+					child.castShadow = false;
+					child.receiveShadow = false;
+
+					if (child.geometry && child.geometry.attributes && child.geometry.attributes.uv &&
+						child.geometry.attributes.uv.array && (child.__meshpreviewLoggedUv !== true))
+					{
+						// try
+						{
+							var uvs = child.geometry.attributes.uv.array;
+						var minU = 1e20, minV = 1e20, maxU = -1e20, maxV = -1e20;
+						for (var i = 0; i < uvs.length; i += 2)
+						{
+							var u = uvs[i];
+							var v = uvs[i + 1];
+							if (u < minU) minU = u;
+							if (v < minV) minV = v;
+							if (u > maxU) maxU = u;
+							if (v > maxV) maxV = v;
+							}
+							console.log('MeshPreview: UV range', minU, minV, '->', maxU, maxV);
+							child.__meshpreviewLoggedUv = true;
+						}
+					// catch (err)
+					// {
+					// 	console.warn('MeshPreview: UV range calc failed', err);
+					// }
+				}
 
 				if (addWireframe)
 				{
