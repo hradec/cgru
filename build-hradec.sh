@@ -35,6 +35,7 @@ else
     fi
     if [ "$(echo $1 | grep '\-a')" != "" ] ; then
         cd $CD/afanasy/src/project.cmake/
+	make clean
         rm -rf ./CMakeCache.txt
         CMAKE_C_COMPILER=$CC  CMAKE_CXX_COMPILER=$CXX ./build.sh --nosql --nogui -j 8
     fi

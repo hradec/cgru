@@ -50,6 +50,9 @@
 
 #include "profiler.h"
 
+#include <cstring>
+#include <cstdlib>
+
 #ifdef WINNT
 #define MSG_DONTWAIT 0
 #else
@@ -58,7 +61,10 @@
 
 #ifdef LINUX
 #include <sys/epoll.h>
+#include <sys/sendfile.h>
+#include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 #endif
 
 extern bool AFRunning;
@@ -70,6 +76,126 @@ extern bool AFRunning;
 
 af::Msg * threadProcessMsgCase( ThreadArgs * i_args, af::Msg * i_msg);
 af::Msg * threadRunCycleCase( ThreadArgs * i_args, af::Msg * i_msg);
+
+#ifdef LINUX
+static bool parseHttpStreamFileHeaders(
+	const std::string &i_header,
+	std::string *o_clean_header,
+	std::string *o_path,
+	off_t *o_offset,
+	off_t *o_length)
+{
+	if (o_clean_header)
+		o_clean_header->clear();
+	if (o_path)
+		o_path->clear();
+	if (o_offset)
+		*o_offset = 0;
+	if (o_length)
+		*o_length = -1;
+
+	bool found = false;
+	std::string path;
+	off_t offset = 0;
+	off_t length = -1;
+
+	// Strip internal streaming headers from output, but parse their values.
+	size_t p = 0;
+	std::string clean;
+	while (p < i_header.size())
+	{
+		size_t eol = i_header.find('\n', p);
+		if (eol == std::string::npos)
+			eol = i_header.size() - 1;
+
+		size_t line_len = (eol + 1) - p;
+		std::string line = i_header.substr(p, line_len);
+
+		// Preserve the blank line.
+		if ((line == "\r\n") || (line == "\n"))
+		{
+			clean += line;
+			p = eol + 1;
+			continue;
+		}
+
+		// Parse and filter internal headers:
+		if (line.find("X-Afanasy-File:") == 0)
+		{
+			size_t pos = strlen("X-Afanasy-File:");
+			while ((pos < line.size()) && (line[pos] == ' ' || line[pos] == '\t'))
+				pos++;
+			size_t end = line.find_first_of("\r\n", pos);
+			if (end == std::string::npos)
+				end = line.size();
+			while ((end > pos) && (line[end - 1] == '\r' || line[end - 1] == '\n'))
+				end--;
+			if (end > pos)
+			{
+				path = line.substr(pos, end - pos);
+				found = true;
+			}
+			p = eol + 1;
+			continue;
+		}
+		if (line.find("X-Afanasy-File-Offset:") == 0)
+		{
+			size_t pos = strlen("X-Afanasy-File-Offset:");
+			while ((pos < line.size()) && (line[pos] == ' ' || line[pos] == '\t'))
+				pos++;
+			offset = static_cast<off_t>(atoll(line.c_str() + pos));
+			p = eol + 1;
+			continue;
+		}
+		if (line.find("X-Afanasy-File-Length:") == 0)
+		{
+			size_t pos = strlen("X-Afanasy-File-Length:");
+			while ((pos < line.size()) && (line[pos] == ' ' || line[pos] == '\t'))
+				pos++;
+			length = static_cast<off_t>(atoll(line.c_str() + pos));
+			p = eol + 1;
+			continue;
+		}
+
+		clean += line;
+		p = eol + 1;
+	}
+
+	if (false == found)
+		return false;
+
+	if (o_clean_header)
+		*o_clean_header = clean;
+	if (o_path)
+		*o_path = path;
+	if (o_offset)
+		*o_offset = offset;
+	if (o_length)
+		*o_length = length;
+
+	return true;
+}
+
+static bool writeAllBlocking(int i_fd, const char *i_buf, size_t i_len)
+{
+	size_t offset = 0;
+	while (offset < i_len)
+	{
+		ssize_t r = write(i_fd, i_buf + offset, i_len - offset);
+		if (r > 0)
+		{
+			offset += static_cast<size_t>(r);
+			continue;
+		}
+		if (r == 0)
+			return false;
+		if (errno == EINTR)
+			continue;
+		return false;
+	}
+	return true;
+}
+#endif
 
 SocketItem::SocketItem( int i_sfd, sockaddr_storage * i_sas):
 	m_state( SSReading),
@@ -87,6 +213,11 @@ SocketItem::SocketItem( int i_sfd, sockaddr_storage * i_sas):
 	m_write_buffer( NULL),
 	m_write_size(0),
 	m_bytes_written(0),
+	m_http_streaming(false),
+	m_http_stream_fd(-1),
+	m_http_stream_offset(0),
+	m_http_stream_size(0),
+	m_http_stream_header_sent(0),
 	#endif // LINUX
 
 	m_zombie(false)
@@ -129,6 +260,8 @@ SocketItem::~SocketItem()
 	#ifdef LINUX
 	if( m_write_buffer )
 		delete [] m_write_buffer;
+	if (m_http_stream_fd != -1)
+		close(m_http_stream_fd);
 	#endif // LINUX
 
 	// Delete profiler. 
@@ -253,6 +386,82 @@ void SocketItem::writeMsg()
 		m_msg_ans->setTypeHTTP();
 	else if(( m_msg_req->type() == af::Msg::TJSONBIN ) && ( m_msg_ans->type() == af::Msg::TJSON ))
 		m_msg_ans->setJSONBIN();
+
+#ifdef LINUX
+	// Stream large files for HTTP GET (HttpGet::process adds X-Afanasy-File header).
+	if ((m_msg_req->type() == af::Msg::THTTPGET) && (m_msg_ans->type() == af::Msg::THTTPGET))
+	{
+		const int offset = m_msg_ans->getHeaderOffset();
+		const int len = m_msg_ans->writeSize() - offset;
+		if (len > 0)
+		{
+			std::string header(m_msg_ans->buffer() + offset, len);
+			std::string clean_header;
+			std::string path;
+			off_t stream_offset = 0;
+			off_t stream_length = -1;
+			if (parseHttpStreamFileHeaders(header, &clean_header, &path, &stream_offset, &stream_length))
+			{
+				int fd = open(path.c_str(), O_RDONLY);
+				if (fd == -1)
+				{
+					AF_ERR << "HTTP stream open failed: " << path << " : " << strerror(errno);
+					closeSocket();
+					return;
+				}
+
+				struct stat st;
+				if ((-1 == fstat(fd, &st)) || (false == S_ISREG(st.st_mode)))
+				{
+					AF_ERR << "HTTP stream stat failed: " << path;
+					close(fd);
+					closeSocket();
+					return;
+				}
+
+				if (stream_offset < 0)
+					stream_offset = 0;
+				off_t stream_end = st.st_size;
+				if (stream_length >= 0)
+				{
+					stream_end = stream_offset + stream_length;
+					if (stream_end > st.st_size)
+						stream_end = st.st_size;
+				}
+
+				if (false == writeAllBlocking(m_sfd, clean_header.data(), clean_header.size()))
+				{
+					close(fd);
+					closeSocket();
+					return;
+				}
+
+				off_t off = stream_offset;
+				while (off < stream_end)
+				{
+					size_t chunk = 1 << 20;
+					off_t left = stream_end - off;
+					if (left < static_cast<off_t>(chunk))
+						chunk = static_cast<size_t>(left);
+					ssize_t sent = sendfile(m_sfd, fd, &off, chunk);
+					if (sent > 0)
+						continue;
+					if (sent == 0)
+						break;
+					if (errno == EINTR)
+						continue;
+					close(fd);
+					closeSocket();
+					return;
+				}
+
+				close(fd);
+				waitClose();
+				return;
+			}
+		}
+	}
+#endif
 
 	#ifdef LINUX
 	if( SocketsProcessing::UsingEpoll())
@@ -428,10 +637,119 @@ void SocketItem::writeData()
 		return;
 	}
 
+	// Non-blocking streaming for large HTTP GET files.
+	if (m_http_streaming)
+	{
+		// Send remaining HTTP header first:
+		if (m_http_stream_header_sent < static_cast<int>(m_http_stream_header.size()))
+		{
+			int remaining = static_cast<int>(m_http_stream_header.size()) - m_http_stream_header_sent;
+			int bytes = write(m_sfd, m_http_stream_header.c_str() + m_http_stream_header_sent, remaining);
+			if (bytes > 0)
+			{
+				m_http_stream_header_sent += bytes;
+				return;
+			}
+			if ((bytes == -1) && (errno == EAGAIN))
+				return;
+
+			closeSocket();
+			return;
+		}
+
+		// Then stream file data:
+		if (m_http_stream_fd == -1)
+		{
+			closeSocket();
+			return;
+		}
+
+		if (m_http_stream_offset >= m_http_stream_size)
+		{
+			close(m_http_stream_fd);
+			m_http_stream_fd = -1;
+			m_http_streaming = false;
+			waitClose();
+			return;
+		}
+
+		off_t off = m_http_stream_offset;
+		size_t chunk = 1 << 20;
+		off_t left = m_http_stream_size - m_http_stream_offset;
+		if (left < static_cast<off_t>(chunk))
+			chunk = static_cast<size_t>(left);
+
+		ssize_t sent = sendfile(m_sfd, m_http_stream_fd, &off, chunk);
+		if (sent > 0)
+		{
+			m_http_stream_offset = off;
+			return;
+		}
+		if (sent == 0)
+		{
+			m_http_stream_offset = m_http_stream_size;
+			return;
+		}
+		if (errno == EAGAIN)
+			return;
+
+		closeSocket();
+		return;
+	}
+
 	if( NULL ==  m_write_buffer )
 	{
 		// This is the first writing call.
 		// We should allocate and fill in write buffer.
+		// Detect streaming header for large HTTP GET responses.
+		if ((m_msg_req->type() == af::Msg::THTTPGET) && (m_msg_ans->type() == af::Msg::THTTPGET))
+		{
+			const int offset = m_msg_ans->getHeaderOffset();
+			const int len = m_msg_ans->writeSize() - offset;
+			if (len > 0)
+			{
+				std::string header_only(m_msg_ans->buffer() + offset, len);
+				std::string clean_header;
+				std::string path;
+				off_t stream_offset = 0;
+				off_t stream_length = -1;
+				if (parseHttpStreamFileHeaders(header_only, &clean_header, &path, &stream_offset, &stream_length))
+				{
+					int fd = open(path.c_str(), O_RDONLY);
+					if (fd != -1)
+					{
+						struct stat st;
+						if ((-1 != fstat(fd, &st)) && S_ISREG(st.st_mode))
+						{
+							if (stream_offset < 0)
+								stream_offset = 0;
+							off_t stream_end = st.st_size;
+							if (stream_length >= 0)
+							{
+								stream_end = stream_offset + stream_length;
+								if (stream_end > st.st_size)
+									stream_end = st.st_size;
+							}
+
+							m_http_streaming = true;
+							m_http_stream_fd = fd;
+							m_http_stream_offset = stream_offset;
+							m_http_stream_size = stream_end;
+							m_http_stream_header = clean_header;
+							m_http_stream_header_sent = 0;
+							// Start streaming immediately on this call:
+							return;
+						}
+						close(fd);
+					}
+
+					AF_ERR << "HTTP stream init failed: " << path;
+					closeSocket();
+					return;
+				}
+			}
+		}
+
 		std::string header = af::msgMakeWriteHeader( m_msg_ans);
 		m_write_size = header.size() + m_msg_ans->writeSize() - m_msg_ans->getHeaderOffset();
 		m_write_buffer = new char[m_write_size];
@@ -569,6 +887,15 @@ void SocketItem::closeSocket()
 	}
 
 	m_state = SSClosed;
+
+	#ifdef LINUX
+	if (m_http_stream_fd != -1)
+	{
+		close(m_http_stream_fd);
+		m_http_stream_fd = -1;
+	}
+	m_http_streaming = false;
+	#endif
 
 	#ifdef LINUX
 	if( false == SocketsProcessing::UsingEpoll())
@@ -949,4 +1276,3 @@ void SocketsProcessing::EpollDel( int i_sfd)
 	epoll_ctl( ms_this->m_epoll_fd, EPOLL_CTL_DEL, i_sfd, NULL);
 }
 #endif // LINUX
-

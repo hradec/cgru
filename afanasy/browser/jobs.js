@@ -37,7 +37,469 @@ var BarERRrgb = '#F00';
 var BarWRCrgb = '#4AC';
 
 JobNode.onMonitorCreate = function() {
+	JobNode.loadOpenStates();
 	JobNode.createParams();
+	if (arguments.length && arguments[0] && arguments[0].type == 'jobs')
+		JobNode.createOpenCloseAllCtrls(arguments[0]);
+};
+
+JobNode.loadOpenStates = function() {
+	JobNode.open_states = {};
+	if (localStorage['jobs_open_states'])
+	{
+		try
+		{
+			JobNode.open_states = JSON.parse(localStorage['jobs_open_states']) || {};
+		}
+		catch (err)
+		{
+			JobNode.open_states = {};
+		}
+	}
+};
+
+JobNode.saveOpenStates = function() {
+	try
+	{
+		localStorage['jobs_open_states'] = JSON.stringify(JobNode.open_states || {});
+	}
+	catch (err)
+	{
+	}
+};
+
+JobNode.makeSectionCollapsible = function(i_section, i_storage_key, i_default_collapsed, i_onToggle)
+{
+	if (i_section == null)
+		return;
+
+	i_section.classList.add('collapsible');
+
+	var caption = i_section.querySelector('.caption');
+	if (caption == null)
+		return;
+
+	var toggle = document.createElement('span');
+	toggle.classList.add('section_toggle');
+	caption.insertBefore(toggle, caption.firstChild);
+
+	var storageKey = 'jobs_section_' + i_storage_key + '_collapsed';
+	var collapsed = i_default_collapsed ? true : false;
+	if (localStorage[storageKey] != null)
+		collapsed = localStorage[storageKey] == 'ON';
+
+	var apply = function()
+	{
+		if (collapsed)
+			i_section.classList.add('collapsed');
+		else
+			i_section.classList.remove('collapsed');
+		toggle.textContent = collapsed ? '▶' : '▼';
+		localStorage[storageKey] = collapsed ? 'ON' : 'OFF';
+		if (i_onToggle)
+			i_onToggle(collapsed);
+	};
+
+	caption.onclick = function(e)
+	{
+		e.stopPropagation();
+		e.preventDefault();
+		collapsed = !collapsed;
+		apply();
+		return false;
+	};
+
+	apply();
+};
+
+JobNode.copyToClipboard = function(i_text) {
+	var text = '' + (i_text != null ? i_text : '');
+
+	if (navigator.clipboard && navigator.clipboard.writeText)
+		return navigator.clipboard.writeText(text);
+
+	return new Promise(function(resolve, reject) {
+		try
+		{
+			var ta = document.createElement('textarea');
+			ta.value = text;
+			ta.setAttribute('readonly', '');
+			ta.style.position = 'fixed';
+			ta.style.left = '-10000px';
+			ta.style.top = '0';
+			document.body.appendChild(ta);
+			ta.select();
+			var ok = document.execCommand('copy');
+			document.body.removeChild(ta);
+			if (ok)
+				resolve();
+			else
+				reject(new Error('copy failed'));
+		}
+		catch (err)
+		{
+			reject(err);
+		}
+	});
+};
+
+JobNode.getDescriptionLastLine = function(i_html) {
+	if (i_html == null)
+		return '';
+
+	var div = document.createElement('div');
+	div.innerHTML = i_html;
+
+	var text = '';
+	if (div.innerText != null)
+		text = div.innerText;
+	else if (div.textContent != null)
+		text = div.textContent;
+
+	text = (text || '').replace(/\r/g, '');
+	var lines = text.split('\n');
+	for (var i = lines.length - 1; i >= 0; i--)
+	{
+		var line = lines[i].trim();
+		if (line.length)
+			return line;
+	}
+	return '';
+};
+
+JobNode.getAnnotationLines = function(i_html) {
+	if (i_html == null)
+		return [];
+
+	var div = document.createElement('div');
+
+	var html = i_html;
+	html = html.replace(/<\s*br\s*\/?\s*>/gi, '\n');
+	html = html.replace(/<\s*\/p\s*>/gi, '\n');
+	html = html.replace(/<\s*\/div\s*>/gi, '\n');
+	html = html.replace(/<\s*\/li\s*>/gi, '\n');
+	div.innerHTML = html;
+
+	var text = '';
+	if (div.textContent != null)
+		text = div.textContent;
+	else if (div.innerText != null)
+		text = div.innerText;
+
+	text = (text || '').replace(/\r/g, '');
+	var raw_lines = text.split('\n');
+	var lines = [];
+	for (var i = 0; i < raw_lines.length; i++)
+	{
+		var line = raw_lines[i].trim();
+		if (line.length)
+			lines.push(line);
+	}
+	return lines;
+};
+
+JobNode.getNameDateTimeKey = function(i_name) {
+	if (i_name == null)
+		return 0;
+
+	var str = '' + i_name;
+	var re = /_(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})/g;
+	var m = null;
+	var last = null;
+	while ((m = re.exec(str)) !== null)
+		last = m;
+
+	if (last == null)
+		return 0;
+
+	return parseInt(last[1] + last[2] + last[3] + last[4] + last[5] + last[6]);
+};
+
+JobNode.setCollapsedTextLines = function(i_el, i_lines) {
+	if (i_el == null)
+		return;
+
+	while (i_el.firstChild)
+		i_el.removeChild(i_el.firstChild);
+
+	if ((i_lines == null) || (i_lines.length == 0))
+		return;
+
+	for (var i = 0; i < i_lines.length; i++)
+	{
+		if (i != 0)
+			i_el.appendChild(document.createElement('br'));
+		i_el.appendChild(document.createTextNode(i_lines[i]));
+	}
+};
+
+JobNode.setErrVisible = function(i_monitor, i_visible) {
+	if ((i_monitor == null) || (i_monitor.elMonitor == null))
+		return;
+
+	if (i_visible)
+		i_monitor.elMonitor.classList.remove('hide_err');
+	else
+		i_monitor.elMonitor.classList.add('hide_err');
+
+	if (i_monitor.m_btnErrOnly)
+	{
+		if (i_visible)
+			i_monitor.m_btnErrOnly.classList.add('active');
+		else
+			i_monitor.m_btnErrOnly.classList.remove('active');
+	}
+
+	localStorage['jobs_show_err'] = i_visible ? 'ON' : 'OFF';
+};
+
+JobNode.loadErrVisible = function(i_monitor) {
+	var visible = true;
+	if (localStorage['jobs_show_err'] != null)
+		visible = localStorage['jobs_show_err'] == 'ON';
+	JobNode.setErrVisible(i_monitor, visible);
+};
+
+JobNode.setDonVisible = function(i_monitor, i_visible) {
+	if ((i_monitor == null) || (i_monitor.elMonitor == null))
+		return;
+
+	if (i_visible)
+		i_monitor.elMonitor.classList.remove('hide_don');
+	else
+		i_monitor.elMonitor.classList.add('hide_don');
+
+	if (i_monitor.m_btnDonVisible)
+	{
+		if (i_visible)
+			i_monitor.m_btnDonVisible.classList.add('active');
+		else
+			i_monitor.m_btnDonVisible.classList.remove('active');
+	}
+
+	localStorage['jobs_show_don'] = i_visible ? 'ON' : 'OFF';
+};
+
+JobNode.loadDonVisible = function(i_monitor) {
+	var visible = true;
+	if (localStorage['jobs_show_don'] != null)
+		visible = localStorage['jobs_show_don'] == 'ON';
+	JobNode.setDonVisible(i_monitor, visible);
+};
+
+JobNode.getJobBranch = function(i_job) {
+	if ((i_job == null) || (i_job.params == null) || (i_job.params.branch == null) || (i_job.params.branch == ''))
+		return '/';
+	return i_job.params.branch;
+};
+
+JobNode.setBranchFilter = function(i_monitor, i_branch) {
+	if ((i_monitor == null) || (i_monitor.elMonitor == null))
+		return;
+
+	if ((i_branch == null) || (i_branch == '') || (i_branch == '/'))
+	{
+		i_monitor.m_branch_filter = '/';
+		localStorage['jobs_branch_filter'] = '/';
+	}
+	else
+	{
+		i_monitor.m_branch_filter = i_branch;
+		localStorage['jobs_branch_filter'] = i_branch;
+	}
+
+	JobNode.applyBranchFilter(i_monitor);
+};
+
+JobNode.loadBranchFilter = function(i_monitor) {
+	var branch = '/';
+	if (localStorage['jobs_branch_filter'] != null)
+		branch = localStorage['jobs_branch_filter'];
+	JobNode.setBranchFilter(i_monitor, branch);
+};
+
+JobNode.applyBranchFilter = function(i_monitor) {
+	if ((i_monitor == null) || (i_monitor.items == null))
+		return;
+
+	for (var i = 0; i < i_monitor.items.length; i++)
+		JobNode.applyBranchFilterToJob(i_monitor.items[i]);
+};
+
+JobNode.applyBranchFilterToJob = function(i_job) {
+	if ((i_job == null) || (i_job.monitor == null) || (i_job.element == null))
+		return;
+
+	var branch_filter = i_job.monitor.m_branch_filter;
+	if ((branch_filter == null) || (branch_filter == '') || (branch_filter == '/'))
+	{
+		i_job.element.classList.remove('branch_filtered_out');
+		return;
+	}
+
+	var job_branch = JobNode.getJobBranch(i_job);
+	if (job_branch == branch_filter)
+		i_job.element.classList.remove('branch_filtered_out');
+	else
+		i_job.element.classList.add('branch_filtered_out');
+};
+
+JobNode.updateBranchSelect = function(i_monitor) {
+	if ((i_monitor == null) || (i_monitor.m_branch_select == null) || (i_monitor.items == null))
+		return;
+
+	// Don't rebuild options while user is interacting with dropdown (it will reset highlighted item).
+	if (i_monitor.document && i_monitor.document.activeElement == i_monitor.m_branch_select)
+		return;
+
+	var selected = i_monitor.m_branch_select.value;
+	if (selected == null || selected == '')
+		selected = '/';
+
+	var branches_map = {};
+	var branches = ['/'];
+	for (var i = 0; i < i_monitor.items.length; i++)
+	{
+		var b = JobNode.getJobBranch(i_monitor.items[i]);
+		if (branches_map[b])
+			continue;
+		branches_map[b] = true;
+		if (b != '/')
+			branches.push(b);
+	}
+	branches.sort();
+	if (branches[0] != '/')
+		branches.unshift('/');
+
+	while (i_monitor.m_branch_select.firstChild)
+		i_monitor.m_branch_select.removeChild(i_monitor.m_branch_select.firstChild);
+
+	for (var i = 0; i < branches.length; i++)
+	{
+		var opt = i_monitor.document.createElement('option');
+		opt.value = branches[i];
+		if (branches[i] == '/')
+			opt.textContent = '/ (all)';
+		else
+			opt.textContent = branches[i];
+		i_monitor.m_branch_select.appendChild(opt);
+	}
+
+	// Restore selection if possible:
+	i_monitor.m_branch_select.value = selected;
+	if (i_monitor.m_branch_select.value != selected)
+		i_monitor.m_branch_select.value = '/';
+};
+
+JobNode.setAllOpen = function(i_monitor, i_open) {
+	if ((i_monitor == null) || (i_monitor.items == null))
+		return;
+
+	if (JobNode.open_states == null)
+		JobNode.loadOpenStates();
+
+	for (var i = 0; i < i_monitor.items.length; i++)
+	{
+		var job = i_monitor.items[i];
+		if ((job == null) || (job.params == null) || (job.params.id == null))
+			continue;
+
+		job.opened = i_open ? true : false;
+		JobNode.open_states[job.params.id] = job.opened;
+		job.applyOpenState();
+	}
+
+	JobNode.saveOpenStates();
+};
+
+JobNode.createOpenCloseAllCtrls = function(i_monitor) {
+	var doc = i_monitor.document;
+	var el = doc.createElement('div');
+	i_monitor.elCtrl.appendChild(el);
+	el.classList.add('ctrl_jobs_openclose');
+
+	var btnOpen = doc.createElement('span');
+	el.appendChild(btnOpen);
+	btnOpen.classList.add('btn');
+	btnOpen.textContent = '▼';
+	btnOpen.title = 'Open all jobs.';
+	btnOpen.monitor = i_monitor;
+	btnOpen.onmousedown = function(e) { e.stopPropagation(); e.preventDefault(); return false; };
+	btnOpen.onclick = function(e) {
+		e.stopPropagation();
+		e.preventDefault();
+		JobNode.setAllOpen(e.currentTarget.monitor, true);
+	};
+
+	var btnClose = doc.createElement('span');
+	el.appendChild(btnClose);
+	btnClose.classList.add('btn');
+	btnClose.textContent = '▶';
+	btnClose.title = 'Close all jobs.';
+	btnClose.monitor = i_monitor;
+	btnClose.onmousedown = function(e) { e.stopPropagation(); e.preventDefault(); return false; };
+	btnClose.onclick = function(e) {
+		e.stopPropagation();
+		e.preventDefault();
+		JobNode.setAllOpen(e.currentTarget.monitor, false);
+	};
+
+	var btnErrOnly = doc.createElement('span');
+	el.appendChild(btnErrOnly);
+	btnErrOnly.classList.add('btn');
+	btnErrOnly.classList.add('err_only');
+	btnErrOnly.innerHTML =
+		"<span class='err_icon' aria-hidden='true'><svg viewBox='0 0 24 24' focusable='false'>" +
+		"<path fill='currentColor' d='M1.43 20.5L12 2.5l10.57 18H1.43zm11.57-3a1 1 0 10-2 0 1 1 0 002 0zm-1-3c.55 0 1-.45 1-1V9.5a1 1 0 10-2 0v4c0 .55.45 1 1 1z'/>" +
+		"</svg></span>";
+	btnErrOnly.title = 'Toggle error jobs visibility.';
+	btnErrOnly.monitor = i_monitor;
+	i_monitor.m_btnErrOnly = btnErrOnly;
+	btnErrOnly.onmousedown = function(e) { e.stopPropagation(); e.preventDefault(); return false; };
+	btnErrOnly.onclick = function(e) {
+		e.stopPropagation();
+		e.preventDefault();
+		var monitor = e.currentTarget.monitor;
+		JobNode.setErrVisible(monitor, monitor.elMonitor.classList.contains('hide_err'));
+	};
+
+	var btnDon = doc.createElement('span');
+	el.appendChild(btnDon);
+	btnDon.classList.add('btn');
+	btnDon.classList.add('don_only');
+	btnDon.innerHTML =
+		"<span class='don_icon' aria-hidden='true'><svg viewBox='0 0 24 24' focusable='false'>" +
+		"<path fill='currentColor' d='M9 16.2l-3.5-3.5L4 14.2l5 5 11-11-1.5-1.4z'/>" +
+		"</svg></span>";
+	btnDon.title = 'Toggle done jobs visibility.';
+	btnDon.monitor = i_monitor;
+	i_monitor.m_btnDonVisible = btnDon;
+	btnDon.onmousedown = function(e) { e.stopPropagation(); e.preventDefault(); return false; };
+	btnDon.onclick = function(e) {
+		e.stopPropagation();
+		e.preventDefault();
+		var monitor = e.currentTarget.monitor;
+		JobNode.setDonVisible(monitor, monitor.elMonitor.classList.contains('hide_don'));
+	};
+
+	var elBranch = doc.createElement('select');
+	el.appendChild(elBranch);
+	elBranch.classList.add('branch_select');
+	elBranch.title = 'Show jobs from selected branch.';
+	elBranch.monitor = i_monitor;
+	i_monitor.m_branch_select = elBranch;
+	elBranch.onfocus = function(e) { e.currentTarget.monitor.m_branch_select_focused = true; };
+	elBranch.onblur = function(e) { e.currentTarget.monitor.m_branch_select_focused = false; };
+	elBranch.onmousedown = function(e) { e.stopPropagation(); };
+	elBranch.onchange = function(e) {
+		var select = e.currentTarget;
+		JobNode.setBranchFilter(select.monitor, select.value);
+	};
+
+	JobNode.loadErrVisible(i_monitor);
+	JobNode.loadDonVisible(i_monitor);
+	JobNode.loadBranchFilter(i_monitor);
+	JobNode.updateBranchSelect(i_monitor);
 };
 
 JobNode.prototype.init = function() {
@@ -45,13 +507,63 @@ JobNode.prototype.init = function() {
 
 	cm_CreateStart(this);
 
+	this.elNameWrap = document.createElement('span');
+	this.elNameWrap.classList.add('prestar');
+	this.elNameWrap.classList.add('jobnamewrap');
+	this.element.appendChild(this.elNameWrap);
+
+	this.elFold = document.createElement('span');
+	this.elFold.classList.add('job_fold');
+	this.elFold.title = 'Open / close';
+	this.elFold.textContent = '▶';
+	this.elFold.m_job = this;
+	this.elFold.onmousedown = function(e) {
+		e.stopPropagation();
+		e.preventDefault();
+		return false;
+	};
+	this.elFold.onclick = function(e) {
+		e.stopPropagation();
+		e.preventDefault();
+		e.currentTarget.m_job.setOpen(!e.currentTarget.m_job.opened, true);
+	};
+	this.elNameWrap.appendChild(this.elFold);
+
 	this.elName = document.createElement('span');
 	this.elName.classList.add('name');
-	this.element.appendChild(this.elName);
-	this.elName.classList.add('prestar');
+	this.elName.classList.add('job_name_toggle');
+	this.elName.title = 'Open / close';
+	this.elName.m_job = this;
+	this.elName.onmousedown = function(e) {
+		e.preventDefault();
+	};
+	this.elName.onclick = function(e) {
+		e.stopPropagation();
+		e.preventDefault();
+		e.currentTarget.m_job.setOpen(!e.currentTarget.m_job.opened, true);
+	};
+	this.elNameWrap.appendChild(this.elName);
 
 	this.elUserName = cm_ElCreateFloatText(this.element, 'right', 'User Name');
 	this.elETA = cm_ElCreateFloatText(this.element, 'right', 'Estimated Time Of Arrival (Done)');
+
+	this.elResetPPA = document.createElement('span');
+	this.element.appendChild(this.elResetPPA);
+	this.elResetPPA.classList.add('job_reset_ppa');
+	this.elResetPPA.textContent = '↺';
+	this.elResetPPA.title = 'Double click to reset job: set PPA, restart all tasks and pause.';
+	this.elResetPPA.m_job = this;
+	this.elResetPPA.onmousedown = function(e) {
+		e.stopPropagation();
+		e.preventDefault();
+		return false;
+	};
+	this.elResetPPA.ondblclick = function(e) {
+		e.stopPropagation();
+		e.preventDefault();
+		e.currentTarget.m_job.resetJob();
+		return false;
+	};
 
 	this.element.appendChild(document.createElement('br'));
 
@@ -84,27 +596,125 @@ JobNode.prototype.init = function() {
 	}
 
 	this.blocks = [];
+
+	this.elCollapsedDescription = document.createElement('div');
+	this.elCollapsedDescription.classList.add('job_collapsed_desc');
+	this.elCollapsedDescription.classList.add('annotation');
+	this.elCollapsedDescription.style.display = 'none';
+	this.elDetails = document.createElement('div');
+	this.elDetails.classList.add('job_details');
+	this.elDetails.item = this;
+	this.element.appendChild(this.elDetails);
+
+	// Keep collapsed annotation below details (so when job is closed but has running blocks, annotation is under them).
+	this.element.appendChild(this.elCollapsedDescription);
+
+	this.elBlocks = document.createElement('div');
+	this.elBlocks.classList.add('job_blocks');
+	this.elBlocks.item = this;
+	this.elDetails.appendChild(this.elBlocks);
+
+	this.elMeta = document.createElement('div');
+	this.elMeta.classList.add('job_meta');
+	this.elDetails.appendChild(this.elMeta);
+
 	for (var b = 0; b < this.params.blocks.length; b++)
-		this.blocks.push(new JobBlock(this.element, this.params.blocks[b]));
+		this.blocks.push(new JobBlock(this.elBlocks, this.params.blocks[b]));
 
 	this.elThumbs = document.createElement('div');
-	this.element.appendChild(this.elThumbs);
+	this.elMeta.appendChild(this.elThumbs);
 	this.elThumbs.classList.add('thumbnails');
 	this.elThumbs.style.display = 'none';
 
 	this.elReport = document.createElement('div');
-	this.element.appendChild(this.elReport);
+	this.elMeta.appendChild(this.elReport);
 	this.elReport.title = 'Report';
 	this.elReport.style.textAlign = 'center';
 
 	this.elAnnotation = document.createElement('div');
-	this.element.appendChild(this.elAnnotation);
+	this.elMeta.appendChild(this.elAnnotation);
 	this.elAnnotation.title = 'Annotation';
 	this.elAnnotation.classList.add('annotation');
 
 	this.state = {};
 	this.running_tasks = 0;
 	this.percentage = 0;
+
+	this.opened = false;
+	if ((JobNode.open_states != null) && (this.params != null) && (this.params.id != null) &&
+		(JobNode.open_states[this.params.id] != null))
+		this.opened = JobNode.open_states[this.params.id];
+
+	this.applyOpenState();
+};
+
+JobNode.prototype.setPPA = function(i_value) {
+	var params = {};
+	params.ppa = i_value ? true : false;
+	nw_Action('jobs', [this.params.id], null, params);
+};
+
+JobNode.prototype.resetJob = function() {
+	// Restart all tasks and pause job, then ensure that PPA is enabled.
+	nw_Action('jobs', [this.params.id], {"type": 'restart_pause'}, {"ppa": true});
+
+	var self = this;
+	setTimeout(function() { self.setPPA(true); }, 200);
+};
+
+JobNode.prototype.applyOpenState = function() {
+	if (this.opened)
+	{
+		this.element.classList.remove('collapsed');
+		if (this.elDetails)
+			this.elDetails.style.display = 'block';
+		if (this.elCollapsedDescription)
+			this.elCollapsedDescription.style.display = 'none';
+		if (this.elMeta)
+			this.elMeta.style.display = 'block';
+		for (var b = 0; b < this.blocks.length; b++)
+			this.blocks[b].elRoot.style.display = 'block';
+		if (this.elFold)
+			this.elFold.textContent = '▼';
+	}
+	else
+	{
+		this.element.classList.add('collapsed');
+		var hasRunningBlocks = false;
+		for (var b = 0; b < this.blocks.length; b++)
+		{
+			var cnt = 0;
+			if (this.blocks[b].params && this.blocks[b].params.running_tasks_counter)
+				cnt = this.blocks[b].params.running_tasks_counter;
+
+			if (cnt > 0)
+				hasRunningBlocks = true;
+
+			this.blocks[b].elRoot.style.display = (cnt > 0) ? 'block' : 'none';
+		}
+		if (this.elDetails)
+			this.elDetails.style.display = hasRunningBlocks ? 'block' : 'none';
+		if (this.elMeta)
+			this.elMeta.style.display = 'none';
+		if (this.elCollapsedDescription && this.elCollapsedDescription.innerHTML.length)
+			this.elCollapsedDescription.style.display = 'block';
+		else if (this.elCollapsedDescription)
+			this.elCollapsedDescription.style.display = 'none';
+		if (this.elFold)
+			this.elFold.textContent = '▶';
+	}
+};
+
+JobNode.prototype.setOpen = function(i_open, i_fromUser) {
+	this.opened = i_open ? true : false;
+	if (i_fromUser)
+	{
+		if (JobNode.open_states == null)
+			JobNode.open_states = {};
+		JobNode.open_states[this.params.id] = this.opened;
+		JobNode.saveOpenStates();
+	}
+	this.applyOpenState();
 };
 
 JobNode.prototype.update = function(i_obj) {
@@ -113,6 +723,8 @@ JobNode.prototype.update = function(i_obj) {
 
 	if (this.params.user_list_order != null)
 		this.params.order = this.params.user_list_order;
+
+	this.params.name_datetime = JobNode.getNameDateTimeKey(this.params.name);
 
 	cm_GetState(this.params.state, this.state, this.element);
 	if (this.params.state == null)
@@ -124,6 +736,16 @@ JobNode.prototype.update = function(i_obj) {
 		((this.state.DON == false) && (this.params.time_started > 0)))
 		displayFull = true;
 
+	if ((JobNode.open_states == null) || (JobNode.open_states[this.params.id] == null))
+	{
+		if (this.params.blocks && (this.params.blocks.length > 1))
+			this.opened = false;
+		else
+			this.opened = displayFull;
+	}
+	else
+		this.opened = JobNode.open_states[this.params.id];
+
 	this.elName.innerHTML = '<b>' + this.params.name + '</b>';
 	this.elName.title = 'ID = ' + this.params.id;
 	this.elUserName.innerHTML = '<b>' + this.params.user_name + '</b>';
@@ -134,6 +756,14 @@ JobNode.prototype.update = function(i_obj) {
 		this.elPPApproval.style.display = 'block';
 	else
 		this.elPPApproval.style.display = 'none';
+
+	if (this.elResetPPA)
+	{
+		if (this.params.ppa)
+			this.elResetPPA.classList.add('on');
+		else
+			this.elResetPPA.classList.remove('on');
+	}
 
 	if (this.params.maintenance)
 		this.elMaintenance.style.display = 'block';
@@ -250,6 +880,19 @@ JobNode.prototype.update = function(i_obj) {
 	else
 		this.elAnnotation.textContent = '';
 
+	if (this.elCollapsedDescription)
+	{
+		if (this.params.annotation)
+		{
+			var ann_html = this.params.annotation;
+			ann_html = ann_html.replace(/^\s*(<\s*br\s*\/?\s*>\s*)+/gi, '');
+			ann_html = ann_html.replace(/(\s*<\s*br\s*\/?\s*>\s*)+\s*$/gi, '');
+			this.elCollapsedDescription.innerHTML = ann_html;
+		}
+		else
+			this.elCollapsedDescription.textContent = '';
+	}
+
 	this.running_tasks = 0;
 	this.percentage = 0;
 	for (var b = 0; b < this.params.blocks.length; b++)
@@ -272,6 +915,18 @@ JobNode.prototype.update = function(i_obj) {
 
 	this.params.service = this.blocks[0].params.service;
 
+	this.applyOpenState();
+	JobNode.applyBranchFilterToJob(this);
+	if (this.monitor && this.monitor.m_branch_update_pending != true)
+	{
+		this.monitor.m_branch_update_pending = true;
+		var monitor = this.monitor;
+		setTimeout(function() {
+			monitor.m_branch_update_pending = false;
+			JobNode.updateBranchSelect(monitor);
+			JobNode.applyBranchFilter(monitor);
+		}, 200);
+	}
 	this.refresh();
 };
 
@@ -1535,6 +2190,60 @@ JobNode.prototype.updatePanels = function(i_selected) {
 	}
 
 
+	// Multiple selection:
+	var multi_jobs = false;
+	if (i_selected && i_selected.length && (i_selected.length > 1))
+	{
+		var jobs_count = 0;
+		for (var si = 0; si < i_selected.length; si++)
+		{
+			if (i_selected[si] && (i_selected[si].node_type == 'jobs'))
+			{
+				jobs_count++;
+				if (jobs_count > 1)
+				{
+					multi_jobs = true;
+					break;
+				}
+			}
+		}
+	}
+
+	var job = this;
+	var disablePreviews = function()
+	{
+		var msg = 'Select a single job to view previews.';
+
+		// Cancel in-flight requests for this job selection.
+		if (job.meshPreviewReqId == null)
+			job.meshPreviewReqId = 0;
+		if (job.videoPreviewReqId == null)
+			job.videoPreviewReqId = 0;
+		job.meshPreviewReqId++;
+		job.videoPreviewReqId++;
+
+		if (elPanelR.m_meshPreview)
+		{
+			elPanelR.m_meshPreview.m_jobId = null;
+			elPanelR.m_meshPreview.m_folder = null;
+			elPanelR.m_meshPreview.m_fetching = false;
+			elPanelR.m_meshPreview.load(null);
+			elPanelR.m_meshPreview.setMessage(msg);
+		}
+
+		if (elPanelR.m_videoPreview)
+		{
+			elPanelR.m_videoPreview.m_jobId = null;
+			elPanelR.m_videoPreview.m_folder = null;
+			elPanelR.m_videoPreview.m_fetching = false;
+			if (elPanelR.m_videoPreview.stop)
+				elPanelR.m_videoPreview.stop();
+			elPanelR.m_videoPreview.load(null);
+			elPanelR.m_videoPreview.setMessage(msg);
+		}
+	};
+
+
 	// Info:
 	var info = '<p>ID:' + this.params.id + ' S/N:' + this.params.serial + '</p>';
 	info += '<p>Branch: ' + this.params.branch + '</p>';
@@ -1543,7 +2252,7 @@ JobNode.prototype.updatePanels = function(i_selected) {
 		info += '<p>Started: ' + cm_DateTimeStrFromSec(this.params.time_started) + '</p>';
 	if (this.params.time_done)
 		info += '<p>Finished: ' + cm_DateTimeStrFromSec(this.params.time_done) + '</p>';
-	if (i_selected && i_selected.length && (i_selected.length > 1))
+	if (multi_jobs)
 		info += '<p>' + JobNode.getMultiSelectionInfo(i_selected) + '</p>';
 	this.monitor.setPanelInfo(info);
 
@@ -1556,6 +2265,13 @@ JobNode.prototype.updatePanels = function(i_selected) {
 	// console.log(JSON.stringify( folders));
 	if ((folders == null) || (folders.length == 0))
 	{
+		if (multi_jobs)
+			disablePreviews();
+		else
+		{
+			this.updateMeshPreview();
+			this.updateVideoPreview();
+		}
 		return;
 	}
 
@@ -1575,6 +2291,50 @@ JobNode.prototype.updatePanels = function(i_selected) {
 		elDiv.classList.add('folder');
 
 		var elCmdExec = cgru_CmdExecCreateOpen({"parent": elDiv, "path": path});
+		// Make it open on single click (Keeper will launch OS file manager).
+		elCmdExec.title = 'Open location in a file browser.';
+		elCmdExec.onclick = function(e) {
+			e.stopPropagation();
+			e.preventDefault();
+			try
+			{
+				e.currentTarget.dispatchEvent(new MouseEvent('dblclick', {"bubbles": false}));
+			}
+			catch (err)
+			{
+				// Fallback to original handler if MouseEvent is not available:
+				if (typeof cgru_CmdExecOnDblClick !== 'undefined')
+					cgru_CmdExecOnDblClick(e);
+			}
+			return false;
+		};
+
+		var elCopy = document.createElement('div');
+		elDiv.appendChild(elCopy);
+		elCopy.classList.add('cgru_cmdexec');
+		elCopy.classList.add('copy');
+		elCopy.title = 'Copy folder path to clipboard.';
+		elCopy.m_path = path;
+		elCopy.onmousedown = function(e) {
+			e.stopPropagation();
+			e.preventDefault();
+			return false;
+		};
+		elCopy.onclick = function(e) {
+			e.stopPropagation();
+			e.preventDefault();
+			var el = e.currentTarget;
+			JobNode.copyToClipboard(el.m_path).then(function() {
+				el.classList.add('clicked');
+				setTimeout(function() { el.classList.remove('clicked'); }, 500);
+				if (typeof cgru_Info !== 'undefined')
+					cgru_Info('Copied:\n' + el.m_path, false);
+			}).catch(function(err) {
+				if (typeof cgru_Error !== 'undefined')
+					cgru_Error('Clipboard copy failed: ' + (err && err.message ? err.message : err));
+			});
+			return false;
+		};
 
 		var elLabel = document.createElement('div');
 		elDiv.appendChild(elLabel);
@@ -1587,7 +2347,6 @@ JobNode.prototype.updatePanels = function(i_selected) {
 		elValue.textContent = path;
 	}
 
-	console.log('=====>'+rules_link);
 	var rules_href = cgru_RulesLink(rules_link);
 	if (rules_href)
 	{
@@ -1597,13 +2356,9 @@ JobNode.prototype.updatePanels = function(i_selected) {
         elFolders.m_elRules_MP4.style.display = 'block';
 
         elFolders.m_elRules.href = cgru_RulesLink( rules_link );
-		console.log('+1=====>'+cgru_RulesLink( rules_link ));
-		console.log('+2=====>'+elFolders.m_elRules.href);
         elFolders.m_elRules_FULL.href = cgru_RulesLink( rules_link+"" ).replace('/#/','/player.html#/');
         elFolders.m_elRules_MONTAGE.href = cgru_RulesLink( rules_link+"/.webplayer_montage/" ).replace('/#/','/player.html#/'); //this.params.folders_montage.output );
         elFolders.m_elRules_MP4.href = cgru_RulesLink( rules_link+"/" ).replace('/#/','/convertMP4.php?f=/').replace('#','@');
-
-		console.log('+3=====>'+elFolders.m_elRules_FULL.href);
 
 /*		elFolders.m_elRules.style.display = 'block';
 //		elFolders.m_elRules.href = cgru_RulesLink( rules_link);
@@ -1619,7 +2374,13 @@ JobNode.prototype.updatePanels = function(i_selected) {
 
 	}
 
-	this.updateMeshPreview();
+	if (multi_jobs)
+		disablePreviews();
+	else
+	{
+		this.updateMeshPreview();
+		this.updateVideoPreview();
+	}
 };
 
 JobNode.prototype.updateMeshPreview = function() {
@@ -1630,11 +2391,290 @@ JobNode.prototype.updateMeshPreview = function() {
 	if (preview == null)
 		return;
 
-	var sources = JobNode.buildMeshPreviewSources(this.params);
-	if (sources)
-		preview.load(sources);
-	else
-		preview.load(null);
+	var folder = JobNode.getMeshPreviewFolder(this.params);
+	var sameJob = (preview.m_jobId == this.params.id);
+	var sameFolder = ((preview.m_folder != null) && (folder != null) && (preview.m_folder == folder));
+
+	// Once we have a valid mesh loaded for the current selected job/folder, do not refresh it on job updates.
+	if (sameJob && sameFolder && preview.currentSources)
+		return;
+
+	// Avoid spamming folder listing / loading while one request is already in flight.
+	if (sameJob && sameFolder && preview.m_fetching)
+		return;
+
+	if (this.meshPreviewReqId == null)
+		this.meshPreviewReqId = 0;
+	this.meshPreviewReqId++;
+	var reqId = this.meshPreviewReqId;
+
+	preview.m_jobId = this.params.id;
+	preview.m_folder = folder;
+	preview.m_fetching = true;
+
+	if (preview.currentSources == null)
+		preview.setMessage('Loading mesh preview…');
+
+	var job = this;
+	JobNode.buildMeshPreviewSourcesAsync(this.params).then(function(sources) {
+		if (job.meshPreviewReqId != reqId)
+			return;
+		if (preview.m_jobId != job.params.id)
+			return;
+		preview.m_fetching = false;
+		if (sources)
+		{
+			preview.m_jobId = job.params.id;
+			preview.m_folder = sources.folder ? sources.folder : folder;
+			preview.load(sources);
+		}
+		else
+			preview.load(null);
+	});
+};
+
+JobNode.buildVideoPreviewSources = function(i_params)
+{
+	if ((i_params == null) || (i_params.folders == null))
+		return null;
+
+	// This method relies on RULES to generate an MP4 (convertMP4.php).
+	// If RULES are not configured, fall back to direct folder listing.
+	if ((typeof cgru_Config === 'undefined') || (cgru_Config.rules_url == null) || (cgru_Config.rules_url.length == 0))
+		return null;
+
+	var rules_link = i_params.folders.output;
+	if (rules_link == null)
+	{
+		for (var name in i_params.folders)
+		{
+			rules_link = i_params.folders[name];
+			break;
+		}
+	}
+
+	if (rules_link == null)
+		return null;
+
+	var rules_href = cgru_RulesLink(rules_link);
+	if (rules_href == null)
+		return null;
+
+	// Sanity: if it did not produce an external RULES URL, it won't point to convertMP4.
+	if ((rules_href.indexOf('http://') != 0) && (rules_href.indexOf('https://') != 0))
+		return null;
+
+	var mp4 = cgru_RulesLink(rules_link + "/").replace('/#/', '/convertMP4.php?f=/').replace('#', '@');
+	if (mp4 == null || mp4 == '')
+		return null;
+
+	if (mp4.indexOf('convertMP4.php') == -1)
+		return null;
+
+	return {"src": mp4};
+};
+
+JobNode.getVideoPreviewFolder = function(i_params)
+{
+	if ((i_params == null) || (i_params.folders == null))
+		return null;
+
+	var guessFolderFromPath = function(path)
+	{
+		if ((path == null) || (path.length == 0))
+			return null;
+		var lower = path.toLowerCase();
+		if (JobNode.endsWith(lower, '.mp4') || JobNode.endsWith(lower, '.webm') ||
+			JobNode.endsWith(lower, '.mov') || JobNode.endsWith(lower, '.obj'))
+			return path.replace(/[/\\\\][^/\\\\]+$/, '');
+		return path;
+	};
+
+	var folders = i_params.folders;
+	var preferredKeys = ['video_preview', 'mesh_preview', 'preview', 'output'];
+	var folder = null;
+	for (var k = 0; k < preferredKeys.length; k++)
+	{
+		var key = preferredKeys[k];
+		if (Object.prototype.hasOwnProperty.call(folders, key))
+		{
+			folder = folders[key];
+			break;
+		}
+	}
+	if (folder == null)
+		folder = folders.output;
+	if (folder == null)
+	{
+		for (var name in folders)
+		{
+			folder = folders[name];
+			break;
+		}
+	}
+	if (folder == null)
+		return null;
+
+	folder = guessFolderFromPath(cgru_PM(folder));
+	if ((folder == null) || (folder.length == 0))
+		return null;
+
+	return folder;
+};
+
+JobNode.buildVideoPreviewSourcesAsync = function(i_params)
+{
+	// Prefer RULES-generated MP4 if available:
+	var direct = JobNode.buildVideoPreviewSources(i_params);
+	if (direct)
+		return Promise.resolve({"items": [{"src": direct.src, "label": "MP4"}], "selected": 0});
+
+	if ((i_params == null) || (i_params.folders == null))
+		return Promise.resolve(null);
+
+	var folder = JobNode.getVideoPreviewFolder(i_params);
+	if (folder == null)
+		return Promise.resolve(null);
+
+	var listUrl = '/@LIST@' + encodeURIComponent(folder);
+
+	return fetch(listUrl, {"credentials": 'same-origin'}).then(function(resp) {
+		if (false == resp.ok)
+		{
+			console.warn('VideoPreview: folder list failed:', resp.status, resp.statusText, folder);
+			return {"error": "list_failed", "folder": folder, "status": resp.status};
+		}
+		return resp.json();
+	}).then(function(data) {
+		if ((data != null) && (data.error != null) && (data.folder != null))
+			return data;
+
+		if ((data == null) || (data.entries == null) || (data.entries.length == 0))
+			return {"error": "empty_folder", "folder": folder};
+
+		var items = [];
+		var bestScore = -1;
+		var bestIndex = 0;
+		for (var i = 0; i < data.entries.length; i++)
+		{
+			var e = data.entries[i];
+			if ((e == null) || (e.type != 'file') || (e.name == null))
+				continue;
+
+			var nameStr = ('' + e.name).replace(/^[\\s]+|[\\s]+$/g, '');
+			if (nameStr.length == 0)
+				continue;
+
+			var lower = nameStr.toLowerCase();
+			var is_mp4 = JobNode.endsWith(lower, '.mp4');
+			var is_webm = JobNode.endsWith(lower, '.webm');
+			var is_mov = JobNode.endsWith(lower, '.mov');
+			if ((false == is_mp4) && (false == is_webm) && (false == is_mov))
+				continue;
+
+			var score = 0;
+			if (is_mp4) score += 20;
+			if (is_webm) score += 10;
+			if (is_mov) score += 5;
+			if (lower.indexOf('preview') != -1) score += 50;
+			if (lower.indexOf('montage') != -1) score += 40;
+			if (lower.indexOf('webplayer') != -1) score += 30;
+			if (e.mtime) score += Math.min(20, Math.floor(e.mtime / 100000000));
+
+			var fullpath = JobNode.joinPaths(folder, nameStr);
+			var src = cgru_ProjectServerLink(fullpath);
+			items.push({"src": src, "label": nameStr, "score": score, "mtime": e.mtime || 0});
+		}
+
+		if (items.length == 0)
+			return {"error": "no_videos", "folder": folder};
+
+		// Choose best item by score then mtime:
+		for (var i = 0; i < items.length; i++)
+		{
+			var itemScore = items[i].score + Math.min(5, Math.floor((items[i].mtime || 0) / 100000000));
+			if (itemScore > bestScore)
+			{
+				bestScore = itemScore;
+				bestIndex = i;
+			}
+		}
+
+		for (var i = 0; i < items.length; i++)
+		{
+			delete items[i].score;
+			delete items[i].mtime;
+		}
+
+		return {"items": items, "selected": bestIndex, "folder": folder};
+	}).catch(function() {
+		return {"error": "exception", "folder": folder};
+	});
+};
+
+JobNode.prototype.updateVideoPreview = function() {
+	if ((this.monitor == null) || (this.monitor.elPanelR == null))
+		return;
+
+	var preview = this.monitor.elPanelR.m_videoPreview;
+	if (preview == null)
+		return;
+
+	var folder = JobNode.getVideoPreviewFolder(this.params);
+	var sameJob = (preview.m_jobId == this.params.id);
+	var sameFolder = ((preview.m_folder != null) && (folder != null) && (preview.m_folder == folder));
+
+	// Once we have a valid video loaded for the current selected job/folder, do not refresh it on job updates.
+	if (sameJob && sameFolder && preview.currentSource)
+		return;
+
+	// Avoid spamming folder listing / loading while one request is already in flight.
+	if (sameJob && sameFolder && preview.m_fetching)
+		return;
+
+	if (this.videoPreviewReqId == null)
+		this.videoPreviewReqId = 0;
+	this.videoPreviewReqId++;
+	var reqId = this.videoPreviewReqId;
+
+	preview.m_jobId = this.params.id;
+	preview.m_folder = folder;
+	preview.m_fetching = true;
+
+	if (preview.currentSource == null)
+		preview.setMessage('Loading video preview…');
+
+	var job = this;
+	JobNode.buildVideoPreviewSourcesAsync(this.params).then(function(sources) {
+		if (job.videoPreviewReqId != reqId)
+			return;
+		if (preview.m_jobId != job.params.id)
+			return;
+		preview.m_fetching = false;
+		if (sources && sources.error)
+		{
+			console.warn('VideoPreview:', sources.error, sources.folder ? sources.folder : '');
+			preview.load(null);
+			if (sources.folder)
+				preview.setMessage('No video preview found in: ' + sources.folder);
+			else
+				preview.setMessage('Video preview not available.');
+		}
+		else if (sources)
+		{
+			preview.m_jobId = job.params.id;
+			preview.m_folder = sources.folder ? sources.folder : folder;
+
+			if (sources.items && sources.items.length && sources.items[0].src &&
+				(sources.items[0].src[sources.items[0].src.length - 1] == '/'))
+			{
+				console.error('VideoPreview: invalid src (missing filename?)', sources);
+			}
+			preview.load(sources);
+		}
+		else
+			preview.load(null);
+	});
 };
 
 JobNode.getMultiSelectionInfo = function(i_selected)
@@ -1718,6 +2758,187 @@ JobNode.buildMeshPreviewSources = function(i_params)
 	var tex_url = tex_path ? JobNode.pathToPreviewUrl(tex_path) : null;
 
 	return {"obj": obj_url, "texture": tex_url};
+};
+
+JobNode.getMeshPreviewFolder = function(i_params)
+{
+	if ((i_params == null) || (i_params.folders == null))
+		return null;
+
+	var folders = i_params.folders;
+	var opts = JobNode.getMeshPreviewOptions(i_params.name);
+
+	var guessFolderFromPath = function(path)
+	{
+		if ((path == null) || (path.length == 0))
+			return null;
+		var lower = path.toLowerCase();
+		if (JobNode.endsWith(lower, '.obj'))
+			return path.replace(/[/\\\\][^/\\\\]+$/, '');
+		return path;
+	};
+
+	var folder = null;
+	for (var k = 0; k < opts.obj_folder_keys.length; k++)
+	{
+		var key = opts.obj_folder_keys[k];
+		if (Object.prototype.hasOwnProperty.call(folders, key))
+		{
+			folder = folders[key];
+			break;
+		}
+	}
+	if (folder == null)
+		folder = folders.output;
+	if (folder == null)
+	{
+		for (var name in folders)
+		{
+			folder = folders[name];
+			break;
+		}
+	}
+	if (folder == null)
+		return null;
+
+	folder = guessFolderFromPath(cgru_PM(folder));
+	if ((folder == null) || (folder.length == 0))
+		return null;
+
+	return folder;
+};
+
+JobNode.buildMeshPreviewSourcesAsync = function(i_params)
+{
+	if ((i_params == null) || (i_params.folders == null))
+		return Promise.resolve(null);
+
+	var folder = JobNode.getMeshPreviewFolder(i_params);
+	if (folder == null)
+		return Promise.resolve(null);
+
+	var folders = i_params.folders;
+	var opts = JobNode.getMeshPreviewOptions(i_params.name);
+
+	// Try to list the folder and build all OBJ candidates from it.
+	var listUrl = '/@LIST@' + encodeURIComponent(folder);
+
+	return fetch(listUrl, {"credentials": 'same-origin'}).then(function(resp) {
+		if (false == resp.ok)
+			return null;
+		return resp.json();
+	}).then(function(data) {
+		if ((data == null) || (data.entries == null) || (data.entries.length == 0))
+			return null;
+
+		var objEntries = [];
+		var textureEntries = [];
+		var mtlByLower = {};
+		for (var i = 0; i < data.entries.length; i++)
+		{
+			var e = data.entries[i];
+			if ((e == null) || (e.type != 'file') || (e.name == null))
+				continue;
+
+			var lower = ('' + e.name).toLowerCase();
+			if (JobNode.endsWith(lower, '.obj'))
+				objEntries.push(e);
+			if (JobNode.endsWith(lower, '.mtl'))
+				mtlByLower[lower] = e.name;
+			if (JobNode.pathHasExtension(lower, opts.texture_extensions))
+				textureEntries.push(e);
+		}
+
+		if (objEntries.length == 0)
+		{
+			// Fallback to legacy heuristic (may resolve explicit file path via RULES/@PROJECT@).
+			var direct = JobNode.buildMeshPreviewSources(i_params);
+			if (direct)
+				return {"items": [{"obj": direct.obj, "texture": direct.texture, "label": "OBJ"}], "selected": 0, "folder": folder};
+			return null;
+		}
+
+		var guessMtlForObj = function(objName)
+		{
+			if ((objName == null) || (objName.length == 0))
+				return null;
+
+			var base = ('' + objName).replace(/[/\\\\]/g, '/');
+			base = base.replace(/^.*\//, '');
+			base = base.replace(/\.[^.]+$/, '');
+			if (base.length == 0)
+				return null;
+
+			var mtlLower = (base + '.mtl').toLowerCase();
+			if (mtlByLower[mtlLower])
+				return cgru_ProjectServerLink(JobNode.joinPaths(folder, mtlByLower[mtlLower]));
+
+			return null;
+		};
+
+		var items = [];
+		var bestIndex = 0;
+		var bestScore = -1;
+		var safeName = JobNode.sanitizeName(i_params.name).toLowerCase();
+
+		for (var i = 0; i < objEntries.length; i++)
+		{
+			var e = objEntries[i];
+			var objUrl = cgru_ProjectServerLink(JobNode.joinPaths(folder, e.name));
+			var mtlUrl = guessMtlForObj(e.name);
+			items.push({"obj": objUrl, "mtl": mtlUrl, "label": e.name, "mtime": e.mtime || 0, "nameLower": ('' + e.name).toLowerCase()});
+		}
+
+		// Prefer a "_highres_" mesh as default and first button.
+		var highresIndex = -1;
+		for (var i = 0; i < items.length; i++)
+		{
+			if ((items[i].nameLower.indexOf('_highres_') != -1) &&
+				((highresIndex == -1) || ((items[i].mtime || 0) > (items[highresIndex].mtime || 0))))
+			{
+				highresIndex = i;
+			}
+		}
+
+		if (highresIndex != -1)
+		{
+			var hi = items.splice(highresIndex, 1)[0];
+			items.unshift(hi);
+			bestIndex = 0;
+		}
+		else
+		{
+			for (var i = 0; i < items.length; i++)
+			{
+				var lower = items[i].nameLower;
+				var score = 0;
+				if (lower.indexOf('preview') != -1) score += 50;
+				if (lower.indexOf('mesh') != -1) score += 30;
+				if (safeName && (lower.indexOf(safeName) != -1)) score += 25;
+				score += Math.min(20, Math.floor((items[i].mtime || 0) / 100000000));
+
+				if (score > bestScore)
+				{
+					bestScore = score;
+					bestIndex = i;
+				}
+			}
+		}
+
+		for (var i = 0; i < items.length; i++)
+		{
+			delete items[i].mtime;
+			delete items[i].nameLower;
+		}
+
+		return {"items": items, "selected": bestIndex, "folder": folder};
+	}).catch(function() {
+		// Fallback to legacy heuristic (may resolve explicit file path via RULES/@PROJECT@).
+		var direct = JobNode.buildMeshPreviewSources(i_params);
+		if (direct)
+			return {"items": [{"obj": direct.obj, "texture": direct.texture, "label": "OBJ"}], "selected": 0, "folder": folder};
+		return null;
+	});
 };
 
 JobNode.getMeshPreviewOptions = function(i_job_name)
@@ -1905,8 +3126,17 @@ JobNode.resetPanels = function(i_monitor) {
 	elFolders.m_elFolders = [];
 	elFolders.m_elRules.style.display = 'none';
 
-	if (i_monitor.elPanelR.m_meshPreview)
-		i_monitor.elPanelR.m_meshPreview.load(null);
+	// Do not clear previews when monitor is just refreshing the same selected job panels.
+	// (Monitor.updatePanels runs on timer and calls resetPanels each tick.)
+	var keep_previews = (i_monitor._resetPanelsArgs && i_monitor._resetPanelsArgs.keep_previews);
+	if (false == keep_previews)
+	{
+		if (i_monitor.elPanelR.m_meshPreview)
+			i_monitor.elPanelR.m_meshPreview.load(null);
+
+		if (i_monitor.elPanelR.m_videoPreview)
+			i_monitor.elPanelR.m_videoPreview.load(null);
+	}
 };
 
 JobNode.createPanels = function(i_monitor) {
@@ -2064,6 +3294,40 @@ JobNode.createPanels = function(i_monitor) {
 
 	elPanelR.m_meshPreviewSection = elMeshSection;
 	elPanelR.m_meshPreview = new MeshPreview(elMeshContainer, elMeshSection);
+	JobNode.makeSectionCollapsible(elMeshSection, 'mesh_preview', true, function(collapsed) {
+		if (elPanelR.m_meshPreview)
+		{
+			if (collapsed)
+				elPanelR.m_meshPreview.isAnimating = false;
+			else
+			{
+				elPanelR.m_meshPreview.start();
+				elPanelR.m_meshPreview.resize();
+			}
+		}
+	});
+
+	// Video preview:
+	var elVideoSection = document.createElement('div');
+	elPanelR.appendChild(elVideoSection);
+	elVideoSection.classList.add('section');
+	elVideoSection.classList.add('video_preview');
+
+	var elVideoCaption = document.createElement('div');
+	elVideoSection.appendChild(elVideoCaption);
+	elVideoCaption.classList.add('caption');
+	elVideoCaption.textContent = 'Video Preview';
+
+	var elVideoContainer = document.createElement('div');
+	elVideoSection.appendChild(elVideoContainer);
+	elVideoContainer.classList.add('video_preview_holder');
+
+	elPanelR.m_videoPreviewSection = elVideoSection;
+	elPanelR.m_videoPreview = new VideoPreview(elVideoContainer, elVideoSection);
+	JobNode.makeSectionCollapsible(elVideoSection, 'video_preview', true, function(collapsed) {
+		if (elPanelR.m_videoPreview && collapsed)
+			elPanelR.m_videoPreview.stop();
+	});
 
 
 	// Work:
@@ -2228,7 +3492,7 @@ JobBlock.params = {
 };
 
 // First array item will be used by default (on load)
-JobNode.sort = ['order', 'time_creation', 'priority', 'user_name', 'name', 'host_name', 'service'];
+JobNode.sort = ['order', 'id', 'name_datetime', 'time_creation', 'priority', 'user_name', 'name', 'host_name', 'service'];
 JobNode.sortVisor = 'time_creation';
 // If user is visor, special parameter will be used as the default
 JobNode.filter = ['name', 'host_name', 'user_name', 'service'];

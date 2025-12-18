@@ -195,7 +195,35 @@
 					} // restrict phi to be between desired limits
 
 
-					spherical.phi = Math.max( scope.minPolarAngle, Math.min( scope.maxPolarAngle, spherical.phi ) );
+					if ( isFinite( scope.minPolarAngle ) && isFinite( scope.maxPolarAngle ) ) {
+
+						spherical.phi = Math.max( scope.minPolarAngle, Math.min( scope.maxPolarAngle, spherical.phi ) );
+
+					} else {
+
+						// Allow continuous vertical rotation by wrapping over the poles.
+						// Keep the camera "upright" by reflecting phi and rotating theta by PI.
+						while ( spherical.phi < 0 || spherical.phi > Math.PI ) {
+
+							if ( spherical.phi < 0 ) {
+
+								spherical.phi = - spherical.phi;
+								spherical.theta += Math.PI;
+
+							} else {
+
+								spherical.phi = twoPI - spherical.phi;
+								spherical.theta += Math.PI;
+
+							}
+
+						}
+
+						// Keep theta bounded to avoid float growth.
+						spherical.theta = ( ( spherical.theta + Math.PI ) % twoPI ) - Math.PI;
+
+					}
+
 					spherical.makeSafe();
 					spherical.radius *= scale; // restrict radius to be between desired limits
 

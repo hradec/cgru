@@ -5,24 +5,108 @@ function MeshPreview(i_parent, i_message_parent)
 	this.parent = i_parent;
 	this.messageParent = i_message_parent ? i_message_parent : i_parent;
 	this.currentSources = null;
+	this.sources = null;
 	this.mesh = null;
 	this.textureLoader = null;
 	this.resizeObserver = null;
+	this.isDraggingResize = false;
+	this.internalHeightAdjust = false;
+	this.aspectRatio = null;
+	this.lastWidth = null;
+	this.isRotatingMesh = false;
+	this.rotatePointerX = 0;
+	this.rotatePointerY = 0;
+	this.loadId = 0;
 
 	this.elCanvas = document.createElement('div');
 	this.elCanvas.classList.add('mesh_preview_canvas');
 	this.parent.appendChild(this.elCanvas);
 
+	this.elResizeHandle = document.createElement('div');
+	this.elResizeHandle.classList.add('mesh_preview_resizer');
+	this.elResizeHandle.title = 'Drag to resize mesh preview.';
+	this.parent.appendChild(this.elResizeHandle);
+
 	this.elMessage = document.createElement('div');
 	this.elMessage.classList.add('mesh_preview_message');
 	this.messageParent.appendChild(this.elMessage);
 
+	this.elSources = document.createElement('div');
+	this.elSources.classList.add('mesh_preview_sources');
+	this.messageParent.appendChild(this.elSources);
+
 	this.animate = this.animate.bind(this);
+
+	this.loadSizeFromStorage();
+	this.attachResizeHandle();
 
 	this.initRenderer();
 	this.attachResizeHandler();
 	this.setMessage('Select a job to view its mesh preview.');
 }
+
+MeshPreview.prototype.loadSizeFromStorage = function()
+{
+	var h = parseInt(localStorage['mesh_preview_height']);
+	if (isFinite(h) && h > 0)
+		this.parent.style.height = h + 'px';
+
+	var r = parseFloat(localStorage['mesh_preview_aspect']);
+	if (isFinite(r) && r > 0.05)
+		this.aspectRatio = r;
+};
+
+MeshPreview.prototype.saveSizeToStorage = function()
+{
+	var height = this.parent.clientHeight;
+	if (height > 0)
+		localStorage['mesh_preview_height'] = height;
+	if (this.aspectRatio && this.aspectRatio > 0.05)
+		localStorage['mesh_preview_aspect'] = this.aspectRatio;
+};
+
+MeshPreview.prototype.attachResizeHandle = function()
+{
+	var self = this;
+	this.elResizeHandle.onmousedown = function(e)
+	{
+		e.stopPropagation();
+		e.preventDefault();
+
+		self.isDraggingResize = true;
+		var startY = e.clientY;
+		var startHeight = self.parent.clientHeight;
+
+		var onMove = function(me)
+		{
+			if (false == self.isDraggingResize)
+				return;
+
+			var delta = me.clientY - startY;
+			var height = Math.round(startHeight + delta);
+			height = Math.max(120, Math.min(900, height));
+
+			self.parent.style.height = height + 'px';
+			var width = self.parent.clientWidth;
+			if (width > 0 && height > 0)
+				self.aspectRatio = width / height;
+			self.resize();
+		};
+
+		var onUp = function()
+		{
+			self.isDraggingResize = false;
+			window.removeEventListener('mousemove', onMove, true);
+			window.removeEventListener('mouseup', onUp, true);
+			self.saveSizeToStorage();
+		};
+
+		window.addEventListener('mousemove', onMove, true);
+		window.addEventListener('mouseup', onUp, true);
+
+		return false;
+	};
+};
 
 MeshPreview.prototype.initRenderer = function()
 {
@@ -33,6 +117,16 @@ MeshPreview.prototype.initRenderer = function()
 
 	this.scene = new THREE.Scene();
 	this.scene.background = new THREE.Color(0x2A2A2A);
+
+	// MTL materials (MeshPhongMaterial) need lights. The previous preview used an unlit shader,
+	// so ensure we always have a simple lighting setup.
+	this.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+	var keyLight = new THREE.DirectionalLight(0xffffff, 0.8);
+	keyLight.position.set(3, 4, 5);
+	this.scene.add(keyLight);
+	var fillLight = new THREE.DirectionalLight(0xffffff, 0.35);
+	fillLight.position.set(-3, -2, -4);
+	this.scene.add(fillLight);
 
 	this.camera = new THREE.PerspectiveCamera(35, 1, 0.1, 1000);
 	this.camera.position.set(0, 0, 4);
@@ -48,11 +142,79 @@ MeshPreview.prototype.initRenderer = function()
 	this.controls.enableDamping = true;
 	this.controls.dampingFactor = 0.05;
 	this.controls.enablePan = false;
+	// Remove orbit angle limits (if any default/custom limits exist in the bundled controls).
+	this.controls.minPolarAngle = -Infinity;
+	this.controls.maxPolarAngle = Infinity;
+	this.controls.minAzimuthAngle = -Infinity;
+	this.controls.maxAzimuthAngle = Infinity;
+	this.controls.update();
 
 	this.textureLoader = new THREE.TextureLoader();
 
+	this.attachMeshRotateHandler();
+
 	this.resize();
 	this.start();
+};
+
+MeshPreview.prototype.attachMeshRotateHandler = function()
+{
+	var self = this;
+	var el = this.renderer ? this.renderer.domElement : null;
+	if (el == null)
+		return;
+
+	el.oncontextmenu = function(e) { e.preventDefault(); return false; };
+
+	el.addEventListener('mousedown', function(e) {
+		// Right mouse drag (or Alt+left) rotates the mesh itself.
+		if ((self.mesh == null) || (self.controls == null))
+			return;
+
+		var rotateMesh = (e.button == 2) || ((e.button == 0) && e.altKey);
+		if (false == rotateMesh)
+			return;
+
+		e.preventDefault();
+		e.stopPropagation();
+
+		self.isRotatingMesh = true;
+		self.rotatePointerX = e.clientX;
+		self.rotatePointerY = e.clientY;
+
+		// Prevent OrbitControls from starting rotate on right mouse.
+		if (self.controls)
+			self.controls.enabled = false;
+	}, true);
+
+	window.addEventListener('mousemove', function(e) {
+		if (false == self.isRotatingMesh)
+			return;
+		if (self.mesh == null)
+			return;
+
+		var dx = e.clientX - self.rotatePointerX;
+		var dy = e.clientY - self.rotatePointerY;
+		self.rotatePointerX = e.clientX;
+		self.rotatePointerY = e.clientY;
+
+		// Rotate around object axes, allowing full freedom beyond OrbitControls polar limits.
+		var speed = 0.01;
+		self.mesh.rotation.y += dx * speed;
+		self.mesh.rotation.x += dy * speed;
+
+		// Shift+drag adds roll.
+		if (e.shiftKey)
+			self.mesh.rotation.z += dx * speed;
+	}, true);
+
+	window.addEventListener('mouseup', function() {
+		if (false == self.isRotatingMesh)
+			return;
+		self.isRotatingMesh = false;
+		if (self.controls)
+			self.controls.enabled = true;
+	}, true);
 };
 
 MeshPreview.prototype.attachResizeHandler = function()
@@ -72,8 +234,8 @@ MeshPreview.prototype.resize = function()
 	if ((this.renderer == null) || (this.camera == null))
 		return;
 
-	var width = this.elCanvas.clientWidth;
-	var height = this.elCanvas.clientHeight;
+	var width = this.parent.clientWidth;
+	var height = this.parent.clientHeight;
 	if ((width <= 0) || (height <= 0))
 	{
 		var bounds = this.parent.getBoundingClientRect();
@@ -82,6 +244,31 @@ MeshPreview.prototype.resize = function()
 	}
 	if (height <= 0)
 		height = 200;
+
+	if ((false == this.isDraggingResize) && (false == this.internalHeightAdjust))
+	{
+		if (this.aspectRatio == null)
+			this.aspectRatio = width / height;
+
+		if ((this.lastWidth != null) && (width > 0) && (this.aspectRatio != null))
+		{
+			if (Math.abs(width - this.lastWidth) > 1)
+			{
+				var desired = Math.round(width / this.aspectRatio);
+				desired = Math.max(120, Math.min(900, desired));
+				if (Math.abs(desired - height) > 1)
+				{
+					this.internalHeightAdjust = true;
+					this.parent.style.height = desired + 'px';
+					height = desired;
+					var self = this;
+					setTimeout(function() { self.internalHeightAdjust = false; }, 0);
+				}
+			}
+		}
+	}
+
+	this.lastWidth = width;
 
 	this.renderer.setSize(width, height);
 	this.camera.aspect = width / height;
@@ -147,9 +334,21 @@ MeshPreview.prototype.setMessage = function(i_text)
 
 MeshPreview.prototype.load = function(i_sources)
 {
+	if ((i_sources != null) && Array.isArray(i_sources.items))
+	{
+		this.setSources(i_sources.items, i_sources.selected);
+		var selected = 0;
+		if (isFinite(i_sources.selected) && (i_sources.selected >= 0) && (i_sources.selected < i_sources.items.length))
+			selected = i_sources.selected;
+		return this.load(i_sources.items[selected]);
+	}
+
 	if ((i_sources == null) || (i_sources.obj == null))
 	{
+		// Cancel any in-flight loaders:
+		this.loadId++;
 		this.currentSources = null;
+		this.setSources(null);
 		this.clearMesh();
 		this.setMessage('Mesh preview not available.');
 		return;
@@ -157,8 +356,13 @@ MeshPreview.prototype.load = function(i_sources)
 
 	if ((this.currentSources != null) &&
 		(this.currentSources.obj == i_sources.obj) &&
+		(this.currentSources.mtl == i_sources.mtl) &&
 		(this.currentSources.texture == i_sources.texture))
 		return;
+
+	// Cancel previous load and create a new token:
+	this.loadId++;
+	var loadId = this.loadId;
 
 	this.initRenderer();
 
@@ -170,26 +374,247 @@ MeshPreview.prototype.load = function(i_sources)
 
 	this.currentSources = {
 		"obj": i_sources.obj,
+		"mtl": i_sources.mtl,
 		"texture": i_sources.texture
 	};
 
 	this.setMessage('Loading mesh preview…');
 	this.clearMesh();
+	this.elCanvas.style.backgroundImage = '';
 
 	var self = this;
-	var loader = new THREE.OBJLoader();
 
+	if (i_sources.mtl && (typeof THREE.MTLLoader !== 'undefined'))
+	{
+		this.loadWithMtl(loadId, i_sources.obj, i_sources.mtl);
+		return;
+	}
+
+	var loader = new THREE.OBJLoader();
 	loader.load(
 		i_sources.obj,
-		function(object) { self.onMeshLoaded(object, i_sources.texture); },
+		function(object) {
+			if (self.loadId != loadId)
+				return;
+			self.onMeshLoaded(object, i_sources.texture);
+		},
 		null,
-		function() { self.onMeshFailed(); }
+		function() {
+			if (self.loadId != loadId)
+				return;
+			self.onMeshFailed();
+		}
 	);
+};
+
+MeshPreview.prototype.loadWithMtl = function(i_loadId, i_obj_url, i_mtl_url)
+{
+	if ((this.renderer == null) || (this.scene == null))
+	{
+		this.setMessage('Mesh preview requires WebGL.');
+		return;
+	}
+
+	var self = this;
+
+	var getDir = function(url)
+	{
+		var idx = url.lastIndexOf('/');
+		if (idx == -1)
+			return '';
+		return url.substring(0, idx + 1);
+	};
+
+	var dir = getDir(i_mtl_url);
+	var mtlLoader = new THREE.MTLLoader();
+	if (mtlLoader.setResourcePath)
+		mtlLoader.setResourcePath(dir);
+	if (mtlLoader.setPath)
+		mtlLoader.setPath('');
+
+	mtlLoader.load(
+		i_mtl_url,
+		function(materialCreator) {
+			if (self.loadId != i_loadId)
+				return;
+			try { materialCreator.preload(); } catch (err) {}
+			var objLoader = new THREE.OBJLoader();
+			if (objLoader.setMaterials)
+				objLoader.setMaterials(materialCreator);
+
+			objLoader.load(
+				i_obj_url,
+				function(object) {
+					if (self.loadId != i_loadId)
+						return;
+					self.onMeshLoadedFromMtl(object);
+				},
+				null,
+				function() {
+					if (self.loadId != i_loadId)
+						return;
+					self.onMeshFailed();
+				}
+			);
+		},
+		null,
+		function() {
+			if (self.loadId != i_loadId)
+				return;
+			// Fallback: no materials from MTL.
+			var objLoader = new THREE.OBJLoader();
+			objLoader.load(
+				i_obj_url,
+				function(object) {
+					if (self.loadId != i_loadId)
+						return;
+					self.onMeshLoaded(object, null);
+				},
+				null,
+				function() {
+					if (self.loadId != i_loadId)
+						return;
+					self.onMeshFailed();
+				}
+			);
+		}
+	);
+};
+
+MeshPreview.prototype.onMeshLoadedFromMtl = function(i_object)
+{
+	var self = this;
+
+	var configureTexture = function(map)
+	{
+		if ((map == null) || (map.image == null))
+			return map;
+
+		var maxTexture = (self.renderer && self.renderer.capabilities) ?
+			self.renderer.capabilities.maxTextureSize : 4096;
+		var width = map.image.width || 0;
+		var height = map.image.height || 0;
+
+		if ((width > maxTexture) || (height > maxTexture))
+		{
+			var scale = Math.min(maxTexture / Math.max(1, width), maxTexture / Math.max(1, height));
+			var canvas = document.createElement('canvas');
+			canvas.width = Math.max(1, Math.floor(width * scale));
+			canvas.height = Math.max(1, Math.floor(height * scale));
+			var ctx = canvas.getContext('2d');
+			ctx.drawImage(map.image, 0, 0, canvas.width, canvas.height);
+			map.image = canvas;
+		}
+
+		map.needsUpdate = true;
+		return map;
+	};
+
+	// Ensure DoubleSide and apply our texture constraints.
+	i_object.traverse(function(child) {
+		if (child.isMesh && child.material)
+		{
+			var mats = Array.isArray(child.material) ? child.material : [child.material];
+			for (var i = 0; i < mats.length; i++)
+			{
+				var m = mats[i];
+				if (m)
+				{
+					m.side = THREE.DoubleSide;
+					if (m.map)
+						m.map = configureTexture(m.map);
+					m.needsUpdate = true;
+				}
+			}
+		}
+	});
+
+	this.finalizeMesh(i_object);
+};
+
+MeshPreview.prototype.setSources = function(i_sources, i_selected)
+{
+	this.sources = (Array.isArray(i_sources) && i_sources.length) ? i_sources.slice(0) : null;
+
+	var tailLabel = function(label, maxLen)
+	{
+		if (label == null)
+			return '';
+		label = '' + label;
+		if ((maxLen == null) || (maxLen < 8))
+			maxLen = 22;
+		if (label.length <= maxLen)
+			return label;
+		return '…' + label.substr(label.length - maxLen);
+	};
+
+	var key = null;
+	if (this.sources && this.sources.length)
+	{
+		key = '';
+		for (var i = 0; i < this.sources.length; i++)
+		{
+			var s = this.sources[i];
+			if ((s == null) || (s.obj == null))
+				continue;
+			key += (s.obj + '|' + (s.mtl ? s.mtl : '') + '|' + (s.texture ? s.texture : '') + '|' + (s.label ? s.label : '') + ';');
+		}
+	}
+
+	var selected = 0;
+	if (isFinite(i_selected) && (i_selected >= 0) && (this.sources != null) && (i_selected < this.sources.length))
+		selected = i_selected;
+
+	if ((key != null) && (key == this.sourcesKey) && (selected == this.sourcesSelected))
+		return;
+
+	this.sourcesKey = key;
+	this.sourcesSelected = selected;
+
+	while (this.elSources.firstChild)
+		this.elSources.removeChild(this.elSources.firstChild);
+
+	if ((this.sources == null) || (this.sources.length <= 1))
+	{
+		this.elSources.style.display = 'none';
+		return;
+	}
+
+	var self = this;
+	for (var i = 0; i < this.sources.length; i++)
+	{
+		var s = this.sources[i];
+		if ((s == null) || (s.obj == null) || (s.obj == ''))
+			continue;
+
+		var btn = document.createElement('button');
+		btn.type = 'button';
+		btn.classList.add('mesh_preview_source_btn');
+		if (i == selected)
+			btn.classList.add('selected');
+		var fullLabel = s.label ? s.label : ('Mesh ' + (i + 1));
+		btn.textContent = tailLabel(fullLabel, 22);
+		btn.title = fullLabel;
+		btn.onclick = function(e) {
+			e.stopPropagation();
+			e.preventDefault();
+			var idx = parseInt(e.currentTarget.dataset.idx);
+			if (false == isFinite(idx))
+				return;
+			self.load(self.sources[idx]);
+			self.setSources(self.sources, idx);
+		};
+		btn.dataset.idx = i;
+		this.elSources.appendChild(btn);
+	}
+
+	this.elSources.style.display = 'block';
 };
 
 MeshPreview.prototype.onMeshLoaded = function(i_object, i_texture)
 {
 	var self = this;
+	var loadId = this.loadId;
 
 	var getPreviewUrl = function(image)
 	{
@@ -310,6 +735,9 @@ MeshPreview.prototype.onMeshLoaded = function(i_object, i_texture)
 
 	var applyMaterial = function(map)
 	{
+		if (self.loadId != loadId)
+			return;
+
 		var mapSource = (map && map.image && map.image.src) ? map.image.src : null;
 		if (map)
 			map = configureTexture(map);
@@ -448,16 +876,26 @@ MeshPreview.prototype.onMeshLoaded = function(i_object, i_texture)
 	};
 	if (i_texture && this.textureLoader)
 	{
+		// Clear any previous texture preview immediately when switching meshes.
+		self.elCanvas.style.backgroundImage = '';
 		this.textureLoader.load(
 			i_texture,
-			function(texture) { applyMaterial(texture); },
+			function(texture) {
+				if (self.loadId != loadId)
+					return;
+				applyMaterial(texture);
+			},
 			null,
-			function () {console.log('applyMaterial(null)'); }
+			function () {
+				if (self.loadId != loadId)
+					return;
+				applyMaterial(null);
+			}
 		);
 	}
 	else
 	{
-		console.log('failed to load texture');
+		// No explicit texture found. Show mesh with fallback material.
 		applyMaterial(null);
 	}
 };

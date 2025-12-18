@@ -16,7 +16,9 @@
 "use strict";
 
 var cm_Attrs = [
+	['id' /*************/, 'ID' /********/, 'Job ID' /*********/],
 	['name' /***********/, 'Name' /******/, 'Name' /***********/],
+	['name_datetime' /**/, 'NameDT' /**/, 'Name Date/Time' /**/],
 	['user_name' /******/, 'User' /******/, 'User Name' /******/],
 	['host_name' /******/, 'Host' /******/, 'Host Name' /******/],
 	['priority' /*******/, 'Priority' /**/, 'Priority' /*******/],
@@ -24,7 +26,7 @@ var cm_Attrs = [
 	['time_creation' /**/, 'Created' /***/, 'Time Created' /***/],
 	['time_started' /***/, 'Started' /***/, 'Time Started' /***/],
 	['time_done' /******/, 'Finished' /**/, 'Time Finished' /**/],
-	['order' /**********/, 'Order' /*****/, 'Order' /**********/],
+	['order' /**********/, 'Order' /*****/, 'User List Order' /**/],
 
 	// This is task progress parameters short names:
 	['str' /************/, 'Starts' /****/, 'Starts Count' /***/],

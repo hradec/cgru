@@ -37,11 +37,12 @@ border-radius: 2px;
 
 
 .cgru_window_back {
-position: absolute;
+position: fixed;
 background: rgba(0,0,0,0.5);
 top: 0; bottom: 0; left: 0; right: 0;
 padding: 5% 8%;
 overflow: auto;
+z-index: 100000;
 }
 .cgru_window_back.cgru_absolute {
 padding: 0 0;
@@ -55,6 +56,7 @@ border: 2px solid #575757;
 border-radius: 2px;
 box-shadow: 0px 0px 10px #000;
 color: #000000;
+z-index: 100001;
 }
 .cgru_window_window.cgru_absolute {
 position: absolute;
@@ -84,7 +86,7 @@ margin: 0; padding: 0; overflow: hidden;
 font: 16px Arial;
 }
 .cgru_dialog_content {
-position: absolute;
+position: fixed;
 background: #AAA;
 color: #000000;
 border-radius: 4px;
@@ -92,14 +94,16 @@ box-shadow: 0px 0px 5px #000;
 top: 30%;
 left: 10%;
 right: 10%;
+z-index: 100001;
 }
 .cgru_dialog_textmode {
 top: 10%;
 }
 .cgru_dialog_back {
-position: absolute;
+position: fixed;
 background: rgba(0,0,0,0.5);
 top: 0; bottom: 0; left: 0; right: 0;
+z-index: 100000;
 }
 .cgru_dialog_title, .cgru_dialog_status, .cgru_dialog_info, .cgru_dialog_button_cancel, .cgru_dialog_button_apply {
 background: #CCC;
@@ -175,6 +179,16 @@ background-size: 60%;
 background-repeat: no-repeat;
 background-position: center;
 }
+.cgru_cmdexec.copy {
+padding: 0px 0px;
+width: 30px; height: 20px;
+text-align: center;
+line-height: 20px;
+font-size: 14px;
+}
+.cgru_cmdexec.copy::before {
+content: '⧉';
+}
 .cgru_menu_item.cgru_cmdexec {
 border: 1px solid #555;
 }
@@ -192,4 +206,3 @@ background-color: #F00;
 -moz-transition: background-color 1s ease-out;
 -webkit-transition: background-color 1s ease-out;
 }
-

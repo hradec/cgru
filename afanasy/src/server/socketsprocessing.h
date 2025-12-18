@@ -74,6 +74,14 @@ private:
 	char * m_write_buffer;
 	int    m_write_size;
 	int    m_bytes_written;
+
+	// HTTP large file streaming (avoid af::Msg size limits).
+	bool   m_http_streaming;
+	int    m_http_stream_fd;
+	off_t  m_http_stream_offset;
+	off_t  m_http_stream_size;
+	int    m_http_stream_header_sent;
+	std::string m_http_stream_header;
 	#endif
 };
 

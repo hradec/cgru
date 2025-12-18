@@ -976,6 +976,9 @@ Monitor.prototype.resetPanels = function(i_args) {
 	if (i_args == null)
 		i_args = {};
 
+	// Save args for nodeConstructor.resetPanels (it only gets monitor instance).
+	this._resetPanelsArgs = i_args;
+
 	this.elPanelR.m_elName.style.display = 'none';
 	this.elPanelR.m_elInfo.m_elBody.textContent = '';
 
@@ -1000,15 +1003,31 @@ Monitor.prototype.resetPanels = function(i_args) {
 		this.nodeConstructor.resetPanels(this);
 
 	this.panel_item = null;
+	this._resetPanelsArgs = null;
 };
 
 Monitor.prototype.updatePanels = function(i_item, i_args) {
-	this.resetPanels(i_args);
-
 	if (i_item == null)
 		i_item = this.cur_item;
 	if (i_item == null)
 		return;
+
+	// When updating panels for the same object, avoid clearing previews on each refresh tick.
+	var keep_previews = false;
+	if (this.panel_item && this.panel_item.params && i_item.params &&
+		(this.panel_item.node_type == i_item.node_type) &&
+		(this.panel_item.params.id != null) && (i_item.params.id != null) &&
+		(this.panel_item.params.id == i_item.params.id))
+	{
+		keep_previews = true;
+	}
+
+	if (i_args == null)
+		i_args = {};
+	if (keep_previews)
+		i_args.keep_previews = true;
+
+	this.resetPanels(i_args);
 
 	this.panel_item = i_item;
 
