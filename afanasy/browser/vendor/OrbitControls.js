@@ -195,34 +195,7 @@
 					} // restrict phi to be between desired limits
 
 
-					if ( isFinite( scope.minPolarAngle ) && isFinite( scope.maxPolarAngle ) ) {
-
-						spherical.phi = Math.max( scope.minPolarAngle, Math.min( scope.maxPolarAngle, spherical.phi ) );
-
-					} else {
-
-						// Allow continuous vertical rotation by wrapping over the poles.
-						// Keep the camera "upright" by reflecting phi and rotating theta by PI.
-						while ( spherical.phi < 0 || spherical.phi > Math.PI ) {
-
-							if ( spherical.phi < 0 ) {
-
-								spherical.phi = - spherical.phi;
-								spherical.theta += Math.PI;
-
-							} else {
-
-								spherical.phi = twoPI - spherical.phi;
-								spherical.theta += Math.PI;
-
-							}
-
-						}
-
-						// Keep theta bounded to avoid float growth.
-						spherical.theta = ( ( spherical.theta + Math.PI ) % twoPI ) - Math.PI;
-
-					}
+					spherical.phi = Math.max( scope.minPolarAngle, Math.min( scope.maxPolarAngle, spherical.phi ) );
 
 					spherical.makeSafe();
 					spherical.radius *= scale; // restrict radius to be between desired limits
@@ -322,12 +295,12 @@
 			const rotateStart = new THREE.Vector2();
 			const rotateEnd = new THREE.Vector2();
 			const rotateDelta = new THREE.Vector2();
-			const panStart = new THREE.Vector2();
-			const panEnd = new THREE.Vector2();
-			const panDelta = new THREE.Vector2();
-			const dollyStart = new THREE.Vector2();
-			const dollyEnd = new THREE.Vector2();
-			const dollyDelta = new THREE.Vector2();
+				const panStart = new THREE.Vector2();
+				const panEnd = new THREE.Vector2();
+				const panDelta = new THREE.Vector2();
+				const dollyStart = new THREE.Vector2();
+				const dollyEnd = new THREE.Vector2();
+				const dollyDelta = new THREE.Vector2();
 
 			function getAutoRotationAngle() {
 
@@ -347,11 +320,11 @@
 
 			}
 
-			function rotateUp( angle ) {
+				function rotateUp( angle ) {
 
-				sphericalDelta.phi -= angle;
+					sphericalDelta.phi -= angle;
 
-			}
+				}
 
 			const panLeft = function () {
 

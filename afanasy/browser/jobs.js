@@ -287,6 +287,33 @@ JobNode.loadDonVisible = function(i_monitor) {
 	JobNode.setDonVisible(i_monitor, visible);
 };
 
+JobNode.setOffVisible = function(i_monitor, i_visible) {
+	if ((i_monitor == null) || (i_monitor.elMonitor == null))
+		return;
+
+	if (i_visible)
+		i_monitor.elMonitor.classList.remove('hide_off');
+	else
+		i_monitor.elMonitor.classList.add('hide_off');
+
+	if (i_monitor.m_btnOffVisible)
+	{
+		if (i_visible)
+			i_monitor.m_btnOffVisible.classList.add('active');
+		else
+			i_monitor.m_btnOffVisible.classList.remove('active');
+	}
+
+	localStorage['jobs_show_off'] = i_visible ? 'ON' : 'OFF';
+};
+
+JobNode.loadOffVisible = function(i_monitor) {
+	var visible = true;
+	if (localStorage['jobs_show_off'] != null)
+		visible = localStorage['jobs_show_off'] == 'ON';
+	JobNode.setOffVisible(i_monitor, visible);
+};
+
 JobNode.getJobBranch = function(i_job) {
 	if ((i_job == null) || (i_job.params == null) || (i_job.params.branch == null) || (i_job.params.branch == ''))
 		return '/';
@@ -352,9 +379,13 @@ JobNode.updateBranchSelect = function(i_monitor) {
 	if (i_monitor.document && i_monitor.document.activeElement == i_monitor.m_branch_select)
 		return;
 
-	var selected = i_monitor.m_branch_select.value;
-	if (selected == null || selected == '')
-		selected = '/';
+	// Prefer the actual active filter (persisted on refresh) over current select value,
+	// as the select can be temporarily reset while the job list (and branches) are still loading.
+	var selected = '/';
+	if (i_monitor.m_branch_filter && i_monitor.m_branch_filter.length)
+		selected = i_monitor.m_branch_filter;
+	else if (i_monitor.m_branch_select.value)
+		selected = i_monitor.m_branch_select.value;
 
 	var branches_map = {};
 	var branches = ['/'];
@@ -482,6 +513,26 @@ JobNode.createOpenCloseAllCtrls = function(i_monitor) {
 		JobNode.setDonVisible(monitor, monitor.elMonitor.classList.contains('hide_don'));
 	};
 
+	// OFF filter button (to the right of DONE button):
+	var btnOff = doc.createElement('span');
+	el.appendChild(btnOff);
+	btnOff.classList.add('btn');
+	btnOff.classList.add('off_only');
+	btnOff.innerHTML =
+		"<span class='off_icon' aria-hidden='true'><svg viewBox='0 0 24 24' focusable='false'>" +
+		"<path fill='currentColor' d='M11 2h2v10h-2V2zm5.07 2.93l-1.41 1.41A7 7 0 1110.34 6.34L8.93 4.93A9 9 0 1016.07 4.93z'/>" +
+		"</svg></span>";
+	btnOff.title = 'Toggle OFF jobs visibility.';
+	btnOff.monitor = i_monitor;
+	i_monitor.m_btnOffVisible = btnOff;
+	btnOff.onmousedown = function(e) { e.stopPropagation(); e.preventDefault(); return false; };
+	btnOff.onclick = function(e) {
+		e.stopPropagation();
+		e.preventDefault();
+		var monitor = e.currentTarget.monitor;
+		JobNode.setOffVisible(monitor, monitor.elMonitor.classList.contains('hide_off'));
+	};
+
 	var elBranch = doc.createElement('select');
 	el.appendChild(elBranch);
 	elBranch.classList.add('branch_select');
@@ -497,6 +548,7 @@ JobNode.createOpenCloseAllCtrls = function(i_monitor) {
 	};
 
 	JobNode.loadErrVisible(i_monitor);
+	JobNode.loadOffVisible(i_monitor);
 	JobNode.loadDonVisible(i_monitor);
 	JobNode.loadBranchFilter(i_monitor);
 	JobNode.updateBranchSelect(i_monitor);

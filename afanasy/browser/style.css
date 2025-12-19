@@ -367,6 +367,7 @@ left: 0; right: 0;
 height: 28px;
 -box-shadow: 0px 0px 6px #000, 0px 0px 4px rgba(255,255,255,.7) inset;
 }
+.monitor .ctrl, .monitor .ctrl * { overflow: visible; }
 .monitor .ctrl { top: 0; border-bottom: 2px solid #575757;}
 .monitor .info { bottom: 0; border-top: 2px solid #575757;}
 .monitor .list {
@@ -406,6 +407,7 @@ box-shadow: 0 0 4px #FFF;
 .ctrl_sort, .ctrl_filter, .ctrl_hidden {
 position: absolute;
 margin: 3px 8px;
+z-index: 5;
 }
 .ctrl_jobs_openclose {
 position: absolute;
@@ -413,7 +415,10 @@ margin: 3px 8px;
 left: 5px;
 width: 280px;
 white-space: nowrap;
+z-index: 6;
+overflow: visible;
 }
+.ctrl_jobs_openclose * { overflow: visible; }
 .ctrl_jobs_openclose .btn {
 font: 16px monospace;
 display: inline-block;
@@ -433,12 +438,21 @@ vertical-align: middle;
 .ctrl_jobs_openclose .btn.err_only { color: #F44; }
 .ctrl_jobs_openclose .btn .don_icon { display: inline-block; width: 14px; height: 14px; vertical-align: middle; }
 .ctrl_jobs_openclose .btn .don_icon svg { width: 14px; height: 14px; display: block; }
+.ctrl_jobs_openclose .btn .off_icon { display: inline-block; width: 14px; height: 14px; vertical-align: middle; }
+.ctrl_jobs_openclose .btn .off_icon svg { width: 14px; height: 14px; display: block; }
 .ctrl_jobs_openclose .btn.don_only { color: #3A3; }
 .ctrl_jobs_openclose .btn.active { background-color: rgba(255,255,255,.25); }
 .ctrl_jobs_openclose .btn.err_only { background-color: rgba(255,0,0,.25); border-color: rgba(255,120,120,.6); }
 .ctrl_jobs_openclose .btn.err_only.active { background-color: rgba(255,0,0,.55); }
-.ctrl_jobs_openclose .btn.don_only { background-color: rgba(0,160,0,.10); border-color: rgba(80,200,80,.35); }
-.ctrl_jobs_openclose .btn.don_only.active { background-color: rgba(0,160,0,.22); }
+.ctrl_jobs_openclose .btn.off_only { background-color: rgba(0,0,0,.14); border-color: rgba(255,255,255,.18); color: rgba(255,255,255,.75); }
+.ctrl_jobs_openclose .btn.off_only.active { background-color: rgba(0,0,0,.30); border-color: rgba(255,255,255,.55); color: #FFF; box-shadow: 0 0 6px rgba(0,0,0,.25), 0 0 4px rgba(255,255,255,.12); }
+.ctrl_jobs_openclose .btn.off_only svg path { fill: currentColor; }
+.ctrl_jobs_openclose .btn.don_only { background-color: rgba(0,70,0,.28); border-color: rgba(90,200,90,.22); }
+.ctrl_jobs_openclose .btn.don_only.active { background-color: rgba(0,95,0,.42); border-color: rgba(120,220,120,.45); }
+.ctrl_jobs_openclose .btn.off_only:hover { background-color: rgba(0,0,0,.22); }
+.ctrl_jobs_openclose .btn.off_only.active:hover { background-color: rgba(0,0,0,.36); }
+.ctrl_jobs_openclose .btn.don_only:hover { background-color: rgba(0,70,0,.36); }
+.ctrl_jobs_openclose .btn.don_only.active:hover { background-color: rgba(0,95,0,.50); }
 .ctrl_jobs_openclose .btn:hover { background-color: rgba(255,255,255,.2); }
 .ctrl_jobs_openclose .branch_select {
 font: 11px monospace;
@@ -454,11 +468,12 @@ color: inherit;
 max-width: 160px;
 vertical-align: middle;
 }
-.monitor.jobs .ctrl_sort   { left: 279px; }
-.monitor.jobs .ctrl_filter { left: 412px; }
+.monitor.jobs .ctrl_sort   { left: 330px; width: 112px; }
+.monitor.jobs .ctrl_filter { left: 463px; }
 .monitor.jobs.hide_err .item.job.ERR { display: none; }
 .monitor.jobs.hide_err .item.job.RER { display: none; }
 .monitor.jobs.hide_err .item.job.SIC { display: none; }
+.monitor.jobs.hide_off .item.job.OFF { display: none; }
 .monitor.jobs.hide_don .item.job.DON { display: none; }
 .monitor.jobs .item.job.branch_filtered_out { display: none; }
 .ctrl_sort   { left: 5px; width: 124px; }
@@ -468,7 +483,7 @@ border: 1px solid #575757; border-radius: 2px; margin: 5px; padding: 2px; text-a
 .monitor.show_hidden .ctrl_hidden { background-color: #FC6; }
 .ctrl_filter.filtering { background-color: #FC6; color:#000; }
 .ctrl_sort.sorting { background-color: #FC6; color:#000; }
-.ctrl_sort .label, .ctrl_filter .label { float: left; margin: 5px 10px; width: 30px;}
+.ctrl_sort .label, .ctrl_filter .label { float: left; margin: 5px 4px 5px 6px; width: auto;}
 .ctrl_filter .param, .ctrl_sort .param
 {
 font: 11px monospace;

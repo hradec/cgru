@@ -6,6 +6,13 @@ function MeshPreview(i_parent, i_message_parent)
 	this.messageParent = i_message_parent ? i_message_parent : i_parent;
 	this.currentSources = null;
 	this.sources = null;
+	this.sourcesKey = null;
+	this.sourcesSelected = null;
+
+	// Used to keep the user-chosen mesh orientation when switching between mesh sources.
+	this.preservedMeshQuaternion = null;
+	this.preservedMeshJobId = null;
+	this.lastJobIdLoaded = null;
 	this.mesh = null;
 	this.textureLoader = null;
 	this.resizeObserver = null;
@@ -44,6 +51,15 @@ function MeshPreview(i_parent, i_message_parent)
 	this.attachResizeHandler();
 	this.setMessage('Select a job to view its mesh preview.');
 }
+
+MeshPreview.prototype.preserveMeshOrientation = function()
+{
+	if (this.mesh == null)
+		return;
+
+	this.preservedMeshQuaternion = this.mesh.quaternion.clone();
+	this.preservedMeshJobId = (this.m_jobId != null) ? this.m_jobId : null;
+};
 
 MeshPreview.prototype.loadSizeFromStorage = function()
 {
@@ -136,25 +152,173 @@ MeshPreview.prototype.initRenderer = function()
 	this.renderer = new THREE.WebGLRenderer({"antialias": true, "alpha": true});
 	this.renderer.setPixelRatio(window.devicePixelRatio || 1);
 	this.elCanvas.appendChild(this.renderer.domElement);
+	this.renderer.domElement.style.touchAction = 'none';
 	this.renderer.domElement.addEventListener('dblclick', this.onDoubleClick.bind(this));
 
 	this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
 	this.controls.enableDamping = true;
 	this.controls.dampingFactor = 0.05;
 	this.controls.enablePan = false;
-	// Remove orbit angle limits (if any default/custom limits exist in the bundled controls).
-	this.controls.minPolarAngle = -Infinity;
-	this.controls.maxPolarAngle = Infinity;
-	this.controls.minAzimuthAngle = -Infinity;
-	this.controls.maxAzimuthAngle = Infinity;
+	// Use custom camera orbit to avoid OrbitControls polar flips.
+	this.controls.enableRotate = false;
 	this.controls.update();
 
 	this.textureLoader = new THREE.TextureLoader();
 
 	this.attachMeshRotateHandler();
+	this.attachCameraOrbitHandler();
 
 	this.resize();
 	this.start();
+};
+
+MeshPreview.prototype.attachCameraOrbitHandler = function()
+{
+	var self = this;
+	var el = this.renderer ? this.renderer.domElement : null;
+	if (el == null)
+		return;
+
+	var orbitPointerId = null;
+	var yawQuat = new THREE.Quaternion();
+	var pitchQuat = new THREE.Quaternion();
+	var quat = new THREE.Quaternion();
+	var offset = new THREE.Vector3();
+	var axisWorldUp = new THREE.Vector3(0, 1, 0);
+	var axisFallbackX = new THREE.Vector3(1, 0, 0);
+	var direction = new THREE.Vector3();
+	var axisRight = new THREE.Vector3();
+	var baseCameraPosition = new THREE.Vector3();
+	var baseCameraQuaternion = new THREE.Quaternion();
+	var baseCameraUp = new THREE.Vector3();
+	var baseCameraMatrixWorld = new THREE.Matrix4();
+	var currentCameraMatrixWorld = new THREE.Matrix4();
+	var bakeDelta = new THREE.Matrix4();
+	var lastX = 0;
+	var lastY = 0;
+
+	el.addEventListener('pointerdown', function(e) {
+		// Left drag orbits the camera (Alt+Left is reserved for mesh rotation).
+		if (e.button != 0)
+			return;
+		if (e.altKey)
+			return;
+
+		e.preventDefault();
+		e.stopImmediatePropagation();
+		e.stopPropagation();
+
+		if (self.camera)
+		{
+			self.camera.updateMatrixWorld(true);
+			baseCameraPosition.copy(self.camera.position);
+			baseCameraQuaternion.copy(self.camera.quaternion);
+			baseCameraUp.copy(self.camera.up);
+			baseCameraMatrixWorld.copy(self.camera.matrixWorld);
+		}
+
+		orbitPointerId = e.pointerId;
+		lastX = e.clientX;
+		lastY = e.clientY;
+		try { el.setPointerCapture(e.pointerId); } catch (err) {}
+	}, true);
+
+	// Track pointer moves even when the cursor leaves the canvas:
+	window.addEventListener('pointermove', function(e) {
+		if (orbitPointerId != e.pointerId)
+			return;
+		if ((self.camera == null) || (self.controls == null))
+			return;
+
+		e.preventDefault();
+		e.stopPropagation();
+
+		var dx = e.clientX - lastX;
+		var dy = e.clientY - lastY;
+		lastX = e.clientX;
+		lastY = e.clientY;
+
+		if ((dx == 0) && (dy == 0))
+			return;
+
+		var rect = el.getBoundingClientRect();
+		var size = Math.min(rect.width, rect.height);
+		if (size <= 0)
+			size = 1;
+
+		// Make rotation speed independent of element size:
+		var rotSpeed = (2 * Math.PI) / size;
+		var yawAngle = -dx * rotSpeed;
+		var pitchAngle = -dy * rotSpeed;
+
+		yawQuat.setFromAxisAngle(axisWorldUp, yawAngle);
+
+		offset.copy(self.camera.position).sub(self.controls.target);
+
+		// Yaw around world up:
+		offset.applyQuaternion(yawQuat);
+		self.camera.up.applyQuaternion(yawQuat);
+
+		// Pitch around camera right axis:
+		direction.copy(offset).normalize();
+		axisRight.crossVectors(self.camera.up, direction);
+		if (axisRight.lengthSq() <= 0.00000001)
+			axisRight.crossVectors(axisWorldUp, direction);
+		if (axisRight.lengthSq() <= 0.00000001)
+			axisRight.crossVectors(axisFallbackX, direction);
+		if (axisRight.lengthSq() > 0.00000001)
+		{
+			axisRight.normalize();
+			pitchQuat.setFromAxisAngle(axisRight, pitchAngle);
+			offset.applyQuaternion(pitchQuat);
+			self.camera.up.applyQuaternion(pitchQuat);
+		}
+		else
+		{
+			pitchQuat.identity();
+		}
+
+		self.camera.position.copy(self.controls.target).add(offset);
+		self.camera.up.normalize();
+
+		self.camera.lookAt(self.controls.target);
+		self.controls.update();
+	}, true);
+
+	var stopOrbit = function(e) {
+		if (orbitPointerId != e.pointerId)
+			return;
+
+		if ((self.controls != null) && (self.camera != null))
+		{
+			// Keep the current view, but reset the camera transform by baking camera delta into the mesh.
+			// We want: (C0^-1) * M' == (C1^-1) * M  =>  M' = C0 * (C1^-1) * M
+			self.camera.updateMatrixWorld(true);
+			currentCameraMatrixWorld.copy(self.camera.matrixWorld);
+			bakeDelta.copy(baseCameraMatrixWorld).multiply(currentCameraMatrixWorld.clone().invert());
+
+			if (self.mesh != null)
+			{
+				self.mesh.applyMatrix4(bakeDelta);
+				self.mesh.updateMatrixWorld(true);
+			}
+
+			self.camera.position.copy(baseCameraPosition);
+			self.camera.quaternion.copy(baseCameraQuaternion);
+			self.camera.up.copy(baseCameraUp);
+			self.camera.updateMatrixWorld(true);
+			self.controls.update();
+		}
+
+		orbitPointerId = null;
+		try { el.releasePointerCapture(e.pointerId); } catch (err) {}
+	};
+
+	window.addEventListener('pointerup', stopOrbit, true);
+	window.addEventListener('pointercancel', stopOrbit, true);
+	el.addEventListener('lostpointercapture', function() {
+		orbitPointerId = null;
+	}, true);
 };
 
 MeshPreview.prototype.attachMeshRotateHandler = function()
@@ -166,9 +330,9 @@ MeshPreview.prototype.attachMeshRotateHandler = function()
 
 	el.oncontextmenu = function(e) { e.preventDefault(); return false; };
 
-	el.addEventListener('mousedown', function(e) {
-		// Right mouse drag (or Alt+left) rotates the mesh itself.
-		if ((self.mesh == null) || (self.controls == null))
+	el.addEventListener('pointerdown', function(e) {
+		// Right drag (or Alt+Left) rotates the mesh itself.
+		if (self.mesh == null)
 			return;
 
 		var rotateMesh = (e.button == 2) || ((e.button == 0) && e.altKey);
@@ -176,44 +340,53 @@ MeshPreview.prototype.attachMeshRotateHandler = function()
 			return;
 
 		e.preventDefault();
+		e.stopImmediatePropagation();
 		e.stopPropagation();
 
 		self.isRotatingMesh = true;
+		self.rotatePointerId = e.pointerId;
 		self.rotatePointerX = e.clientX;
 		self.rotatePointerY = e.clientY;
-
-		// Prevent OrbitControls from starting rotate on right mouse.
-		if (self.controls)
-			self.controls.enabled = false;
+		try { el.setPointerCapture(e.pointerId); } catch (err) {}
 	}, true);
 
-	window.addEventListener('mousemove', function(e) {
-		if (false == self.isRotatingMesh)
+	// Track pointer moves even when the cursor leaves the canvas:
+	window.addEventListener('pointermove', function(e) {
+		if ((false == self.isRotatingMesh) || (self.rotatePointerId != e.pointerId))
 			return;
 		if (self.mesh == null)
 			return;
+
+		e.preventDefault();
+		e.stopPropagation();
 
 		var dx = e.clientX - self.rotatePointerX;
 		var dy = e.clientY - self.rotatePointerY;
 		self.rotatePointerX = e.clientX;
 		self.rotatePointerY = e.clientY;
 
-		// Rotate around object axes, allowing full freedom beyond OrbitControls polar limits.
 		var speed = 0.01;
-		self.mesh.rotation.y += dx * speed;
-		self.mesh.rotation.x += dy * speed;
+		self.mesh.rotation.y -= dx * speed;
+		self.mesh.rotation.x -= dy * speed;
 
 		// Shift+drag adds roll.
 		if (e.shiftKey)
-			self.mesh.rotation.z += dx * speed;
+			self.mesh.rotation.z -= dx * speed;
 	}, true);
 
-	window.addEventListener('mouseup', function() {
-		if (false == self.isRotatingMesh)
+	var stopMeshRotate = function(e) {
+		if (self.rotatePointerId != e.pointerId)
 			return;
 		self.isRotatingMesh = false;
-		if (self.controls)
-			self.controls.enabled = true;
+		self.rotatePointerId = null;
+		try { el.releasePointerCapture(e.pointerId); } catch (err) {}
+	};
+
+	window.addEventListener('pointerup', stopMeshRotate, true);
+	window.addEventListener('pointercancel', stopMeshRotate, true);
+	el.addEventListener('lostpointercapture', function() {
+		self.isRotatingMesh = false;
+		self.rotatePointerId = null;
 	}, true);
 };
 
@@ -334,6 +507,14 @@ MeshPreview.prototype.setMessage = function(i_text)
 
 MeshPreview.prototype.load = function(i_sources)
 {
+	// Do not carry preserved mesh rotation between different jobs.
+	if ((this.m_jobId != null) && (this.lastJobIdLoaded != this.m_jobId))
+	{
+		this.preservedMeshQuaternion = null;
+		this.preservedMeshJobId = null;
+	}
+	this.lastJobIdLoaded = (this.m_jobId != null) ? this.m_jobId : null;
+
 	if ((i_sources != null) && Array.isArray(i_sources.items))
 	{
 		this.setSources(i_sources.items, i_sources.selected);
@@ -595,15 +776,17 @@ MeshPreview.prototype.setSources = function(i_sources, i_selected)
 		var fullLabel = s.label ? s.label : ('Mesh ' + (i + 1));
 		btn.textContent = tailLabel(fullLabel, 22);
 		btn.title = fullLabel;
-		btn.onclick = function(e) {
-			e.stopPropagation();
-			e.preventDefault();
-			var idx = parseInt(e.currentTarget.dataset.idx);
-			if (false == isFinite(idx))
-				return;
-			self.load(self.sources[idx]);
-			self.setSources(self.sources, idx);
-		};
+			btn.onclick = function(e) {
+				e.stopPropagation();
+				e.preventDefault();
+				var idx = parseInt(e.currentTarget.dataset.idx);
+				if (false == isFinite(idx))
+					return;
+				// Preserve the current mesh orientation when switching between source meshes.
+				self.preserveMeshOrientation();
+				self.load(self.sources[idx]);
+				self.setSources(self.sources, idx);
+			};
 		btn.dataset.idx = i;
 		this.elSources.appendChild(btn);
 	}
@@ -929,7 +1112,17 @@ MeshPreview.prototype.finalizeMesh = function(i_object)
 	this.scene.add(i_object);
 	this.mesh = i_object;
 
+	// When switching between meshes of the same job, keep the current orientation.
+	if ((this.preservedMeshQuaternion != null) && (this.preservedMeshJobId != null) &&
+		(this.m_jobId != null) && (this.preservedMeshJobId == this.m_jobId))
+	{
+		this.mesh.quaternion.copy(this.preservedMeshQuaternion);
+		this.mesh.quaternion.normalize();
+		this.mesh.updateMatrixWorld(true);
+	}
+
 	this.camera.position.set(0, 0, 4);
+	this.camera.up.set(0, 1, 0);
 	if (this.controls)
 	{
 		this.controls.target.set(0, 0, 0);
