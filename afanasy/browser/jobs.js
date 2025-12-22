@@ -2309,6 +2309,12 @@ JobNode.prototype.updatePanels = function(i_selected) {
 			elPanelR.m_meshPreview.m_jobId = null;
 			elPanelR.m_meshPreview.m_folder = null;
 			elPanelR.m_meshPreview.m_fetching = false;
+			elPanelR.m_meshPreview.m_baseFolder = null;
+			elPanelR.m_meshPreview.m_viewingBackup = false;
+			elPanelR.m_meshPreview.onVersionChanged = null;
+			elPanelR.m_meshPreview.m_version_select_focused = false;
+			if (elPanelR.m_meshPreview.setVersionOptions)
+				elPanelR.m_meshPreview.setVersionOptions(null);
 			elPanelR.m_meshPreview.load(null);
 			elPanelR.m_meshPreview.setMessage(msg);
 		}
@@ -2452,6 +2458,10 @@ JobNode.prototype.updateMeshPreview = function() {
 	var sameJob = (preview.m_jobId == this.params.id);
 	var sameFolder = ((preview.m_folder != null) && (folder != null) && (preview.m_folder == folder));
 
+	// If user selected a backup version for this job, keep it pinned (do not refresh current folder).
+	if (sameJob && preview.m_viewingBackup)
+		return;
+
 	// Once we have a valid mesh loaded for the current selected job/folder, do not refresh it on job updates.
 	if (sameJob && sameFolder && preview.currentSources)
 		return;
@@ -2487,6 +2497,66 @@ JobNode.prototype.updateMeshPreview = function() {
 		}
 		else
 			preview.load(null);
+
+		// Populate versions dropdown: current mesh + any .backup/YYYY-MM-DD folders.
+		if ((preview.setVersionOptions == null) || (folder == null))
+			return;
+
+		JobNode.buildMeshPreviewBackupOptionsAsync(folder).then(function(backupOptions) {
+			if (job.meshPreviewReqId != reqId)
+				return;
+			if (preview.m_jobId != job.params.id)
+				return;
+
+			var options = [{"label": "current mesh", "value": folder}];
+			if (Array.isArray(backupOptions) && backupOptions.length)
+				options = options.concat(backupOptions);
+
+			preview.setVersionOptions(options, folder, folder);
+
+			preview.onVersionChanged = function(selectedFolder) {
+				if ((selectedFolder == null) || (selectedFolder.length == 0))
+					return;
+
+				// Keep selection stable on job timer updates:
+				preview.m_baseFolder = folder;
+				preview.m_viewingBackup = (selectedFolder != folder);
+
+				// Avoid reloading the same folder:
+				if ((preview.m_folder != null) && (preview.m_folder == selectedFolder) && preview.currentSources)
+					return;
+
+				preview.preserveMeshOrientation();
+				preview.m_jobId = job.params.id;
+				preview.m_folder = selectedFolder;
+				preview.m_fetching = true;
+				preview.setMessage('Loading mesh preview…');
+
+				if (preview.m_versionReqId == null)
+					preview.m_versionReqId = 0;
+				preview.m_versionReqId++;
+				var vReqId = preview.m_versionReqId;
+
+				JobNode.buildMeshPreviewSourcesFromFolderAsync(job.params, selectedFolder, selectedFolder == folder).then(function(vsources) {
+					if (preview.m_versionReqId != vReqId)
+						return;
+					if (preview.m_jobId != job.params.id)
+						return;
+
+					preview.m_fetching = false;
+					if (vsources)
+					{
+						preview.m_folder = vsources.folder ? vsources.folder : selectedFolder;
+						preview.load(vsources);
+					}
+					else
+					{
+						preview.load(null);
+						preview.setMessage('No mesh preview found in selected version.');
+					}
+				});
+			};
+		});
 	});
 };
 
@@ -2874,7 +2944,15 @@ JobNode.buildMeshPreviewSourcesAsync = function(i_params)
 	if (folder == null)
 		return Promise.resolve(null);
 
-	var folders = i_params.folders;
+	return JobNode.buildMeshPreviewSourcesFromFolderAsync(i_params, folder, true);
+};
+
+JobNode.buildMeshPreviewSourcesFromFolderAsync = function(i_params, i_folder, i_allow_fallback)
+{
+	if ((i_params == null) || (i_folder == null) || (i_folder.length == 0))
+		return Promise.resolve(null);
+
+	var folder = i_folder;
 	var opts = JobNode.getMeshPreviewOptions(i_params.name);
 
 	// Try to list the folder and build all OBJ candidates from it.
@@ -2889,7 +2967,6 @@ JobNode.buildMeshPreviewSourcesAsync = function(i_params)
 			return null;
 
 		var objEntries = [];
-		var textureEntries = [];
 		var mtlByLower = {};
 		for (var i = 0; i < data.entries.length; i++)
 		{
@@ -2902,16 +2979,17 @@ JobNode.buildMeshPreviewSourcesAsync = function(i_params)
 				objEntries.push(e);
 			if (JobNode.endsWith(lower, '.mtl'))
 				mtlByLower[lower] = e.name;
-			if (JobNode.pathHasExtension(lower, opts.texture_extensions))
-				textureEntries.push(e);
 		}
 
 		if (objEntries.length == 0)
 		{
-			// Fallback to legacy heuristic (may resolve explicit file path via RULES/@PROJECT@).
-			var direct = JobNode.buildMeshPreviewSources(i_params);
-			if (direct)
-				return {"items": [{"obj": direct.obj, "texture": direct.texture, "label": "OBJ"}], "selected": 0, "folder": folder};
+			if (i_allow_fallback)
+			{
+				// Fallback to legacy heuristic (may resolve explicit file path via RULES/@PROJECT@).
+				var direct = JobNode.buildMeshPreviewSources(i_params);
+				if (direct)
+					return {"items": [{"obj": direct.obj, "texture": direct.texture, "label": "OBJ"}], "selected": 0, "folder": folder};
+			}
 			return null;
 		}
 
@@ -2990,11 +3068,65 @@ JobNode.buildMeshPreviewSourcesAsync = function(i_params)
 
 		return {"items": items, "selected": bestIndex, "folder": folder};
 	}).catch(function() {
-		// Fallback to legacy heuristic (may resolve explicit file path via RULES/@PROJECT@).
-		var direct = JobNode.buildMeshPreviewSources(i_params);
-		if (direct)
-			return {"items": [{"obj": direct.obj, "texture": direct.texture, "label": "OBJ"}], "selected": 0, "folder": folder};
+		if (i_allow_fallback)
+		{
+			// Fallback to legacy heuristic (may resolve explicit file path via RULES/@PROJECT@).
+			var direct = JobNode.buildMeshPreviewSources(i_params);
+			if (direct)
+				return {"items": [{"obj": direct.obj, "texture": direct.texture, "label": "OBJ"}], "selected": 0, "folder": folder};
+		}
 		return null;
+	});
+};
+
+JobNode.buildMeshPreviewBackupOptionsAsync = function(i_base_folder)
+{
+	if ((i_base_folder == null) || (i_base_folder.length == 0))
+		return Promise.resolve([]);
+
+	var backupRoot = JobNode.joinPaths(i_base_folder, '.backup');
+	if (backupRoot == null)
+		return Promise.resolve([]);
+
+	var listUrl = '/@LIST@' + encodeURIComponent(backupRoot);
+
+	return fetch(listUrl, {"credentials": 'same-origin'}).then(function(resp) {
+		if (false == resp.ok)
+			return null;
+		return resp.json();
+	}).then(function(data) {
+		if ((data == null) || (data.entries == null) || (data.entries.length == 0))
+			return [];
+
+		var dates = [];
+		var re = /^\d{4}-\d{2}-\d{2}$/;
+		for (var i = 0; i < data.entries.length; i++)
+		{
+			var e = data.entries[i];
+			if ((e == null) || (e.type != 'dir') || (e.name == null))
+				continue;
+			var name = '' + e.name;
+			if (re.test(name))
+				dates.push(name);
+		}
+
+		if (dates.length == 0)
+			return [];
+
+		dates.sort();
+		dates.reverse();
+
+		var options = [];
+		for (var i = 0; i < dates.length; i++)
+		{
+			var date = dates[i];
+			var folder = JobNode.joinPaths(backupRoot, date);
+			if (folder)
+				options.push({"label": ".backup/" + date, "value": folder});
+		}
+		return options;
+	}).catch(function() {
+		return [];
 	});
 };
 

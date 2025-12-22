@@ -244,6 +244,24 @@ float: right;
 		z-index: 10;
 		pointer-events: auto;
 	}
+.panel.right .section.mesh_preview .mesh_preview_holder .mesh_preview_versions {
+		position: absolute;
+		top: 6px;
+		left: 6px;
+		height: 18px;
+		line-height: 18px;
+		font: 11px monospace;
+		border: 1px solid #333;
+		border-radius: 3px;
+		background: rgba(0,0,0,.25);
+		color: #ddd;
+		max-width: 240px;
+		z-index: 10;
+	}
+.panel.right .section.mesh_preview .mesh_preview_holder .mesh_preview_versions:focus {
+		border-color: #777;
+		outline: none;
+	}
 .panel.right .section.mesh_preview .mesh_preview_holder .mesh_preview_toolbtn {
 		width: 18px;
 		height: 18px;

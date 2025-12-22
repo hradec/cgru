@@ -14,6 +14,13 @@ function MeshPreview(i_parent, i_message_parent)
 	this.preservedMeshJobId = null;
 	this.lastJobIdLoaded = null;
 
+	// Current mesh folder and optional backup folder selection (provided by jobs.js).
+	this.m_baseFolder = null;
+	this.m_viewingBackup = false;
+	this.m_versionOptionsKey = null;
+	this.m_version_select_focused = false;
+	this.onVersionChanged = null;
+
 	this.renderMode = 'textured'; // textured | flat | wireframe
 	this.flatMaterial = null;
 	this.wireframeMaterial = null;
@@ -38,6 +45,12 @@ function MeshPreview(i_parent, i_message_parent)
 	this.elResizeHandle.classList.add('mesh_preview_resizer');
 	this.elResizeHandle.title = 'Drag to resize mesh preview.';
 	this.parent.appendChild(this.elResizeHandle);
+
+	this.elVersionSelect = document.createElement('select');
+	this.elVersionSelect.classList.add('mesh_preview_versions');
+	this.elVersionSelect.title = 'Mesh version (current or backups).';
+	this.elVersionSelect.style.display = 'none';
+	this.parent.appendChild(this.elVersionSelect);
 
 	this.elToolbar = document.createElement('div');
 	this.elToolbar.classList.add('mesh_preview_toolbar');
@@ -96,10 +109,99 @@ function MeshPreview(i_parent, i_message_parent)
 	this.btnRenderFlat.m_preview = this;
 	this.btnRenderWire.m_preview = this;
 
+	var self = this;
+	this.elVersionSelect.onfocus = function() { self.m_version_select_focused = true; };
+	this.elVersionSelect.onblur = function() { self.m_version_select_focused = false; };
+	this.elVersionSelect.onmousedown = function(e) { if (e && e.stopPropagation) e.stopPropagation(); };
+	this.elVersionSelect.onchange = function(e) {
+		if ((self.onVersionChanged != null) && (e != null) && (e.currentTarget != null))
+			self.onVersionChanged(e.currentTarget.value);
+	};
+
 	this.initRenderer();
 	this.attachResizeHandler();
 	this.setMessage('Select a job to view its mesh preview.');
 }
+
+MeshPreview.prototype.setVersionOptions = function(i_options, i_selected_value, i_base_folder)
+{
+	if (this.elVersionSelect == null)
+		return;
+
+	if (i_base_folder != null)
+		this.m_baseFolder = i_base_folder;
+
+	if (this.m_version_select_focused)
+		return;
+
+	if (false == Array.isArray(i_options))
+		i_options = null;
+
+	var key = '';
+	if (i_options && i_options.length)
+	{
+		for (var i = 0; i < i_options.length; i++)
+		{
+			var opt = i_options[i];
+			if ((opt == null) || (opt.value == null))
+				continue;
+			key += ('' + opt.value) + '|' + (opt.label ? ('' + opt.label) : '') + ';';
+		}
+	}
+
+	if ((key.length == 0) || (i_options == null) || (i_options.length <= 1))
+	{
+		this.m_versionOptionsKey = null;
+		this.elVersionSelect.style.display = 'none';
+		this.elVersionSelect.disabled = true;
+		while (this.elVersionSelect.firstChild)
+			this.elVersionSelect.removeChild(this.elVersionSelect.firstChild);
+		return;
+	}
+
+	// Keep the current selection if possible.
+	var selected = (i_selected_value != null) ? ('' + i_selected_value) : ('' + this.elVersionSelect.value);
+	var found = false;
+	for (var i = 0; i < i_options.length; i++)
+	{
+		if (i_options[i] && (i_options[i].value == selected))
+		{
+			found = true;
+			break;
+		}
+	}
+	if (false == found)
+		selected = (i_options[0] && i_options[0].value != null) ? ('' + i_options[0].value) : '';
+
+	if ((this.m_versionOptionsKey == key) && (this.elVersionSelect.value == selected))
+		return;
+
+	this.m_versionOptionsKey = key;
+
+	while (this.elVersionSelect.firstChild)
+		this.elVersionSelect.removeChild(this.elVersionSelect.firstChild);
+
+	for (var i = 0; i < i_options.length; i++)
+	{
+		var opt = i_options[i];
+		if ((opt == null) || (opt.value == null))
+			continue;
+
+		var elOpt = document.createElement('option');
+		elOpt.value = '' + opt.value;
+		elOpt.textContent = opt.label ? ('' + opt.label) : ('' + opt.value);
+		this.elVersionSelect.appendChild(elOpt);
+	}
+
+	this.elVersionSelect.disabled = false;
+	this.elVersionSelect.style.display = 'block';
+	this.elVersionSelect.value = selected;
+
+	if ((this.m_baseFolder != null) && (selected == this.m_baseFolder))
+		this.m_viewingBackup = false;
+	else if ((this.m_baseFolder != null) && (selected != this.m_baseFolder))
+		this.m_viewingBackup = true;
+};
 
 MeshPreview.prototype.preserveMeshOrientation = function()
 {
