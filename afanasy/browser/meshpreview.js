@@ -13,8 +13,13 @@ function MeshPreview(i_parent, i_message_parent)
 	this.preservedMeshQuaternion = null;
 	this.preservedMeshJobId = null;
 	this.lastJobIdLoaded = null;
+
+	this.renderMode = 'textured'; // textured | flat | wireframe
+	this.flatMaterial = null;
+	this.wireframeMaterial = null;
 	this.mesh = null;
 	this.textureLoader = null;
+	this.headLight = null;
 	this.resizeObserver = null;
 	this.isDraggingResize = false;
 	this.internalHeightAdjust = false;
@@ -34,6 +39,31 @@ function MeshPreview(i_parent, i_message_parent)
 	this.elResizeHandle.title = 'Drag to resize mesh preview.';
 	this.parent.appendChild(this.elResizeHandle);
 
+	this.elToolbar = document.createElement('div');
+	this.elToolbar.classList.add('mesh_preview_toolbar');
+	this.parent.appendChild(this.elToolbar);
+
+	this.btnRenderTextured = document.createElement('button');
+	this.btnRenderTextured.type = 'button';
+	this.btnRenderTextured.classList.add('mesh_preview_toolbtn');
+	this.btnRenderTextured.textContent = 'T';
+	this.btnRenderTextured.title = 'Textured';
+	this.elToolbar.appendChild(this.btnRenderTextured);
+
+	this.btnRenderFlat = document.createElement('button');
+	this.btnRenderFlat.type = 'button';
+	this.btnRenderFlat.classList.add('mesh_preview_toolbtn');
+	this.btnRenderFlat.textContent = 'F';
+	this.btnRenderFlat.title = 'No texture';
+	this.elToolbar.appendChild(this.btnRenderFlat);
+
+	this.btnRenderWire = document.createElement('button');
+	this.btnRenderWire.type = 'button';
+	this.btnRenderWire.classList.add('mesh_preview_toolbtn');
+	this.btnRenderWire.textContent = 'W';
+	this.btnRenderWire.title = 'Wireframe';
+	this.elToolbar.appendChild(this.btnRenderWire);
+
 	this.elMessage = document.createElement('div');
 	this.elMessage.classList.add('mesh_preview_message');
 	this.messageParent.appendChild(this.elMessage);
@@ -45,7 +75,26 @@ function MeshPreview(i_parent, i_message_parent)
 	this.animate = this.animate.bind(this);
 
 	this.loadSizeFromStorage();
+	this.loadRenderModeFromStorage();
+	this.updateRenderModeButtons();
 	this.attachResizeHandle();
+
+	var stopBtnEvent = function(e)
+	{
+		if (e && e.stopPropagation) e.stopPropagation();
+		if (e && e.preventDefault) e.preventDefault();
+		return false;
+	};
+	this.btnRenderTextured.onmousedown = stopBtnEvent;
+	this.btnRenderFlat.onmousedown = stopBtnEvent;
+	this.btnRenderWire.onmousedown = stopBtnEvent;
+
+	this.btnRenderTextured.onclick = function(e) { stopBtnEvent(e); return this.m_preview.setRenderMode('textured'); };
+	this.btnRenderFlat.onclick = function(e) { stopBtnEvent(e); return this.m_preview.setRenderMode('flat'); };
+	this.btnRenderWire.onclick = function(e) { stopBtnEvent(e); return this.m_preview.setRenderMode('wireframe'); };
+	this.btnRenderTextured.m_preview = this;
+	this.btnRenderFlat.m_preview = this;
+	this.btnRenderWire.m_preview = this;
 
 	this.initRenderer();
 	this.attachResizeHandler();
@@ -59,6 +108,107 @@ MeshPreview.prototype.preserveMeshOrientation = function()
 
 	this.preservedMeshQuaternion = this.mesh.quaternion.clone();
 	this.preservedMeshJobId = (this.m_jobId != null) ? this.m_jobId : null;
+};
+
+MeshPreview.prototype.loadRenderModeFromStorage = function()
+{
+	var mode = localStorage['mesh_preview_render_mode'];
+	if ((mode == 'textured') || (mode == 'flat') || (mode == 'wireframe'))
+		this.renderMode = mode;
+};
+
+MeshPreview.prototype.saveRenderModeToStorage = function()
+{
+	try { localStorage['mesh_preview_render_mode'] = this.renderMode; } catch (err) {}
+};
+
+MeshPreview.prototype.updateRenderModeButtons = function()
+{
+	if (this.btnRenderTextured == null)
+		return;
+
+	this.btnRenderTextured.classList.toggle('active', this.renderMode == 'textured');
+	this.btnRenderFlat.classList.toggle('active', this.renderMode == 'flat');
+	this.btnRenderWire.classList.toggle('active', this.renderMode == 'wireframe');
+};
+
+MeshPreview.prototype.setRenderMode = function(i_mode)
+{
+	if ((i_mode != 'textured') && (i_mode != 'flat') && (i_mode != 'wireframe'))
+		return;
+
+	this.renderMode = i_mode;
+	this.saveRenderModeToStorage();
+	this.updateRenderModeButtons();
+	this.applyRenderModeToMesh();
+};
+
+MeshPreview.prototype.applyRenderModeToMesh = function()
+{
+	if ((this.mesh == null) || (typeof THREE === 'undefined'))
+		return;
+
+	var self = this;
+
+	var ensurePreviewMaterials = function()
+	{
+		if (self.wireframeMaterial == null)
+			self.wireframeMaterial = new THREE.MeshBasicMaterial({
+				'color': 0xDDDDDD,
+				'wireframe': true,
+				'side': THREE.DoubleSide
+			});
+
+		if (self.flatMaterial == null)
+		{
+			// "No texture" mode uses a lit material + a point light at the camera position.
+			// This approximates a facing-ratio shader (dot(normal, viewDir)) without custom GLSL.
+			self.flatMaterial = new THREE.MeshLambertMaterial({
+				'color': 0xD0D0D0,
+				'side': THREE.DoubleSide
+			});
+		}
+	};
+
+	ensurePreviewMaterials();
+
+	var mode = this.renderMode;
+	this.mesh.traverse(function(child) {
+		if (!child.isMesh)
+			return;
+
+		if (child.userData == null)
+			child.userData = {};
+
+		if (child.userData.meshPreviewOriginalMaterial == null)
+			child.userData.meshPreviewOriginalMaterial = child.material;
+
+		if (mode == 'wireframe')
+		{
+			child.material = self.wireframeMaterial;
+			return;
+		}
+
+		if (mode == 'flat')
+		{
+			// Flat shading needs normals.
+			if (child.geometry && child.geometry.computeVertexNormals)
+			{
+				var geom = child.geometry;
+				var hasNormals = false;
+				if (geom.getAttribute)
+					hasNormals = geom.getAttribute('normal') != null;
+				else if (geom.attributes)
+					hasNormals = geom.attributes.normal != null;
+				if (false == hasNormals)
+					geom.computeVertexNormals();
+			}
+			child.material = self.flatMaterial;
+			return;
+		}
+
+		child.material = child.userData.meshPreviewOriginalMaterial;
+	});
 };
 
 MeshPreview.prototype.loadSizeFromStorage = function()
@@ -134,18 +284,15 @@ MeshPreview.prototype.initRenderer = function()
 	this.scene = new THREE.Scene();
 	this.scene.background = new THREE.Color(0x2A2A2A);
 
-	// MTL materials (MeshPhongMaterial) need lights. The previous preview used an unlit shader,
-	// so ensure we always have a simple lighting setup.
-	this.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-	var keyLight = new THREE.DirectionalLight(0xffffff, 0.8);
-	keyLight.position.set(3, 4, 5);
-	this.scene.add(keyLight);
-	var fillLight = new THREE.DirectionalLight(0xffffff, 0.35);
-	fillLight.position.set(-3, -2, -4);
-	this.scene.add(fillLight);
+	// Lighting is used for "No texture" mode shading (camera-facing ratio).
+	// Textured and wireframe modes use unlit materials.
+	this.scene.add(new THREE.AmbientLight(0xffffff, 0.25));
 
 	this.camera = new THREE.PerspectiveCamera(35, 1, 0.1, 1000);
 	this.camera.position.set(0, 0, 4);
+	this.headLight = new THREE.PointLight(0xffffff, 0.6);
+	this.camera.add(this.headLight);
+	this.scene.add(this.camera);
 	this.raycaster = new THREE.Raycaster();
 	this.pointer = new THREE.Vector2();
 
@@ -466,7 +613,9 @@ MeshPreview.prototype.animate = function()
 		this.controls.update();
 
 	if (this.renderer && this.scene && this.camera)
+	{
 		this.renderer.render(this.scene, this.camera);
+	}
 
 	requestAnimationFrame(this.animate);
 };
@@ -1120,6 +1269,8 @@ MeshPreview.prototype.finalizeMesh = function(i_object)
 		this.mesh.quaternion.normalize();
 		this.mesh.updateMatrixWorld(true);
 	}
+
+	this.applyRenderModeToMesh();
 
 	this.camera.position.set(0, 0, 4);
 	this.camera.up.set(0, 1, 0);
