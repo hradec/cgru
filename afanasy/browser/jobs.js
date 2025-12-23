@@ -2313,6 +2313,7 @@ JobNode.prototype.updatePanels = function(i_selected) {
 			elPanelR.m_meshPreview.m_viewingBackup = false;
 			elPanelR.m_meshPreview.onVersionChanged = null;
 			elPanelR.m_meshPreview.m_version_select_focused = false;
+			elPanelR.m_meshPreview.m_source_select_focused = false;
 			if (elPanelR.m_meshPreview.setVersionOptions)
 				elPanelR.m_meshPreview.setVersionOptions(null);
 			elPanelR.m_meshPreview.load(null);

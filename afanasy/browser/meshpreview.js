@@ -20,12 +20,14 @@ function MeshPreview(i_parent, i_message_parent)
 	this.m_versionOptionsKey = null;
 	this.m_version_select_focused = false;
 	this.onVersionChanged = null;
+	this.m_source_select_focused = false;
 
 	this.renderMode = 'textured'; // textured | flat | wireframe
 	this.flatMaterial = null;
 	this.wireframeMaterial = null;
 	this.mesh = null;
 	this.textureLoader = null;
+	this.ambientLight = null;
 	this.headLight = null;
 	this.resizeObserver = null;
 	this.isDraggingResize = false;
@@ -51,6 +53,42 @@ function MeshPreview(i_parent, i_message_parent)
 	this.elVersionSelect.title = 'Mesh version (current or backups).';
 	this.elVersionSelect.style.display = 'none';
 	this.parent.appendChild(this.elVersionSelect);
+
+	this.elSourceSelect = document.createElement('select');
+	this.elSourceSelect.classList.add('mesh_preview_sources_select');
+	this.elSourceSelect.title = 'Mesh file.';
+	this.elSourceSelect.style.display = 'none';
+	this.elSourceSelect.disabled = true;
+	this.parent.appendChild(this.elSourceSelect);
+
+	this.elProgress = document.createElement('div');
+	this.elProgress.classList.add('mesh_preview_progress');
+	this.elProgress.style.display = 'none';
+	this.parent.appendChild(this.elProgress);
+
+	this.elProgressObj = document.createElement('div');
+	this.elProgressObj.classList.add('mesh_preview_progress_line');
+	this.elProgressObj.classList.add('obj');
+	this.elProgress.appendChild(this.elProgressObj);
+	this.elProgressObjFill = document.createElement('div');
+	this.elProgressObjFill.classList.add('mesh_preview_progress_fill');
+	this.elProgressObj.appendChild(this.elProgressObjFill);
+
+	this.elProgressTex = document.createElement('div');
+	this.elProgressTex.classList.add('mesh_preview_progress_line');
+	this.elProgressTex.classList.add('tex');
+	this.elProgress.appendChild(this.elProgressTex);
+	this.elProgressTexFill = document.createElement('div');
+	this.elProgressTexFill.classList.add('mesh_preview_progress_fill');
+	this.elProgressTex.appendChild(this.elProgressTexFill);
+
+	this.progressObj = 0;
+	this.progressTex = 0;
+	this.progressObjDone = true;
+	this.progressTexDone = true;
+	this.progressHideTimer = null;
+	this.progressTexTimer = null;
+	this.loadingManager = null;
 
 	this.elToolbar = document.createElement('div');
 	this.elToolbar.classList.add('mesh_preview_toolbar');
@@ -117,11 +155,157 @@ function MeshPreview(i_parent, i_message_parent)
 		if ((self.onVersionChanged != null) && (e != null) && (e.currentTarget != null))
 			self.onVersionChanged(e.currentTarget.value);
 	};
+	this.elSourceSelect.onfocus = function() { self.m_source_select_focused = true; };
+	this.elSourceSelect.onblur = function() { self.m_source_select_focused = false; };
+	this.elSourceSelect.onmousedown = function(e) { if (e && e.stopPropagation) e.stopPropagation(); };
+	this.elSourceSelect.onchange = function(e) {
+		if ((e == null) || (e.currentTarget == null))
+			return;
+		var idx = parseInt(e.currentTarget.value);
+		if ((false == isFinite(idx)) || (self.sources == null) || (idx < 0) || (idx >= self.sources.length))
+			return;
+
+		// Preserve the current mesh orientation when switching between source meshes.
+		self.preserveMeshOrientation();
+		self.sourcesSelected = idx;
+		var s = self.sources[idx];
+		if (s && s.label)
+			self.elSourceSelect.title = '' + s.label;
+		self.load(s);
+	};
 
 	this.initRenderer();
 	this.attachResizeHandler();
 	this.setMessage('Select a job to view its mesh preview.');
 }
+
+MeshPreview.prototype.resetLoadProgress = function()
+{
+	if (this.progressHideTimer)
+	{
+		clearTimeout(this.progressHideTimer);
+		this.progressHideTimer = null;
+	}
+	if (this.progressTexTimer)
+	{
+		clearInterval(this.progressTexTimer);
+		this.progressTexTimer = null;
+	}
+
+	this.loadingManager = null;
+	this.progressObj = 0;
+	this.progressTex = 0;
+	this.progressObjDone = true;
+	this.progressTexDone = true;
+
+	if (this.elProgressObjFill)
+		this.elProgressObjFill.style.width = '0%';
+	if (this.elProgressTexFill)
+		this.elProgressTexFill.style.width = '0%';
+	if (this.elProgressObj)
+		this.elProgressObj.style.display = 'none';
+	if (this.elProgressTex)
+		this.elProgressTex.style.display = 'none';
+	if (this.elProgress)
+		this.elProgress.style.display = 'none';
+};
+
+MeshPreview.prototype.setObjProgress = function(i_value)
+{
+	if (this.elProgressObjFill == null)
+		return;
+
+	if (false == isFinite(i_value))
+		return;
+
+	i_value = Math.max(0, Math.min(1, i_value));
+	this.progressObj = Math.max(this.progressObj, i_value);
+
+	if (this.elProgress)
+		this.elProgress.style.display = 'block';
+	if (this.elProgressObj)
+		this.elProgressObj.style.display = 'block';
+	this.elProgressObjFill.style.width = Math.round(this.progressObj * 100) + '%';
+};
+
+MeshPreview.prototype.markObjDone = function()
+{
+	if (this.progressObjDone)
+		return;
+	this.progressObjDone = true;
+	this.setObjProgress(1);
+	this.maybeHideLoadProgress();
+};
+
+MeshPreview.prototype.startTextureProgress = function()
+{
+	if ((this.elProgressTexFill == null) || (this.elProgressTex == null))
+		return;
+
+	if (this.progressTexTimer)
+	{
+		clearInterval(this.progressTexTimer);
+		this.progressTexTimer = null;
+	}
+
+	this.progressTex = 0;
+	this.progressTexDone = false;
+
+	if (this.elProgress)
+		this.elProgress.style.display = 'block';
+	this.elProgressTex.style.display = 'block';
+	this.elProgressTexFill.style.width = '0%';
+
+	var self = this;
+	this.progressTexTimer = setInterval(function() {
+		if (self.progressTexDone)
+		{
+			clearInterval(self.progressTexTimer);
+			self.progressTexTimer = null;
+			return;
+		}
+		if (self.progressTex >= 0.9)
+			return;
+		// Simple "soft" progress, as browser image loaders don't provide byte progress reliably.
+		var delta = 0.01 + (0.9 - self.progressTex) * 0.05;
+		self.progressTex = Math.min(0.9, self.progressTex + delta);
+		if (self.elProgressTexFill)
+			self.elProgressTexFill.style.width = Math.round(self.progressTex * 100) + '%';
+	}, 120);
+};
+
+MeshPreview.prototype.markTextureDone = function()
+{
+	if (this.progressTexDone)
+		return;
+
+	this.progressTexDone = true;
+	if (this.progressTexTimer)
+	{
+		clearInterval(this.progressTexTimer);
+		this.progressTexTimer = null;
+	}
+
+	if (this.elProgressTexFill)
+		this.elProgressTexFill.style.width = '100%';
+	this.maybeHideLoadProgress();
+};
+
+MeshPreview.prototype.maybeHideLoadProgress = function()
+{
+	if ((false == this.progressObjDone) || (false == this.progressTexDone))
+		return;
+
+	if (this.progressHideTimer)
+		return;
+
+	var self = this;
+	this.progressHideTimer = setTimeout(function() {
+		self.progressHideTimer = null;
+		if (self.elProgress)
+			self.elProgress.style.display = 'none';
+	}, 250);
+};
 
 MeshPreview.prototype.setVersionOptions = function(i_options, i_selected_value, i_base_folder)
 {
@@ -273,6 +457,42 @@ MeshPreview.prototype.applyRenderModeToMesh = function()
 	};
 
 	ensurePreviewMaterials();
+	this.updateLightsForRenderMode();
+
+	var makeUnlitMaterial = function(mat)
+	{
+		if (mat == null)
+			return null;
+
+		if (Array.isArray(mat))
+		{
+			var out = [];
+			for (var i = 0; i < mat.length; i++)
+				out.push(makeUnlitMaterial(mat[i]));
+			return out;
+		}
+
+		if (mat.isMeshBasicMaterial || mat.isShaderMaterial)
+			return mat;
+
+		var params = {'side': (mat.side != null) ? mat.side : THREE.DoubleSide};
+		if (mat.name != null)
+			params.name = mat.name;
+		if (mat.map)
+			params.map = mat.map;
+		if (mat.color && mat.color.isColor)
+			params.color = mat.color.clone();
+		if (mat.transparent != null)
+			params.transparent = mat.transparent;
+		if (mat.opacity != null)
+			params.opacity = mat.opacity;
+		if (mat.alphaTest != null)
+			params.alphaTest = mat.alphaTest;
+		if (mat.vertexColors != null)
+			params.vertexColors = mat.vertexColors;
+
+		return new THREE.MeshBasicMaterial(params);
+	};
 
 	var mode = this.renderMode;
 	this.mesh.traverse(function(child) {
@@ -283,7 +503,10 @@ MeshPreview.prototype.applyRenderModeToMesh = function()
 			child.userData = {};
 
 		if (child.userData.meshPreviewOriginalMaterial == null)
+		{
 			child.userData.meshPreviewOriginalMaterial = child.material;
+			child.userData.meshPreviewOriginalMaterialUnlit = makeUnlitMaterial(child.material);
+		}
 
 		if (mode == 'wireframe')
 		{
@@ -305,12 +528,33 @@ MeshPreview.prototype.applyRenderModeToMesh = function()
 				if (false == hasNormals)
 					geom.computeVertexNormals();
 			}
-			child.material = self.flatMaterial;
-			return;
-		}
+				child.material = self.flatMaterial;
+				return;
+			}
 
-		child.material = child.userData.meshPreviewOriginalMaterial;
-	});
+			child.material = child.userData.meshPreviewOriginalMaterialUnlit ?
+				child.userData.meshPreviewOriginalMaterialUnlit : child.userData.meshPreviewOriginalMaterial;
+		});
+};
+
+MeshPreview.prototype.updateLightsForRenderMode = function()
+{
+	if (this.ambientLight == null)
+		return;
+	if (this.headLight == null)
+		return;
+
+	// Lights are only needed for "F" (no texture) mode.
+	if (this.renderMode == 'flat')
+	{
+		this.ambientLight.intensity = 0.25;
+		this.headLight.intensity = 0.6;
+	}
+	else
+	{
+		this.ambientLight.intensity = 0.0;
+		this.headLight.intensity = 0.0;
+	}
 };
 
 MeshPreview.prototype.loadSizeFromStorage = function()
@@ -388,7 +632,8 @@ MeshPreview.prototype.initRenderer = function()
 
 	// Lighting is used for "No texture" mode shading (camera-facing ratio).
 	// Textured and wireframe modes use unlit materials.
-	this.scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+	this.ambientLight = new THREE.AmbientLight(0xffffff, 0.25);
+	this.scene.add(this.ambientLight);
 
 	this.camera = new THREE.PerspectiveCamera(35, 1, 0.1, 1000);
 	this.camera.position.set(0, 0, 4);
@@ -417,6 +662,7 @@ MeshPreview.prototype.initRenderer = function()
 	this.attachMeshRotateHandler();
 	this.attachCameraOrbitHandler();
 
+	this.updateLightsForRenderMode();
 	this.resize();
 	this.start();
 };
@@ -728,16 +974,39 @@ MeshPreview.prototype.clearMesh = function()
 		return;
 
 	this.scene.remove(this.mesh);
+	var disposed = [];
+	var disposeMaterial = function(mat)
+	{
+		if (mat == null)
+			return;
+		if (Array.isArray(mat))
+		{
+			for (var i = 0; i < mat.length; i++)
+				disposeMaterial(mat[i]);
+			return;
+		}
+		if (disposed.indexOf(mat) != -1)
+			return;
+		disposed.push(mat);
+		if (mat.dispose)
+			mat.dispose();
+	};
 	this.mesh.traverse(function(child) {
 		if (child.isMesh && child.geometry)
 			child.geometry.dispose();
-		if (child.material)
+
+		if (child.userData)
 		{
-			if (Array.isArray(child.material))
-				child.material.forEach(function(mat) { mat.dispose(); });
-			else
-				child.material.dispose();
+			if (child.userData.meshPreviewOriginalMaterial)
+				disposeMaterial(child.userData.meshPreviewOriginalMaterial);
+			if (child.userData.meshPreviewOriginalMaterialUnlit)
+				disposeMaterial(child.userData.meshPreviewOriginalMaterialUnlit);
+			child.userData.meshPreviewOriginalMaterial = null;
+			child.userData.meshPreviewOriginalMaterialUnlit = null;
 		}
+
+		if (child.material)
+			disposeMaterial(child.material);
 	});
 	this.mesh = null;
 };
@@ -779,6 +1048,7 @@ MeshPreview.prototype.load = function(i_sources)
 	{
 		// Cancel any in-flight loaders:
 		this.loadId++;
+		this.resetLoadProgress();
 		this.currentSources = null;
 		this.setSources(null);
 		this.clearMesh();
@@ -795,6 +1065,7 @@ MeshPreview.prototype.load = function(i_sources)
 	// Cancel previous load and create a new token:
 	this.loadId++;
 	var loadId = this.loadId;
+	this.resetLoadProgress();
 
 	this.initRenderer();
 
@@ -816,24 +1087,60 @@ MeshPreview.prototype.load = function(i_sources)
 
 	var self = this;
 
+	// Create a per-load manager to detect when MTL textures finish loading.
+	if ((typeof THREE !== 'undefined') && (typeof THREE.LoadingManager !== 'undefined'))
+	{
+		this.loadingManager = new THREE.LoadingManager();
+		this.loadingManager.onLoad = function() {
+			if (self.loadId != loadId)
+				return;
+			if (false == self.progressTexDone)
+				self.markTextureDone();
+		};
+		this.loadingManager.onError = function() {
+			if (self.loadId != loadId)
+				return;
+			if (false == self.progressTexDone)
+				self.markTextureDone();
+		};
+	}
+
+	// Always show OBJ progress while loading the mesh file.
+	this.progressObjDone = false;
+	this.progressTexDone = true;
+	if ((i_sources.mtl && i_sources.mtl.length) || (i_sources.texture && i_sources.texture.length))
+		this.progressTexDone = false;
+	this.setObjProgress(0);
+
 	if (i_sources.mtl && (typeof THREE.MTLLoader !== 'undefined'))
 	{
 		this.loadWithMtl(loadId, i_sources.obj, i_sources.mtl);
 		return;
 	}
 
-	var loader = new THREE.OBJLoader();
+	var loader = this.loadingManager ? new THREE.OBJLoader(this.loadingManager) : new THREE.OBJLoader();
 	loader.load(
 		i_sources.obj,
 		function(object) {
 			if (self.loadId != loadId)
 				return;
+			self.markObjDone();
 			self.onMeshLoaded(object, i_sources.texture);
 		},
-		null,
+		function(xhr) {
+			if (self.loadId != loadId)
+				return;
+			if ((xhr == null) || (false == isFinite(xhr.loaded)))
+				return;
+			if ((xhr.total != null) && isFinite(xhr.total) && (xhr.total > 0))
+				self.setObjProgress(xhr.loaded / xhr.total);
+			else
+				self.setObjProgress(Math.min(0.95, self.progressObj + 0.02));
+		},
 		function() {
 			if (self.loadId != loadId)
 				return;
+			self.resetLoadProgress();
 			self.onMeshFailed();
 		}
 	);
@@ -858,7 +1165,7 @@ MeshPreview.prototype.loadWithMtl = function(i_loadId, i_obj_url, i_mtl_url)
 	};
 
 	var dir = getDir(i_mtl_url);
-	var mtlLoader = new THREE.MTLLoader();
+	var mtlLoader = this.loadingManager ? new THREE.MTLLoader(this.loadingManager) : new THREE.MTLLoader();
 	if (mtlLoader.setResourcePath)
 		mtlLoader.setResourcePath(dir);
 	if (mtlLoader.setPath)
@@ -869,8 +1176,13 @@ MeshPreview.prototype.loadWithMtl = function(i_loadId, i_obj_url, i_mtl_url)
 		function(materialCreator) {
 			if (self.loadId != i_loadId)
 				return;
+			// MTL loaded: reserve a bit of progress so the bar doesn't stay at 0.
+			self.setObjProgress(Math.max(self.progressObj, 0.1));
+
+			// Textures referenced by MTL can start loading on preload.
+			self.startTextureProgress();
 			try { materialCreator.preload(); } catch (err) {}
-			var objLoader = new THREE.OBJLoader();
+			var objLoader = self.loadingManager ? new THREE.OBJLoader(self.loadingManager) : new THREE.OBJLoader();
 			if (objLoader.setMaterials)
 				objLoader.setMaterials(materialCreator);
 
@@ -879,33 +1191,64 @@ MeshPreview.prototype.loadWithMtl = function(i_loadId, i_obj_url, i_mtl_url)
 				function(object) {
 					if (self.loadId != i_loadId)
 						return;
+					self.markObjDone();
 					self.onMeshLoadedFromMtl(object);
 				},
-				null,
+				function(xhr) {
+					if (self.loadId != i_loadId)
+						return;
+					if ((xhr == null) || (false == isFinite(xhr.loaded)))
+						return;
+					if ((xhr.total != null) && isFinite(xhr.total) && (xhr.total > 0))
+						self.setObjProgress(0.1 + (xhr.loaded / xhr.total) * 0.9);
+					else
+						self.setObjProgress(Math.min(0.95, self.progressObj + 0.02));
+				},
 				function() {
 					if (self.loadId != i_loadId)
 						return;
+					self.resetLoadProgress();
 					self.onMeshFailed();
 				}
 			);
 		},
-		null,
+		function(xhr) {
+			if (self.loadId != i_loadId)
+				return;
+			if ((xhr == null) || (false == isFinite(xhr.loaded)))
+				return;
+			if ((xhr.total != null) && isFinite(xhr.total) && (xhr.total > 0))
+				self.setObjProgress(Math.min(0.1, (xhr.loaded / xhr.total) * 0.1));
+			else
+				self.setObjProgress(Math.min(0.1, self.progressObj + 0.01));
+		},
 		function() {
 			if (self.loadId != i_loadId)
 				return;
 			// Fallback: no materials from MTL.
-			var objLoader = new THREE.OBJLoader();
+			var objLoader = self.loadingManager ? new THREE.OBJLoader(self.loadingManager) : new THREE.OBJLoader();
 			objLoader.load(
 				i_obj_url,
 				function(object) {
 					if (self.loadId != i_loadId)
 						return;
+					self.markObjDone();
 					self.onMeshLoaded(object, null);
 				},
-				null,
+				function(xhr) {
+					if (self.loadId != i_loadId)
+						return;
+					if ((xhr == null) || (false == isFinite(xhr.loaded)))
+						return;
+					if ((xhr.total != null) && isFinite(xhr.total) && (xhr.total > 0))
+						self.setObjProgress(xhr.loaded / xhr.total);
+					else
+						self.setObjProgress(Math.min(0.95, self.progressObj + 0.02));
+				},
 				function() {
 					if (self.loadId != i_loadId)
 						return;
+					self.resetLoadProgress();
 					self.onMeshFailed();
 				}
 			);
@@ -966,6 +1309,9 @@ MeshPreview.prototype.onMeshLoadedFromMtl = function(i_object)
 
 MeshPreview.prototype.setSources = function(i_sources, i_selected)
 {
+	if (this.m_source_select_focused)
+		return;
+
 	this.sources = (Array.isArray(i_sources) && i_sources.length) ? i_sources.slice(0) : null;
 
 	var tailLabel = function(label, maxLen)
@@ -1003,6 +1349,14 @@ MeshPreview.prototype.setSources = function(i_sources, i_selected)
 	this.sourcesKey = key;
 	this.sourcesSelected = selected;
 
+	if (this.elSourceSelect)
+	{
+		while (this.elSourceSelect.firstChild)
+			this.elSourceSelect.removeChild(this.elSourceSelect.firstChild);
+		this.elSourceSelect.style.display = 'none';
+		this.elSourceSelect.disabled = true;
+	}
+
 	while (this.elSources.firstChild)
 		this.elSources.removeChild(this.elSources.firstChild);
 
@@ -1012,37 +1366,31 @@ MeshPreview.prototype.setSources = function(i_sources, i_selected)
 		return;
 	}
 
-	var self = this;
-	for (var i = 0; i < this.sources.length; i++)
+	// Convert source buttons into a dropdown menu (top overlay, right of version dropdown).
+	if (this.elSourceSelect && (false == this.m_source_select_focused))
 	{
-		var s = this.sources[i];
-		if ((s == null) || (s.obj == null) || (s.obj == ''))
-			continue;
+		for (var i = 0; i < this.sources.length; i++)
+		{
+			var s = this.sources[i];
+			if ((s == null) || (s.obj == null) || (s.obj == ''))
+				continue;
 
-		var btn = document.createElement('button');
-		btn.type = 'button';
-		btn.classList.add('mesh_preview_source_btn');
-		if (i == selected)
-			btn.classList.add('selected');
-		var fullLabel = s.label ? s.label : ('Mesh ' + (i + 1));
-		btn.textContent = tailLabel(fullLabel, 22);
-		btn.title = fullLabel;
-			btn.onclick = function(e) {
-				e.stopPropagation();
-				e.preventDefault();
-				var idx = parseInt(e.currentTarget.dataset.idx);
-				if (false == isFinite(idx))
-					return;
-				// Preserve the current mesh orientation when switching between source meshes.
-				self.preserveMeshOrientation();
-				self.load(self.sources[idx]);
-				self.setSources(self.sources, idx);
-			};
-		btn.dataset.idx = i;
-		this.elSources.appendChild(btn);
+			var fullLabel = s.label ? s.label : ('Mesh ' + (i + 1));
+			var elOpt = document.createElement('option');
+			elOpt.value = '' + i;
+			elOpt.textContent = tailLabel(fullLabel, 28);
+			this.elSourceSelect.appendChild(elOpt);
+		}
+
+		this.elSourceSelect.disabled = false;
+		this.elSourceSelect.style.display = 'block';
+		this.elSourceSelect.value = '' + selected;
+		if (this.sources[selected] && this.sources[selected].label)
+			this.elSourceSelect.title = '' + this.sources[selected].label;
 	}
 
-	this.elSources.style.display = 'block';
+	// Keep the legacy container hidden (buttons removed).
+	this.elSources.style.display = 'none';
 };
 
 MeshPreview.prototype.onMeshLoaded = function(i_object, i_texture)
@@ -1310,6 +1658,10 @@ MeshPreview.prototype.onMeshLoaded = function(i_object, i_texture)
 	};
 	if (i_texture && this.textureLoader)
 	{
+		self.startTextureProgress();
+		// Ensure the texture loader participates in our per-load manager (for completion callbacks).
+		if (this.loadingManager)
+			this.textureLoader = new THREE.TextureLoader(this.loadingManager);
 		// Clear any previous texture preview immediately when switching meshes.
 		self.elCanvas.style.backgroundImage = '';
 		this.textureLoader.load(
@@ -1317,18 +1669,23 @@ MeshPreview.prototype.onMeshLoaded = function(i_object, i_texture)
 			function(texture) {
 				if (self.loadId != loadId)
 					return;
+				self.markTextureDone();
 				applyMaterial(texture);
 			},
 			null,
 			function () {
 				if (self.loadId != loadId)
 					return;
+				self.markTextureDone();
 				applyMaterial(null);
 			}
 		);
 	}
 	else
 	{
+		// No explicit texture found.
+		if (false == self.progressTexDone)
+			self.markTextureDone();
 		// No explicit texture found. Show mesh with fallback material.
 		applyMaterial(null);
 	}
@@ -1387,6 +1744,7 @@ MeshPreview.prototype.finalizeMesh = function(i_object)
 
 MeshPreview.prototype.onMeshFailed = function()
 {
+	this.resetLoadProgress();
 	this.currentSources = null;
 	this.clearMesh();
 	this.setMessage('Unable to load mesh preview.');
