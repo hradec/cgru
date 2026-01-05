@@ -56,6 +56,28 @@ function g_Init()
 	cgru_Init();
 	cm_Init();
 
+	// Ignore expected aborts (eg when switching previews) to avoid noisy
+	// "Uncaught (in promise) DOMException" messages that can also trigger
+	// aggressive auto-reload setups in some browsers/extensions.
+	window.addEventListener('unhandledrejection', function(e) {
+		var reason = e ? e.reason : null;
+		var name = null;
+		var message = null;
+		try { name = reason && reason.name ? reason.name : null; } catch (err) {}
+		try { message = reason && reason.message ? reason.message : ('' + reason); } catch (err) {}
+
+		var is_abort = false;
+		if (name === 'AbortError')
+			is_abort = true;
+		else if ((message != null) && (message.indexOf('media resource was aborted') !== -1))
+			is_abort = true;
+		else if ((message != null) && (message.indexOf('The user aborted a request') !== -1))
+			is_abort = true;
+
+		if (is_abort && e && e.preventDefault)
+			e.preventDefault();
+	}, false);
+
 	window.onbeforeunload = g_OnClose;
 	document.body.onkeydown = g_OnKeyDown;
 

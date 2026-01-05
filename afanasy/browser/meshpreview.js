@@ -447,11 +447,31 @@ MeshPreview.prototype.applyRenderModeToMesh = function()
 
 		if (self.flatMaterial == null)
 		{
-			// "No texture" mode uses a lit material + a point light at the camera position.
-			// This approximates a facing-ratio shader (dot(normal, viewDir)) without custom GLSL.
-			self.flatMaterial = new THREE.MeshLambertMaterial({
-				'color': 0xD0D0D0,
-				'side': THREE.DoubleSide
+			// "No texture" mode uses a simple facing-ratio shader with faceforward normals.
+			self.flatMaterial = new THREE.ShaderMaterial({
+				"uniforms": {},
+				"vertexShader":
+					"varying vec3 vViewDir;" +
+					"varying vec3 vNormal;" +
+					"void main() {" +
+					"  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);" +
+					"  vViewDir = normalize(-mvPosition.xyz);" +
+					"  vNormal = normalize(normalMatrix * normal);" +
+					"  gl_Position = projectionMatrix * mvPosition;" +
+					"}",
+				"fragmentShader":
+					"varying vec3 vViewDir;" +
+					"varying vec3 vNormal;" +
+					"void main() {" +
+					"  vec3 n = normalize(vNormal);" +
+					"  vec3 v = vec3(0.0, 0.0, 1.0);" +
+					"  n = dot(-v, n) < 0.0 ? n : -n;" +
+					"  float facing = max(dot(n, v), 0.0);" +
+					"  float shade = 0.25 + 0.75 * facing;" +
+					"  vec3 base = vec3(0.82, 0.82, 0.82);" +
+					"  gl_FragColor = vec4(base * shade, 1.0);" +
+					"}",
+				"side": THREE.DoubleSide
 			});
 		}
 	};
@@ -1023,6 +1043,18 @@ MeshPreview.prototype.setMessage = function(i_text)
 		this.elMessage.textContent = '';
 		this.elMessage.style.display = 'none';
 	}
+};
+
+MeshPreview.prototype.clearPreview = function()
+{
+	this.loadId++;
+	this.resetLoadProgress();
+	this.currentSources = null;
+	this.setSources(null);
+	this.clearMesh();
+	if (this.elCanvas)
+		this.elCanvas.style.backgroundImage = '';
+	this.setMessage('');
 };
 
 MeshPreview.prototype.load = function(i_sources)

@@ -2245,6 +2245,24 @@ JobBlock.prototype.updateTickets = function() {
 JobNode.prototype.updatePanels = function(i_selected) {
 	var elPanelR = this.monitor.elPanelR;
 
+	if (elPanelR)
+	{
+		if (elPanelR.m_meshPreview &&
+			(elPanelR.m_meshPreview.m_jobId != null) &&
+			(elPanelR.m_meshPreview.m_jobId != this.params.id))
+		{
+			if (elPanelR.m_meshPreview.clearPreview)
+				elPanelR.m_meshPreview.clearPreview();
+		}
+		if (elPanelR.m_videoPreview &&
+			(elPanelR.m_videoPreview.m_jobId != null) &&
+			(elPanelR.m_videoPreview.m_jobId != this.params.id))
+		{
+			if (elPanelR.m_videoPreview.clearPreview)
+				elPanelR.m_videoPreview.clearPreview();
+		}
+	}
+
 	// Blocks:
 	JobBlock.deselectAll(this.monitor);
 	elPanelR.m_elBlocks.classList.remove('active');
@@ -2304,13 +2322,14 @@ JobNode.prototype.updatePanels = function(i_selected) {
 		job.meshPreviewReqId++;
 		job.videoPreviewReqId++;
 
-		if (elPanelR.m_meshPreview)
-		{
-			elPanelR.m_meshPreview.m_jobId = null;
-			elPanelR.m_meshPreview.m_folder = null;
-			elPanelR.m_meshPreview.m_fetching = false;
-			elPanelR.m_meshPreview.m_baseFolder = null;
-			elPanelR.m_meshPreview.m_viewingBackup = false;
+			if (elPanelR.m_meshPreview)
+			{
+				elPanelR.m_meshPreview.m_jobId = null;
+				elPanelR.m_meshPreview.m_folder = null;
+				elPanelR.m_meshPreview.m_loadedFolder = null;
+				elPanelR.m_meshPreview.m_fetching = false;
+				elPanelR.m_meshPreview.m_baseFolder = null;
+				elPanelR.m_meshPreview.m_viewingBackup = false;
 			elPanelR.m_meshPreview.onVersionChanged = null;
 			elPanelR.m_meshPreview.m_version_select_focused = false;
 			elPanelR.m_meshPreview.m_source_select_focused = false;
@@ -2320,16 +2339,26 @@ JobNode.prototype.updatePanels = function(i_selected) {
 			elPanelR.m_meshPreview.setMessage(msg);
 		}
 
-		if (elPanelR.m_videoPreview)
-		{
-			elPanelR.m_videoPreview.m_jobId = null;
-			elPanelR.m_videoPreview.m_folder = null;
-			elPanelR.m_videoPreview.m_fetching = false;
-			if (elPanelR.m_videoPreview.stop)
-				elPanelR.m_videoPreview.stop();
-			elPanelR.m_videoPreview.load(null);
-			elPanelR.m_videoPreview.setMessage(msg);
-		}
+			if (elPanelR.m_videoPreview)
+			{
+				elPanelR.m_videoPreview.m_jobId = null;
+				elPanelR.m_videoPreview.m_folder = null;
+				elPanelR.m_videoPreview.m_fetching = false;
+				elPanelR.m_videoPreview.m_viewingSteps = false;
+				elPanelR.m_videoPreview.m_mode_select_focused = false;
+				elPanelR.m_videoPreview.onModeChanged = null;
+				elPanelR.m_videoPreview.m_stepsOptionsReqId = null;
+				if (elPanelR.m_videoPreview.stopStepPlay)
+					elPanelR.m_videoPreview.stopStepPlay();
+				if (elPanelR.m_videoPreview.hideStepsScanProgress)
+					elPanelR.m_videoPreview.hideStepsScanProgress();
+				if (elPanelR.m_videoPreview.setModeOptions)
+					elPanelR.m_videoPreview.setModeOptions(null);
+				if (elPanelR.m_videoPreview.stop)
+					elPanelR.m_videoPreview.stop();
+				elPanelR.m_videoPreview.load(null);
+				elPanelR.m_videoPreview.setMessage(msg);
+			}
 	};
 
 
@@ -2451,6 +2480,11 @@ JobNode.prototype.updateMeshPreview = function() {
 	if ((this.monitor == null) || (this.monitor.elPanelR == null))
 		return;
 
+	// Do not refresh mesh preview while its section is collapsed.
+	if (this.monitor.elPanelR.m_meshPreviewSection &&
+		this.monitor.elPanelR.m_meshPreviewSection.classList.contains('collapsed'))
+		return;
+
 	var preview = this.monitor.elPanelR.m_meshPreview;
 	if (preview == null)
 		return;
@@ -2489,15 +2523,27 @@ JobNode.prototype.updateMeshPreview = function() {
 			return;
 		if (preview.m_jobId != job.params.id)
 			return;
-		preview.m_fetching = false;
-		if (sources)
+
+		if (job.monitor && job.monitor.elPanelR && job.monitor.elPanelR.m_meshPreviewSection &&
+			job.monitor.elPanelR.m_meshPreviewSection.classList.contains('collapsed'))
 		{
-			preview.m_jobId = job.params.id;
-			preview.m_folder = sources.folder ? sources.folder : folder;
-			preview.load(sources);
+			preview.m_fetching = false;
+			return;
 		}
-		else
-			preview.load(null);
+
+			preview.m_fetching = false;
+			if (sources)
+			{
+				preview.m_jobId = job.params.id;
+				preview.m_folder = sources.folder ? sources.folder : folder;
+				preview.m_loadedFolder = preview.m_folder;
+				preview.load(sources);
+			}
+			else
+			{
+				preview.m_loadedFolder = null;
+				preview.load(null);
+			}
 
 		// Populate versions dropdown: current mesh + any .backup/YYYY-MM-DD folders.
 		if ((preview.setVersionOptions == null) || (folder == null))
@@ -2507,6 +2553,10 @@ JobNode.prototype.updateMeshPreview = function() {
 			if (job.meshPreviewReqId != reqId)
 				return;
 			if (preview.m_jobId != job.params.id)
+				return;
+
+			if (job.monitor && job.monitor.elPanelR && job.monitor.elPanelR.m_meshPreviewSection &&
+				job.monitor.elPanelR.m_meshPreviewSection.classList.contains('collapsed'))
 				return;
 
 			var options = [{"label": "current mesh", "value": folder}];
@@ -2521,11 +2571,12 @@ JobNode.prototype.updateMeshPreview = function() {
 
 				// Keep selection stable on job timer updates:
 				preview.m_baseFolder = folder;
-				preview.m_viewingBackup = (selectedFolder != folder);
+					preview.m_viewingBackup = (selectedFolder != folder);
 
-				// Avoid reloading the same folder:
-				if ((preview.m_folder != null) && (preview.m_folder == selectedFolder) && preview.currentSources)
-					return;
+					// Avoid reloading the same folder:
+					if ((preview.m_folder != null) && (preview.m_folder == selectedFolder) && preview.currentSources &&
+						(preview.m_loadedFolder != null) && (preview.m_loadedFolder == selectedFolder))
+						return;
 
 				preview.preserveMeshOrientation();
 				preview.m_jobId = job.params.id;
@@ -2544,17 +2595,23 @@ JobNode.prototype.updateMeshPreview = function() {
 					if (preview.m_jobId != job.params.id)
 						return;
 
-					preview.m_fetching = false;
-					if (vsources)
-					{
-						preview.m_folder = vsources.folder ? vsources.folder : selectedFolder;
-						preview.load(vsources);
-					}
-					else
-					{
-						preview.load(null);
-						preview.setMessage('No mesh preview found in selected version.');
-					}
+					if (job.monitor && job.monitor.elPanelR && job.monitor.elPanelR.m_meshPreviewSection &&
+						job.monitor.elPanelR.m_meshPreviewSection.classList.contains('collapsed'))
+						return;
+
+						preview.m_fetching = false;
+						if (vsources)
+						{
+							preview.m_folder = vsources.folder ? vsources.folder : selectedFolder;
+							preview.m_loadedFolder = preview.m_folder;
+							preview.load(vsources);
+						}
+						else
+						{
+							preview.m_loadedFolder = null;
+							preview.load(null);
+							preview.setMessage('No mesh preview found in selected version.');
+						}
 				});
 			};
 		});
@@ -2740,8 +2797,222 @@ JobNode.buildVideoPreviewSourcesAsync = function(i_params)
 	});
 };
 
+JobNode.buildVideoPreviewStepsOptionsAsync = function(i_mesh_folder, i_on_progress)
+{
+	if ((i_mesh_folder == null) || (i_mesh_folder.length == 0))
+		return Promise.resolve([]);
+
+	var report = function(done, total)
+	{
+		if (typeof i_on_progress === 'function')
+		{
+			try { i_on_progress(done, total); } catch (err) {}
+		}
+	};
+
+	var stepsRoot = JobNode.joinPaths(i_mesh_folder, 'videoScan.steps.smart');
+	if ((stepsRoot == null) || (stepsRoot.length == 0))
+		return Promise.resolve([]);
+
+	var listUrl = '/@LIST@' + encodeURIComponent(stepsRoot);
+
+	report(0, 1);
+
+	return fetch(listUrl, {"credentials": 'same-origin'}).then(function(resp) {
+		if (false == resp.ok)
+			return null;
+		return resp.json();
+	}).then(function(data) {
+		if ((data == null) || (data.entries == null) || (data.entries.length == 0))
+		{
+			report(1, 1);
+			return [];
+		}
+
+		var dirs = [];
+		for (var i = 0; i < data.entries.length; i++)
+		{
+			var e = data.entries[i];
+			if ((e == null) || (e.type != 'dir') || (e.name == null))
+				continue;
+			var nameStr = ('' + e.name).replace(/^[\\s]+|[\\s]+$/g, '');
+			if (nameStr.length == 0)
+				continue;
+			dirs.push(nameStr);
+		}
+
+		if (dirs.length == 0)
+		{
+			report(1, 1);
+			return [];
+		}
+
+		// Keep only subfolders that actually contain PNG files.
+		var total = dirs.length;
+		var done = 0;
+		report(0, total);
+		var checks = [];
+		for (var i = 0; i < dirs.length; i++)
+		{
+			(function(dirName) {
+				var dirPath = JobNode.joinPaths(stepsRoot, dirName);
+				if (dirPath == null)
+				{
+					done++;
+					report(done, total);
+					return;
+				}
+				var dirListUrl = '/@LIST@' + encodeURIComponent(dirPath);
+				checks.push(fetch(dirListUrl, {"credentials": 'same-origin'}).then(function(resp) {
+					if (false == resp.ok)
+						return null;
+					return resp.json();
+				}).then(function(dirData) {
+					if ((dirData == null) || (dirData.entries == null) || (dirData.entries.length == 0))
+						return null;
+					for (var j = 0; j < dirData.entries.length; j++)
+					{
+						var ee = dirData.entries[j];
+						if ((ee == null) || (ee.type != 'file') || (ee.name == null))
+							continue;
+						var lower = ('' + ee.name).toLowerCase();
+						if (JobNode.endsWith(lower, '.png'))
+							return dirName;
+					}
+					return null;
+				}).catch(function() {
+					return null;
+				}).then(function(result) {
+					done++;
+					report(done, total);
+					return result;
+				}));
+			})(dirs[i]);
+		}
+
+		return Promise.all(checks).then(function(results) {
+			var good = [];
+			for (var k = 0; k < results.length; k++)
+			{
+				if (results[k])
+					good.push(results[k]);
+			}
+
+			if (good.length == 0)
+				return [];
+
+			good.sort();
+
+			var options = [];
+			for (var k = 0; k < good.length; k++)
+			{
+				var name = good[k];
+				var folder = JobNode.joinPaths(stepsRoot, name);
+				if (folder)
+					options.push({"label": name, "value": folder});
+			}
+			report(total, total);
+			return options;
+		});
+	}).catch(function() {
+		report(1, 1);
+		return [];
+	});
+};
+
+JobNode.buildVipeVideoPreviewSourceAsync = function(i_mesh_folder)
+{
+	if ((i_mesh_folder == null) || (i_mesh_folder.length == 0))
+		return Promise.resolve(null);
+
+	var vipeFolder = JobNode.joinPaths(i_mesh_folder, 'videoScan.steps.smart/vipe/results/vipe');
+	if ((vipeFolder == null) || (vipeFolder.length == 0))
+		return Promise.resolve(null);
+
+	var listUrl = '/@LIST@' + encodeURIComponent(vipeFolder);
+	return fetch(listUrl, {"credentials": 'same-origin'}).then(function(resp) {
+		if (false == resp.ok)
+			return null;
+		return resp.json();
+	}).then(function(data) {
+		if ((data == null) || (data.entries == null) || (data.entries.length == 0))
+			return null;
+
+		for (var i = 0; i < data.entries.length; i++)
+		{
+			var e = data.entries[i];
+			if ((e == null) || (e.type != 'file') || (e.name == null))
+				continue;
+			var nameStr = ('' + e.name).replace(/^[\s]+|[\s]+$/g, '');
+			if (nameStr == 'videoScan_vis.mp4')
+			{
+				var fullpath = JobNode.joinPaths(vipeFolder, nameStr);
+				var url = cgru_ProjectServerLink(fullpath);
+				return {"src": url, "label": "VIPE"};
+			}
+		}
+
+		return null;
+	}).catch(function() {
+		return null;
+	});
+};
+
+JobNode.buildVideoPreviewStepImagesAsync = function(i_steps_folder)
+{
+	if ((i_steps_folder == null) || (i_steps_folder.length == 0))
+		return Promise.resolve([]);
+
+	var listUrl = '/@LIST@' + encodeURIComponent(i_steps_folder);
+	return fetch(listUrl, {"credentials": 'same-origin'}).then(function(resp) {
+		if (false == resp.ok)
+			return null;
+		return resp.json();
+	}).then(function(data) {
+		if ((data == null) || (data.entries == null) || (data.entries.length == 0))
+			return [];
+
+		var files = [];
+		for (var i = 0; i < data.entries.length; i++)
+		{
+			var e = data.entries[i];
+			if ((e == null) || (e.type != 'file') || (e.name == null))
+				continue;
+			var nameStr = ('' + e.name).replace(/^[\\s]+|[\\s]+$/g, '');
+			if (nameStr.length == 0)
+				continue;
+			var lower = nameStr.toLowerCase();
+			if (false == JobNode.endsWith(lower, '.png'))
+				continue;
+			files.push(nameStr);
+		}
+
+		if (files.length == 0)
+			return [];
+
+		files.sort();
+
+		var images = [];
+		for (var i = 0; i < files.length; i++)
+		{
+			var name = files[i];
+			var fullpath = JobNode.joinPaths(i_steps_folder, name);
+			var url = cgru_ProjectServerLink(fullpath);
+			images.push({"name": name, "url": url});
+		}
+		return images;
+	}).catch(function() {
+		return [];
+	});
+};
+
 JobNode.prototype.updateVideoPreview = function() {
 	if ((this.monitor == null) || (this.monitor.elPanelR == null))
+		return;
+
+	// Do not refresh video preview while its section is collapsed.
+	if (this.monitor.elPanelR.m_videoPreviewSection &&
+		this.monitor.elPanelR.m_videoPreviewSection.classList.contains('collapsed'))
 		return;
 
 	var preview = this.monitor.elPanelR.m_videoPreview;
@@ -2751,6 +3022,24 @@ JobNode.prototype.updateVideoPreview = function() {
 	var folder = JobNode.getVideoPreviewFolder(this.params);
 	var sameJob = (preview.m_jobId == this.params.id);
 	var sameFolder = ((preview.m_folder != null) && (folder != null) && (preview.m_folder == folder));
+
+	// Reset mode UI early when switching jobs to avoid using stale options/handlers.
+	if (false == sameJob)
+	{
+		preview.m_mode = 'video';
+		preview.m_viewingSteps = false;
+		preview.onModeChanged = null;
+		if (preview.stopStepPlay)
+			preview.stopStepPlay();
+		if (preview.hideStepsScanProgress)
+			preview.hideStepsScanProgress();
+		if (preview.setModeOptions)
+			preview.setModeOptions(null);
+	}
+
+	// If user selected image steps for this job, keep it pinned (do not refresh current video).
+	if (sameJob && preview.m_viewingSteps)
+		return;
 
 	// Once we have a valid video loaded for the current selected job/folder, do not refresh it on job updates.
 	if (sameJob && sameFolder && preview.currentSource)
@@ -2773,37 +3062,180 @@ JobNode.prototype.updateVideoPreview = function() {
 		preview.setMessage('Loading video preview…');
 
 	var job = this;
-	JobNode.buildVideoPreviewSourcesAsync(this.params).then(function(sources) {
-		if (job.videoPreviewReqId != reqId)
-			return;
-		if (preview.m_jobId != job.params.id)
-			return;
-		preview.m_fetching = false;
-		if (sources && sources.error)
+		JobNode.buildVideoPreviewSourcesAsync(this.params).then(function(sources) {
+			if (job.videoPreviewReqId != reqId)
+				return;
+			if (preview.m_jobId != job.params.id)
+				return;
+
+		if (job.monitor && job.monitor.elPanelR && job.monitor.elPanelR.m_videoPreviewSection &&
+			job.monitor.elPanelR.m_videoPreviewSection.classList.contains('collapsed'))
 		{
-			console.warn('VideoPreview:', sources.error, sources.folder ? sources.folder : '');
-			preview.load(null);
-			if (sources.folder)
-				preview.setMessage('No video preview found in: ' + sources.folder);
-			else
-				preview.setMessage('Video preview not available.');
+			preview.m_fetching = false;
+			return;
 		}
-		else if (sources)
-		{
-			preview.m_jobId = job.params.id;
-			preview.m_folder = sources.folder ? sources.folder : folder;
+
+			preview.m_fetching = false;
+			if (sources && sources.error)
+			{
+				var dbg = 'VideoPreview: ' + sources.error + (sources.folder ? (' ' + sources.folder) : '');
+				console.warn(dbg);
+				preview.load(null);
+				if (preview.showPlaceholder)
+					preview.showPlaceholder(true, dbg);
+				if (sources.folder)
+					preview.setMessage('No video preview found in: ' + sources.folder);
+				else
+					preview.setMessage('Video preview not available.');
+			}
+			else if (sources)
+			{
+				preview.m_jobId = job.params.id;
+				preview.m_folder = sources.folder ? sources.folder : folder;
+				preview.m_videoSources = sources;
 
 			if (sources.items && sources.items.length && sources.items[0].src &&
 				(sources.items[0].src[sources.items[0].src.length - 1] == '/'))
 			{
 				console.error('VideoPreview: invalid src (missing filename?)', sources);
 			}
-			preview.load(sources);
-		}
-		else
-			preview.load(null);
-	});
-};
+				preview.load(sources);
+			}
+			else
+			{
+				preview.m_videoSources = null;
+				preview.load(null);
+			}
+
+			// Populate mode dropdown: "video" + subfolders in <mesh_preview>/videoScan.steps.smart/ with PNGs.
+			if (preview.setModeOptions == null)
+				return;
+
+			var baseFolder = JobNode.getMeshPreviewFolder(job.params);
+			if (baseFolder == null)
+				baseFolder = folder;
+			if (baseFolder == null)
+				return;
+
+				if (preview.showStepsScanProgress)
+					preview.showStepsScanProgress();
+
+				if (preview.m_stepsOptionsReqId == null)
+					preview.m_stepsOptionsReqId = 0;
+				preview.m_stepsOptionsReqId++;
+				var optReqId = preview.m_stepsOptionsReqId;
+
+				var onProgress = function(done, total) {
+					if (job.videoPreviewReqId != reqId)
+						return;
+					if (preview.m_jobId != job.params.id)
+						return;
+					if (preview.m_stepsOptionsReqId != optReqId)
+						return;
+					if (job.monitor && job.monitor.elPanelR && job.monitor.elPanelR.m_videoPreviewSection &&
+						job.monitor.elPanelR.m_videoPreviewSection.classList.contains('collapsed'))
+						return;
+					if (preview.updateStepsScanProgress)
+						preview.updateStepsScanProgress(done, total);
+				};
+
+				JobNode.buildVideoPreviewStepsOptionsAsync(baseFolder, onProgress).then(function(stepOptions) {
+					return JobNode.buildVipeVideoPreviewSourceAsync(baseFolder).then(function(vipeSource) {
+						if (job.videoPreviewReqId != reqId)
+							return;
+						if (preview.m_jobId != job.params.id)
+							return;
+						if (preview.m_stepsOptionsReqId != optReqId)
+							return;
+						if (job.monitor && job.monitor.elPanelR && job.monitor.elPanelR.m_videoPreviewSection &&
+							job.monitor.elPanelR.m_videoPreviewSection.classList.contains('collapsed'))
+							return;
+
+						preview.m_vipeSource = vipeSource;
+
+						var options = [{"label": "video", "value": "video"}];
+						if (vipeSource && vipeSource.src)
+							options.push({"label": "vipe", "value": "vipe"});
+						if (Array.isArray(stepOptions) && stepOptions.length)
+							options = options.concat(stepOptions);
+
+						var selectedMode = (preview.m_mode != null) ? preview.m_mode : 'video';
+						preview.setModeOptions(options, selectedMode);
+
+						preview.onModeChanged = function(selected) {
+							if ((selected == null) || (selected.length == 0))
+								return;
+
+							preview.m_mode = selected;
+							if (selected == 'video')
+							{
+								preview.m_viewingSteps = false;
+								if (preview.m_videoSources)
+									preview.load(preview.m_videoSources);
+								else
+									preview.load(null);
+								if (preview.showVideoMode)
+									preview.showVideoMode();
+								if (preview.setMessage)
+									preview.setMessage('');
+								return;
+							}
+							else if (selected == 'vipe')
+							{
+								preview.m_viewingSteps = false;
+								if (preview.m_vipeSource)
+									preview.load(preview.m_vipeSource);
+								else
+									preview.load(null);
+								if (preview.showVideoMode)
+									preview.showVideoMode();
+								if (preview.setMessage)
+									preview.setMessage('');
+								return;
+							}
+
+							preview.m_viewingSteps = true;
+							if (preview.showStepsMode)
+								preview.showStepsMode();
+							if (preview.setMessage)
+								preview.setMessage('Loading image steps…');
+							if (preview.setStepImages)
+								preview.setStepImages(selected, []);
+
+							if (preview.m_stepsReqId == null)
+								preview.m_stepsReqId = 0;
+							preview.m_stepsReqId++;
+							var sReqId = preview.m_stepsReqId;
+
+							JobNode.buildVideoPreviewStepImagesAsync(selected).then(function(images) {
+								if (preview.m_stepsReqId != sReqId)
+									return;
+								if (preview.m_jobId != job.params.id)
+									return;
+								if (job.monitor && job.monitor.elPanelR && job.monitor.elPanelR.m_videoPreviewSection &&
+									job.monitor.elPanelR.m_videoPreviewSection.classList.contains('collapsed'))
+									return;
+
+								if (Array.isArray(images) && images.length)
+								{
+									if (preview.setMessage)
+										preview.setMessage('');
+									if (preview.setStepImages)
+										preview.setStepImages(selected, images);
+								}
+								else
+								{
+									if (preview.setStepImages)
+										preview.setStepImages(selected, []);
+									if (preview.setMessage)
+										preview.setMessage('No PNG steps found in: ' + selected);
+								}
+							});
+						};
+					});
+				});
+		});
+	};
 
 JobNode.getMultiSelectionInfo = function(i_selected)
 {
@@ -3448,15 +3880,53 @@ JobNode.createPanels = function(i_monitor) {
 	JobNode.makeSectionCollapsible(elMeshSection, 'mesh_preview', true, function(collapsed) {
 		if (elPanelR.m_meshPreview)
 		{
-			if (collapsed)
-				elPanelR.m_meshPreview.isAnimating = false;
-			else
-			{
+				if (collapsed)
+				{
+					elPanelR.m_meshPreview.isAnimating = false;
+					// Cancel any in-flight refresh if nothing is loaded yet.
+					if (elPanelR.m_meshPreview.m_fetching || (elPanelR.m_meshPreview.currentSources == null))
+					{
+						elPanelR.m_meshPreview.m_fetching = false;
+						elPanelR.m_meshPreview.m_loadedFolder = null;
+						elPanelR.m_meshPreview.load(null);
+					}
+				}
+				else
+				{
 				elPanelR.m_meshPreview.start();
 				elPanelR.m_meshPreview.resize();
+
+				// Refresh preview when expanding.
+				var items = i_monitor.getSelectedItems();
+				var selJob = null;
+				var jobsCount = 0;
+				for (var i = 0; i < items.length; i++)
+				{
+					if (items[i] && (items[i].node_type == 'jobs'))
+					{
+						selJob = items[i];
+						jobsCount++;
+						if (jobsCount > 1)
+							break;
+					}
+				}
+					if ((jobsCount == 1) && selJob)
+					{
+						// If a backup was selected, refresh that selection if it is not loaded.
+						if (elPanelR.m_meshPreview.m_viewingBackup && elPanelR.m_meshPreview.onVersionChanged &&
+							(elPanelR.m_meshPreview.m_folder != null) &&
+							(elPanelR.m_meshPreview.m_loadedFolder != elPanelR.m_meshPreview.m_folder))
+						{
+							elPanelR.m_meshPreview.onVersionChanged(elPanelR.m_meshPreview.m_folder);
+						}
+						else if (selJob.updateMeshPreview)
+						{
+							selJob.updateMeshPreview();
+						}
+					}
+				}
 			}
-		}
-	});
+		});
 
 	// Video preview:
 	var elVideoSection = document.createElement('div');
@@ -3476,9 +3946,66 @@ JobNode.createPanels = function(i_monitor) {
 	elPanelR.m_videoPreviewSection = elVideoSection;
 	elPanelR.m_videoPreview = new VideoPreview(elVideoContainer, elVideoSection);
 	JobNode.makeSectionCollapsible(elVideoSection, 'video_preview', true, function(collapsed) {
-		if (elPanelR.m_videoPreview && collapsed)
-			elPanelR.m_videoPreview.stop();
-	});
+		if (elPanelR.m_videoPreview)
+		{
+				if (collapsed)
+				{
+					if (elPanelR.m_videoPreview.stopStepPlay)
+						elPanelR.m_videoPreview.stopStepPlay();
+					if (elPanelR.m_videoPreview.abortStepImageRequest)
+						elPanelR.m_videoPreview.abortStepImageRequest(true);
+					if (elPanelR.m_videoPreview.hideStepsScanProgress)
+						elPanelR.m_videoPreview.hideStepsScanProgress();
+					if (elPanelR.m_videoPreview.hideStepLoadProgress)
+						elPanelR.m_videoPreview.hideStepLoadProgress();
+
+					elPanelR.m_videoPreview.stop();
+
+					// Cancel any in-flight refresh if nothing is loaded yet.
+					if ((false == elPanelR.m_videoPreview.m_viewingSteps) &&
+						(elPanelR.m_videoPreview.m_fetching || (elPanelR.m_videoPreview.currentSource == null)))
+					{
+						elPanelR.m_videoPreview.m_fetching = false;
+						elPanelR.m_videoPreview.load(null);
+					}
+				}
+				else
+			{
+				// Refresh preview when expanding.
+				var items = i_monitor.getSelectedItems();
+				var selJob = null;
+				var jobsCount = 0;
+				for (var i = 0; i < items.length; i++)
+				{
+					if (items[i] && (items[i].node_type == 'jobs'))
+					{
+						selJob = items[i];
+						jobsCount++;
+						if (jobsCount > 1)
+							break;
+					}
+				}
+					if ((jobsCount == 1) && selJob)
+					{
+						// If user selected steps mode, refresh the current steps folder if needed.
+						if (elPanelR.m_videoPreview.m_viewingSteps &&
+							(elPanelR.m_videoPreview.m_mode != null) &&
+							(elPanelR.m_videoPreview.m_mode != 'video') &&
+							elPanelR.m_videoPreview.onModeChanged &&
+							((elPanelR.m_videoPreview.stepFolder != elPanelR.m_videoPreview.m_mode) ||
+								(elPanelR.m_videoPreview.stepImages == null) ||
+								(elPanelR.m_videoPreview.stepImages.length == 0)))
+						{
+							elPanelR.m_videoPreview.onModeChanged(elPanelR.m_videoPreview.m_mode);
+						}
+						else if (selJob.updateVideoPreview)
+						{
+							selJob.updateVideoPreview();
+						}
+					}
+				}
+			}
+		});
 
 
 	// Work:

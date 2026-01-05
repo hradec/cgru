@@ -69,20 +69,29 @@ function n_XHRHandler()
 
 			if (this.responseText.length)
 			{
-				var recv_obj = null;
-				try
-				{
-					recv_obj = JSON.parse(this.responseText);
-				}
-				catch (err)
-				{
-					g_Error('JSON.parse:');
-					g_Log(err.message + '<br>' + this.responseText);
-					recv_obj = null;
-				}
+					var recv_obj = null;
+					try
+					{
+						recv_obj = JSON.parse(this.responseText);
+					}
+					catch (err)
+					{
+						try
+						{
+							var cleaned = this.responseText.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '');
+							recv_obj = JSON.parse(cleaned);
+							g_Error('JSON.parse: Cleaned invalid control characters.');
+						}
+						catch (err2)
+						{
+							g_Error('JSON.parse:');
+							g_Log(err.message + '<br>' + this.responseText);
+							recv_obj = null;
+						}
+					}
 
-				if (recv_obj)
-				{
+					if (recv_obj)
+					{
 					if (this.m_args.func)
 						this.m_args.func(recv_obj, this.m_args);
 					else

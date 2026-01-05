@@ -204,11 +204,11 @@ void MCTask::jsonWrite( std::ostringstream & o_str) const
 
 	o_str << ",\"render_id\":" << m_render_id;
 
-	o_str << ",\"job_name\":\""   << m_job_name << "\"";
-	o_str << ",\"block_name\":\"" << m_block_name << "\"";
-	o_str << ",\"task_name\":\""  << m_task_name << "\"";
-	o_str << ",\"service\":\""    << m_service << "\"";
-	o_str << ",\"parser\":\""     << m_parser << "\"";
+	o_str << ",\"job_name\":\""   << af::strEscape(m_job_name)   << "\"";
+	o_str << ",\"block_name\":\"" << af::strEscape(m_block_name) << "\"";
+	o_str << ",\"task_name\":\""  << af::strEscape(m_task_name)  << "\"";
+	o_str << ",\"service\":\""    << af::strEscape(m_service)    << "\"";
+	o_str << ",\"parser\":\""     << af::strEscape(m_parser)     << "\"";
 
 	o_str << ",\"pos\":";
 	m_pos.jsonWrite( o_str);

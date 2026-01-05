@@ -294,38 +294,97 @@ const std::string af::strEscape( const std::string & i_str)
 	if( i_str.size() == 0)
 		return str;
 
-	char esc_add[] = "\\\"";
-	int  esc_add_len = 2;
-	char esc_replace[] = "\n\r\t";
-	char esc_replace_to[] = "nrt";
-	int  esc_replace_len = 3;
-	for( std::string::const_iterator it = i_str.begin(); it != i_str.end(); it++)
+	static const char kHex[] = "0123456789abcdef";
+
+	for( std::string::size_type pos = 0; pos < i_str.size(); )
 	{
-		bool replaced = false;
-		for( int i = 0; i < esc_replace_len; i++)
+		const unsigned char ch = static_cast<unsigned char>(i_str[pos]);
+
+		switch( ch)
 		{
-			if( *it == esc_replace[i])
-			{
-				str += '\\';
-				str += esc_replace_to[i];
-				replaced = true;
-				break;
-			}
+			case '\\': str += "\\\\"; pos++; continue;
+			case '"':  str += "\\\""; pos++; continue;
+			case '\b': str += "\\b";  pos++; continue;
+			case '\f': str += "\\f";  pos++; continue;
+			case '\n': str += "\\n";  pos++; continue;
+			case '\r': str += "\\r";  pos++; continue;
+			case '\t': str += "\\t";  pos++; continue;
 		}
 
-		if( replaced )
+		// JSON strings can't contain unescaped control characters (0x00..0x1F).
+		if( ch < 0x20 )
+		{
+			str += "\\u00";
+			str += kHex[(ch >> 4) & 0x0f];
+			str += kHex[(ch     ) & 0x0f];
+			pos++;
 			continue;
+		}
 
-		for( int i = 0; i < esc_add_len; i++)
+		// Preserve valid UTF-8 sequences, escape invalid bytes.
+		if( ch < 0x80 )
 		{
-			if( *it == esc_add[i])
+			str += static_cast<char>(ch);
+			pos++;
+			continue;
+		}
+
+		int utf8_len = 0;
+		if( ch >= 0xC2 && ch <= 0xDF )
+			utf8_len = 2;
+		else if( ch >= 0xE0 && ch <= 0xEF )
+			utf8_len = 3;
+		else if( ch >= 0xF0 && ch <= 0xF4 )
+			utf8_len = 4;
+
+		bool utf8_ok = false;
+		if( utf8_len && (pos + utf8_len <= i_str.size()) )
+		{
+			const unsigned char b1 = static_cast<unsigned char>(i_str[pos + 1]);
+			const unsigned char b2 = (utf8_len >= 3) ? static_cast<unsigned char>(i_str[pos + 2]) : 0;
+			const unsigned char b3 = (utf8_len >= 4) ? static_cast<unsigned char>(i_str[pos + 3]) : 0;
+
+			if( (b1 & 0xC0) == 0x80 )
 			{
-				str += '\\';
-				break;
+				if( utf8_len == 2 )
+				{
+					utf8_ok = true;
+				}
+				else if( (b2 & 0xC0) == 0x80 )
+				{
+					if( utf8_len == 3 )
+					{
+						if( ch == 0xE0 )
+							utf8_ok = (b1 >= 0xA0);
+						else if( ch == 0xED )
+							utf8_ok = (b1 <= 0x9F);
+						else
+							utf8_ok = true;
+					}
+					else if( (b3 & 0xC0) == 0x80 )
+					{
+						if( ch == 0xF0 )
+							utf8_ok = (b1 >= 0x90);
+						else if( ch == 0xF4 )
+							utf8_ok = (b1 <= 0x8F);
+						else
+							utf8_ok = true;
+					}
+				}
 			}
 		}
 
-		str += *it;
+		if( utf8_ok )
+		{
+			str.append( i_str, pos, utf8_len);
+			pos += utf8_len;
+			continue;
+		}
+
+		str += "\\u00";
+		str += kHex[(ch >> 4) & 0x0f];
+		str += kHex[(ch     ) & 0x0f];
+		pos++;
 	}
 	return str;
 }
@@ -367,4 +426,3 @@ const std::string af::base64encode( const char * i_data, int i_size)
 
 	return str;
 }
-

@@ -1292,6 +1292,8 @@ Monitor.prototype.setOption = function(i_value, i_param) {
 
 Monitor.prototype.getSelectedItems = function() {
 	var items = [];
+	if (this.selected_items == null)
+		return items;
 	for (var i = 0; i < this.selected_items.length; i++)
 		items.push(this.selected_items[i]);
 	return items;
@@ -1299,13 +1301,15 @@ Monitor.prototype.getSelectedItems = function() {
 
 Monitor.prototype.getSelectedIds = function() {
 	var ids = [];
+	if (this.selected_items == null)
+		return ids;
 	for (var i = 0; i < this.selected_items.length; i++)
 		ids.push(this.selected_items[i].params.id);
 	return ids;
 };
 
 Monitor.prototype.hasSelection = function() {
-	return (this.selected_items.length > 0);
+	return ((this.selected_items != null) && (this.selected_items.length > 0));
 };
 
 Monitor.prototype.noneSelected = function(i_evt) {  // return false;
