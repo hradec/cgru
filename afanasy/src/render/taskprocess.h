@@ -108,6 +108,13 @@ private:
 	int readPipe( FILE * i_file );
 #endif
 
+#ifdef LINUX
+	std::vector<pid_t> m_kill_pids;
+	int m_kill_attempts;
+	time_t m_last_kill_time;
+	bool m_kill_reported;
+#endif
+
 	// Read buffer:
 	int m_readbuffer_size;
 	char * m_readbuffer;

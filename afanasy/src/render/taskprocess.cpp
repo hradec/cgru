@@ -14,6 +14,7 @@
 
 #include <fcntl.h>
 #include <sys/types.h>
+#include <vector>
 
 #ifdef WINNT
 #include <windows.h>
@@ -25,6 +26,11 @@
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#ifdef LINUX
+#include <dirent.h>
+#include <errno.h>
+#include <ctype.h>
+#endif
 #include <fstream>
 extern void (*fp_setupChildProcess)( void);
 #endif
@@ -89,9 +95,278 @@ int setNonblocking(int fd)
 	return ioctl(fd, FIOBIO, &flags);
 #endif
 }
+
+#ifdef LINUX
+static void killSessionProcesses( pid_t i_session, int i_signal )
+{
+	if( i_session <= 0 )
+		return;
+
+	DIR * dir = opendir( "/proc" );
+	if( dir == NULL )
+		return;
+
+	pid_t self_pid = getpid();
+	struct dirent * ent = NULL;
+	while( (ent = readdir( dir )) != NULL )
+	{
+		if( false == isdigit( ent->d_name[0] ))
+			continue;
+
+		pid_t pid = atoi( ent->d_name );
+		if( pid <= 0 )
+			continue;
+		if( pid == self_pid )
+			continue;
+
+		char path[256];
+		snprintf( path, sizeof(path), "/proc/%d/stat", pid );
+		FILE * statf = fopen( path, "r" );
+		if( statf == NULL )
+			continue;
+
+		char buf[4096];
+		if( fgets( buf, sizeof(buf), statf ) == NULL )
+		{
+			fclose( statf );
+			continue;
+		}
+		fclose( statf );
+
+		char * rparen = strrchr( buf, ')' );
+		if( rparen == NULL )
+			continue;
+
+		char * rest = rparen + 2; // ") "
+		char state = 0;
+		long ppid = 0;
+		long pgrp = 0;
+		long session = 0;
+		if( sscanf( rest, "%c %ld %ld %ld", &state, &ppid, &pgrp, &session ) != 4 )
+			continue;
+
+		if( session == i_session )
+			kill( pid, i_signal );
+	}
+
+	closedir( dir );
+}
+
+static void appendProcessTreePids( pid_t i_root, std::vector<pid_t> & o_pids, bool i_include_root )
+{
+	if( i_root <= 0 )
+		return;
+
+	DIR * dir = opendir( "/proc" );
+	if( dir == NULL )
+		return;
+
+	struct ProcInfo
+	{
+		pid_t pid;
+		pid_t ppid;
+	};
+	std::vector<ProcInfo> procs;
+
+	struct dirent * ent = NULL;
+	while( (ent = readdir( dir )) != NULL )
+	{
+		if( false == isdigit( ent->d_name[0] ))
+			continue;
+
+		pid_t pid = atoi( ent->d_name );
+		if( pid <= 0 )
+			continue;
+
+		char path[256];
+		snprintf( path, sizeof(path), "/proc/%d/stat", pid );
+		FILE * statf = fopen( path, "r" );
+		if( statf == NULL )
+			continue;
+
+		char buf[4096];
+		if( fgets( buf, sizeof(buf), statf ) == NULL )
+		{
+			fclose( statf );
+			continue;
+		}
+		fclose( statf );
+
+		char * rparen = strrchr( buf, ')' );
+		if( rparen == NULL )
+			continue;
+
+		char * rest = rparen + 2; // ") "
+		char state = 0;
+		long ppid = 0;
+		long pgrp = 0;
+		long session = 0;
+		if( sscanf( rest, "%c %ld %ld %ld", &state, &ppid, &pgrp, &session ) != 4 )
+			continue;
+
+		ProcInfo info;
+		info.pid = pid;
+		info.ppid = static_cast<pid_t>(ppid);
+		procs.push_back( info );
+	}
+
+	closedir( dir );
+
+	std::vector<pid_t> stack;
+	if( i_include_root )
+		stack.push_back( i_root );
+	else
+		stack.push_back( i_root );
+	std::vector<pid_t> collected;
+
+	while( stack.size() )
+	{
+		pid_t current = stack.back();
+		stack.pop_back();
+
+		for( size_t i = 0; i < procs.size(); i++ )
+		{
+			if( procs[i].ppid != current )
+				continue;
+
+			pid_t child = procs[i].pid;
+			stack.push_back( child );
+			collected.push_back( child );
+		}
+	}
+
+	if( i_include_root )
+		collected.insert( collected.begin(), i_root );
+
+	for( size_t i = 0; i < collected.size(); i++ )
+	{
+		pid_t pid = collected[i];
+		bool exists = false;
+		for( size_t j = 0; j < o_pids.size(); j++ )
+		{
+			if( o_pids[j] == pid )
+			{
+				exists = true;
+				break;
+			}
+		}
+		if( false == exists )
+			o_pids.push_back( pid );
+	}
+}
+
+static bool pidExists( pid_t i_pid )
+{
+	if( i_pid <= 0 )
+		return false;
+
+	char path[64];
+	snprintf( path, sizeof(path), "/proc/%d", i_pid );
+	return (access( path, F_OK ) == 0);
+}
+
+static bool hasTrackedPids( const std::vector<pid_t> & i_pids )
+{
+	for( size_t i = 0; i < i_pids.size(); i++ )
+	{
+		if( pidExists( i_pids[i] ))
+			return true;
+	}
+	return false;
+}
+
+static void killProcessTree( pid_t i_root, int i_signal )
+{
+	if( i_root <= 0 )
+		return;
+
+	DIR * dir = opendir( "/proc" );
+	if( dir == NULL )
+		return;
+
+	struct ProcInfo
+	{
+		pid_t pid;
+		pid_t ppid;
+	};
+	std::vector<ProcInfo> procs;
+
+	struct dirent * ent = NULL;
+	while( (ent = readdir( dir )) != NULL )
+	{
+		if( false == isdigit( ent->d_name[0] ))
+			continue;
+
+		pid_t pid = atoi( ent->d_name );
+		if( pid <= 0 )
+			continue;
+
+		char path[256];
+		snprintf( path, sizeof(path), "/proc/%d/stat", pid );
+		FILE * statf = fopen( path, "r" );
+		if( statf == NULL )
+			continue;
+
+		char buf[4096];
+		if( fgets( buf, sizeof(buf), statf ) == NULL )
+		{
+			fclose( statf );
+			continue;
+		}
+		fclose( statf );
+
+		char * rparen = strrchr( buf, ')' );
+		if( rparen == NULL )
+			continue;
+
+		char * rest = rparen + 2; // ") "
+		char state = 0;
+		long ppid = 0;
+		long pgrp = 0;
+		long session = 0;
+		if( sscanf( rest, "%c %ld %ld %ld", &state, &ppid, &pgrp, &session ) != 4 )
+			continue;
+
+		ProcInfo info;
+		info.pid = pid;
+		info.ppid = static_cast<pid_t>(ppid);
+		procs.push_back( info );
+	}
+
+	closedir( dir );
+
+	std::vector<pid_t> stack;
+	stack.push_back( i_root );
+	std::vector<pid_t> victims;
+
+	while( stack.size() )
+	{
+		pid_t current = stack.back();
+		stack.pop_back();
+
+		for( size_t i = 0; i < procs.size(); i++ )
+		{
+			if( procs[i].ppid != current )
+				continue;
+
+			pid_t child = procs[i].pid;
+			stack.push_back( child );
+			victims.push_back( child );
+		}
+	}
+
+	for( size_t i = 0; i < victims.size(); i++ )
+		kill( victims[i], i_signal );
+}
+#endif
 #endif
 
 long long TaskProcess::ms_counter = 0;
+#ifdef LINUX
+static const int kKillRetryIntervalSec = 2;
+static const int kKillMaxAttempts = 6;
+static const int kKillReportAfterAttempts = 3;
+#endif
 
 TaskProcess::TaskProcess( af::TaskExec * i_taskExec, RenderHost * i_render):
 	m_taskexec( i_taskExec),
@@ -118,6 +393,11 @@ TaskProcess::TaskProcess( af::TaskExec * i_taskExec, RenderHost * i_render):
 	m_readbuffer = new char[m_readbuffer_size];
 	m_filebuffer_out = new char[m_readbuffer_size];
 	m_filebuffer_err = new char[m_readbuffer_size];
+#ifdef LINUX
+	m_kill_attempts = 0;
+	m_last_kill_time = 0;
+	m_kill_reported = false;
+#endif
 	if ((m_readbuffer == NULL) ||(m_readbuffer == NULL) || (m_readbuffer == NULL))
 	{
 		AF_ERR << "Can not allocate buffers size = " << m_readbuffer_size;
@@ -358,8 +638,12 @@ void TaskProcess::refresh()
 	AF_DEBUG << this;
 
 	// If task was asked to stop
-    if( m_stop_time )
+	    if( m_stop_time )
 	{
+#ifdef LINUX
+		if( m_pid > 0 )
+			appendProcessTreePids( m_pid, m_kill_pids, true );
+#endif
 		// If it is not running any more
 		if(( m_pid == 0 ) && m_closed )
 		{
@@ -371,8 +655,29 @@ void TaskProcess::refresh()
 			// Task was asket to stop but did not stopped for more than AFRENDER::TERMINATEWAITKILL seconds
 			AF_WARN << "Task stopping time > " << AFRENDER::TERMINATEWAITKILL << " seconds.";
 			// Kill process in this case
+#ifdef LINUX
+			time_t now = time( NULL);
+			if( (m_last_kill_time == 0) || ((now - m_last_kill_time) >= kKillRetryIntervalSec) )
+				killProcess();
+#else
 			killProcess();
+#endif
 		}
+
+#ifdef LINUX
+		if( hasTrackedPids( m_kill_pids ) &&
+			(m_kill_attempts >= kKillReportAfterAttempts) &&
+			(false == m_kill_reported))
+		{
+			m_kill_reported = true;
+			m_append_to_server_task_log = "Failed to terminate all child processes. Manual cleanup may be required.";
+			if ((m_update_status == af::TaskExec::UPPercent) ||
+				(m_update_status == af::TaskExec::UPWarning) ||
+				(m_update_status == 0))
+				m_update_status = af::TaskExec::UPWarning;
+			AF_WARN << m_append_to_server_task_log;
+		}
+#endif
 	}
 
 	// Check doing post and running time limit exists
@@ -395,6 +700,31 @@ void TaskProcess::refresh()
 	// Task is finished
 	if( m_pid == 0 )
 	{
+#ifdef LINUX
+		if( m_stop_time )
+		{
+			time_t now = time( NULL);
+			if( hasTrackedPids( m_kill_pids ) &&
+				((m_last_kill_time == 0) || ((now - m_last_kill_time) >= kKillRetryIntervalSec)) &&
+				(m_kill_attempts < kKillMaxAttempts))
+			{
+				killProcess();
+			}
+
+			if( hasTrackedPids( m_kill_pids ) &&
+				(m_kill_attempts >= kKillReportAfterAttempts) &&
+				(false == m_kill_reported))
+			{
+				m_kill_reported = true;
+				m_append_to_server_task_log = "Failed to terminate all child processes. Manual cleanup may be required.";
+				if ((m_update_status == af::TaskExec::UPPercent) ||
+					(m_update_status == af::TaskExec::UPWarning) ||
+					(m_update_status == 0))
+					m_update_status = af::TaskExec::UPWarning;
+				AF_WARN << m_append_to_server_task_log;
+			}
+		}
+#endif
 		sendTaskSate();
 
 		m_dead_cycle++;
@@ -757,9 +1087,25 @@ void TaskProcess::stop()
 	// Store the time when task was asked to be stopped (was asked first time)
 	m_stop_time = time(NULL);
 
+#ifdef LINUX
+	m_kill_attempts = 0;
+	m_last_kill_time = 0;
+	m_kill_reported = false;
+	m_kill_pids.clear();
+	appendProcessTreePids( m_pid, m_kill_pids, true );
+#endif
+
 	// Trying to terminate() first, and only if no response after some time, then perform kill()
 #ifdef UNIX
 	killpg( getpgid( m_pid), SIGTERM);
+#ifdef LINUX
+	{
+		pid_t sid = getsid( m_pid );
+		if( sid > 0 )
+			killSessionProcesses( sid, SIGTERM );
+		killProcessTree( m_pid, SIGTERM );
+	}
+#endif
 #else
 	CloseHandle( m_hjob );
 #endif
@@ -767,7 +1113,19 @@ void TaskProcess::stop()
 
 void TaskProcess::killProcess()
 {
-	if( m_pid == 0 ) return;
+	if( m_pid == 0 )
+	{
+#ifdef LINUX
+		if( m_kill_pids.size() )
+		{
+			m_kill_attempts++;
+			m_last_kill_time = time(NULL);
+			for( size_t i = 0; i < m_kill_pids.size(); i++ )
+				kill( m_kill_pids[i], SIGKILL );
+		}
+#endif
+		return;
+	}
 
 	AF_DEBUG << this;
 
@@ -776,6 +1134,19 @@ void TaskProcess::killProcess()
 
 #ifdef UNIX
 	killpg( getpgid( m_pid), SIGKILL);
+#ifdef LINUX
+	{
+		m_kill_attempts++;
+		m_last_kill_time = time(NULL);
+		appendProcessTreePids( m_pid, m_kill_pids, true );
+		pid_t sid = getsid( m_pid );
+		if( sid > 0 )
+			killSessionProcesses( sid, SIGKILL );
+		killProcessTree( m_pid, SIGKILL );
+		for( size_t i = 0; i < m_kill_pids.size(); i++ )
+			kill( m_kill_pids[i], SIGKILL );
+	}
+#endif
 #else
 	CloseHandle( m_hjob );
 #endif
@@ -894,4 +1265,3 @@ void TaskProcess::generateInfoStream( std::ostringstream & o_str, bool i_full) c
 
 	o_str << " UP:" << int(m_update_status);
 }
-

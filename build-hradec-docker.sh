@@ -6,7 +6,7 @@ cd $CD
 git clone git@github.com:hradec/cgru.git ./build/
 cd ./build
 
-git checkout devel-atomo
+git checkout devel-asesso
 git branch
 
 cp $CD/build-hradec.sh ./
