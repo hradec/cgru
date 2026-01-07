@@ -1,0 +1,68 @@
+.jobblock_compact {
+display: none;
+box-sizing: border-box;
+border: 1px solid #575757;
+border-radius: 2px;
+background: rgba(0,0,0,.15);
+height: 100%;
+flex: 1 1 0px;
+min-width: 6px;
+position: relative;
+}
+.jobblock_compact_label {
+position: absolute;
+left: 0;
+right: 0;
+top: 0;
+bottom: 0;
+display: flex;
+align-items: center;
+justify-content: flex-end;
+font-size: 10px;
+font-weight: 800;
+font-family: "Arial Black", Arial, sans-serif;
+line-height: 1;
+color: #000;
+-webkit-text-stroke: 0.2px #000;
+text-shadow: none;
+pointer-events: none;
+white-space: nowrap;
+overflow: hidden;
+padding: 0 1px;
+}
+.jobblock_compact.selected {
+box-shadow: 0 0 0 1px rgba(0,0,0,.5) inset, 0 0 0 1px rgba(255,255,255,.2);
+background: rgba(50,100,50,.25);
+}
+.jobblock_compact canvas {
+display: block;
+width: 100%;
+height: 100%;
+}
+.item.job .job_collapsed_blocks {
+display: none;
+position: absolute;
+left: 0;
+right: 0;
+top: 0;
+align-items: center;
+gap: 1px;
+height: 16px;
+overflow: hidden;
+z-index: 1;
+}
+.item.job.collapsed .job_collapsed_blocks {
+display: flex;
+}
+.item.job.collapsed .job_collapsed_blocks .jobblock_compact {
+display: block;
+}
+.item.job.collapsed .jobnamewrap {
+display: inline-block;
+white-space: nowrap;
+overflow: hidden;
+text-overflow: ellipsis;
+vertical-align: top;
+position: relative;
+z-index: 2;
+}

@@ -131,6 +131,23 @@
 			var half = this.getPanelResizerHalfWidth();
 			this.elPanelResizer.style.right = (this.rightPanelWidth - half) + 'px';
 		}
+
+		this.schedulePanelResizeEvent();
+	};
+
+	proto.schedulePanelResizeEvent = function() {
+		if (this.panelResizeQueued)
+			return;
+		this.panelResizeQueued = true;
+		var self = this;
+		var schedule = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : null;
+		if (schedule == null)
+			schedule = function(cb) { return setTimeout(cb, 0); };
+		schedule(function() {
+			self.panelResizeQueued = false;
+			if (typeof window !== 'undefined')
+				window.dispatchEvent(new Event('cgru:monitor-panel-resize'));
+		});
 	};
 
 	proto.startPanelResize = function(i_evt) {
