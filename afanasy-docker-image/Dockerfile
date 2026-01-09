@@ -1,4 +1,5 @@
-FROM ubuntu:24.04
+FROM debian:12
+#FROM ubuntu:24.04
 
 ENV CGRU_VERSION=3.4.0 CGRU_UBUNTU_VERSION=24.04
 LABEL maintainer="Alexandre Buisine <alexandrejabuisine@gmail.com>" cgru_version=$CGRU_VERSION
@@ -7,7 +8,6 @@ RUN apt-get -qq update \
  && DEBIAN_FRONTEND=noninteractive apt-get -yqq --no-install-recommends install \
  	curl \
  	libpq5 \
-	libpython3.12 \
  	python3 \
  	python3-sip \
  	tcpdump \
@@ -15,6 +15,9 @@ RUN apt-get -qq update \
  	imagemagick \
  	iputils-ping \
         git rsync build-essential openssh-client cmake 
+
+#	libpython3.12 \
+
 
 WORKDIR /tmp
 RUN curl -Lks "https://downloads.sourceforge.net/project/cgru/${CGRU_VERSION}/cgru.${CGRU_VERSION}.ubuntu${CGRU_UBUNTU_VERSION}_amd64.tar.gz" | tar zxvf - \

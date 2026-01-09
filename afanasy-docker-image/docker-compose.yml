@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: ./Dockerfile
-    image: hradec/afserver:3.2.0-ubuntu18
+    image: hradec/afserver:3.4.0-debian12
     hostname: storage-vm-1.local
     network_mode: host
     volumes:
