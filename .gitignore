@@ -78,3 +78,5 @@ ipch
 rules_root
 
 build
+
+afanasy-docker-image/jobs
