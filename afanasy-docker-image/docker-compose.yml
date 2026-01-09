@@ -1,0 +1,21 @@
+version: '3'
+services:
+  server:
+    restart: always
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    image: hradec/afserver:3.2.0-ubuntu18
+    hostname: storage-vm-1.local
+    network_mode: host
+    volumes:
+      - ./jobs/afanasy/:/var/tmp/afanasy/
+      - ./config.json:/opt/cgru/config.json
+      - ./config_afanasy.json:/opt/cgru/afanasy/config_default.json
+      - /ST20TB/:/ST20TB/
+      - /NVME2TB/:/NVME2TB/
+      - /RAID/:/RAID/
+      - /SAUNAFS/:/SAUNAFS/
+    command: "bash -c '/opt/cgru/afanasy/bin/afserver'"
+#    command: "bash -c '/opt/cgru/afanasy/bin/afserver & /opt/cgru/afanasy/bin/afrender  -V -hostname  storagevm_frank_barton -NIMBY'"
+
