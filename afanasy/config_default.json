@@ -168,7 +168,7 @@
 	"af_user_cut_domain_name":true,
 
 "":"Monitor: (server side - any gui)",
-	"af_monitor_zombietime":16,
+	"af_monitor_zombietime":120,
     "af_monitor_render_idle_bar_max":3600,
     "af_monitor_render_cpu_hot_min":80,
     "af_monitor_render_cpu_hot_max":100,
