@@ -60,6 +60,10 @@ void User::initDefaultValues()
 
 	m_jobs_life_time = af::Environment::getJobsLifeTime();
 
+	// Host affinity: off by default per user (vanilla scheduling), opt-in per user.
+	m_host_affinity_auto       = 0;
+	m_host_affinity_giveup_sec = 600;
+
 	m_jobs_num          = 0;
 	m_running_jobs_num  = 0;
 
@@ -92,6 +96,11 @@ void User::v_jsonWrite( std::ostringstream & o_str, int i_type) const
 	if( m_jobs_life_time > 0 )
 		o_str << ",\n\"jobs_life_time\":" << m_jobs_life_time;
 
+	if( m_host_affinity_auto != 0 )
+		o_str << ",\n\"host_affinity_auto\":" << (int)m_host_affinity_auto;
+	if( m_host_affinity_giveup_sec != 600 )
+		o_str << ",\n\"host_affinity_giveup_sec\":" << m_host_affinity_giveup_sec;
+
 	if( m_host_name.size())
 		o_str << ",\n\"host_name\":\"" << m_host_name << "\"";
 
@@ -120,6 +129,14 @@ bool User::jsonRead( const JSON &i_object, std::string * io_changes)
 	jr_uint8 ("errors_task_same_host", m_errors_task_same_host, i_object, io_changes);
 	jr_int32 ("errors_forgive_time",   m_errors_forgive_time,   i_object, io_changes);
 	jr_int32 ("jobs_life_time",        m_jobs_life_time,        i_object, io_changes);
+
+	// Host affinity defaults for this user's new jobs (webui checkbox sends bool).
+	bool affinity_auto_bool = false;
+	if( jr_bool("host_affinity_auto", affinity_auto_bool, i_object, io_changes))
+		m_host_affinity_auto = affinity_auto_bool ? 1 : 0;
+	else
+		jr_int8("host_affinity_auto", m_host_affinity_auto, i_object, io_changes);
+	jr_int ("host_affinity_giveup_sec", m_host_affinity_giveup_sec, i_object, io_changes);
 
 	Work::jsonRead( i_object, io_changes);
 

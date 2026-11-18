@@ -253,7 +253,9 @@ UserNode.params_user = {
 	errors_avoid_host /******/: {'type': 'num', 'label': 'Errors Avoid Host'},
 	errors_task_same_host /**/: {'type': 'num', 'label': 'Errors Task Same Host'},
 	errors_forgive_time /****/: {'type': 'hrs', 'label': 'Errors Forgive Time'},
-	jobs_life_time /*********/: {'type': 'hrs', 'label': 'Jobs Life Time'}
+	jobs_life_time /*********/: {'type': 'hrs', 'label': 'Jobs Life Time'},
+	host_affinity_auto: {'type': 'bl1', 'label': 'Auto Host Affinity', 'tooltip': 'New jobs of this user get host affinity ON by default (tasks stick to the host that ran them). Default OFF = afanasy schedules as always.'},
+	host_affinity_giveup_sec: {'type': 'num', 'label': 'Affinity Giveup Sec', 'tooltip': 'Default giveup for this user\u2019s auto-affinity jobs: seconds after which tasks may leave the anchor host (default 600 = 10 min). -1 = never.'}
 };
 UserNode.createParams = function() {
 	if (UserNode.params_created)

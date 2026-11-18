@@ -56,6 +56,10 @@ public:
 	inline int getErrorsTaskSameHost() const { return m_errors_task_same_host; }
 	inline int getErrorsForgiveTime()  const { return m_errors_forgive_time;   }
 
+	// Host affinity defaults for this user's new jobs (per-user opt-in).
+	inline int8_t getHostAffinityAuto()       const { return m_host_affinity_auto;       }
+	inline int    getHostAffinityGiveupSec()  const { return m_host_affinity_giveup_sec; }
+
 	inline int64_t getTimeRegister() const { return m_time_register; } ///< Get register time.
 	inline int64_t getTimeActivity() const { return m_time_activity; } ///< Get activity time.
 
@@ -89,6 +93,10 @@ protected:
 	int32_t m_errors_forgive_time;
 
 	int32_t m_jobs_life_time;        ///< User jobs default life time.
+
+	/// Host affinity defaults applied to this user's new jobs.
+	int8_t m_host_affinity_auto;             ///< 1 = new jobs get host affinity on, default 0.
+	int    m_host_affinity_giveup_sec;       ///< Default giveup seconds (600 = 10 min).
 
 	int32_t m_jobs_num;              ///< User jobs quantity.
 	int32_t m_running_jobs_num;       ///< User active jobs quantity.

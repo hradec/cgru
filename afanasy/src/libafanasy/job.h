@@ -61,6 +61,16 @@ public:
 
 	inline int64_t getSerial() const { return m_serial; }
 
+	// Host affinity: keep this job's tasks on the host that already holds its
+	// created files. Off by default; per-user 'host_affinity_auto' enables it
+	// for that user's jobs, and it can be toggled per job at any time.
+	inline int8_t getHostAffinity() const { return m_host_affinity; }
+	inline int getHostAffinityGiveupSec() const { return m_host_affinity_giveup_sec; }
+	inline const std::string & getHostAffinityHost() const { return m_host_affinity_host; }
+	bool hostAffinityCheck( const std::string & i_render_name) const;
+	void hostAffinityAnchor( const std::string & i_render_name);
+	void applyUserAffinityDefaults( int8_t i_user_auto, int i_user_giveup_sec);
+
 	inline int getBlocksNum()           const { return m_blocks_num;                }
 	inline int getTimeLife()            const { return m_time_life;                 }
 	inline int getUserListOrder()       const { return m_user_list_order;           }
@@ -202,6 +212,15 @@ protected:
 	std::string m_project;
 	/// Department responsible for this job
 	std::string m_department;
+
+	// Host affinity (default ON): dispatch tasks to the host that already ran
+	// this job's tasks, so files created there do not have to be transferred.
+	int8_t m_host_affinity;             ///< 1 = stick to anchor host, 0 = disabled.
+	bool   m_host_affinity_set;         ///< Set explicitly by submit/params (skip user default).
+	int    m_host_affinity_giveup_sec;  ///< -1 never give up; >=0 allow any host after N sec.
+	bool   m_host_affinity_giveup_set;  ///< Giveup set explicitly (skip user default).
+	std::string m_host_affinity_host;   ///< Anchor host: last host a task was dispatched to.
+	int64_t m_host_affinity_since;      ///< Time anchor last dispatched a task (giveup window).
 
 	// "Try this task next"
 	std::vector<int32_t> m_try_this_tasks_num;

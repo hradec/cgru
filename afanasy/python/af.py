@@ -797,6 +797,18 @@ class Job:
         if department is not None and len(department):
             self.data["department"] = department
 
+    def setHostAffinity(self, on=True, giveup_sec=None):
+        """Keep this job's tasks on the host that already ran them.
+
+        :param on: Turn host affinity on or off (server default: off;
+                   enabled per user by the 'host_affinity_auto' user parameter).
+        :param giveup_sec: None inherits the user default (600 s);
+                   -1 never leave the anchor host; >=0 allow any host after N seconds.
+        """
+        self.data["host_affinity"] = 1 if on else 0
+        if giveup_sec is not None:
+            self.data["host_affinity_giveup_sec"] = int(giveup_sec)
+
     def setWaitTime(self, value):
         """Missing DocString
 

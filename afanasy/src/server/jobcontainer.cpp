@@ -188,6 +188,9 @@ bool JobContainer::registerJob(JobAf * i_job, std::string & o_err, BranchesConta
 			return false;
 		}
 
+		// Apply per-user host affinity defaults (only what submit did not set).
+		i_job->applyUserAffinityDefaults( user->getHostAffinityAuto(), user->getHostAffinityGiveupSec());
+
 		// Add job node to container.
 		if (add(i_job) == false)
 		{

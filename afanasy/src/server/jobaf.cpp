@@ -1092,7 +1092,16 @@ af::TaskExec * JobAf::genTask(RenderAf * i_render, int i_block, int i_task)
 	if (m_blocks[i_block]->m_tasks[i_task]->avoidHostsCheck(i_render->getName()))
 		return NULL;
 
-	return m_blocks_data[i_block]->genTask(i_task);
+	// Host affinity: dispatch this job's tasks to the host that already ran them,
+	// so files created there are read locally instead of over the network.
+	if( false == hostAffinityCheck( i_render->getName()))
+		return NULL;
+
+	af::TaskExec * task_exec = m_blocks_data[i_block]->genTask(i_task);
+	if( task_exec != NULL )
+		hostAffinityAnchor( i_render->getName());
+
+	return task_exec;
 }
 
 void JobAf::v_updateTaskState( const af::MCTaskUp& taskup, RenderContainer * renders, MonitorContainer * monitoring)

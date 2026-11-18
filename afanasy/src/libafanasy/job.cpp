@@ -100,6 +100,25 @@ bool Job::jsonRead( const JSON &i_object, std::string * io_changes)
 	if( jr_bool("ignorepaused", ignorepaused, i_object, io_changes))
 		setIgnorePausedFlag( ignorepaused);
 
+	// Host affinity: editable at submit and at runtime (webui 'jobs' params action).
+	// Use 1/0 or true/false for host_affinity, seconds for host_affinity_giveup_sec.
+	// webui checkbox sends a JSON bool, scripts may send 1/0: accept both.
+	bool host_affinity_bool = false;
+	if( jr_bool("host_affinity", host_affinity_bool, i_object, io_changes))
+	{
+		m_host_affinity = host_affinity_bool ? 1 : 0;
+		m_host_affinity_set = true;
+	}
+	else if( jr_int8("host_affinity", m_host_affinity, i_object, io_changes))
+		m_host_affinity_set = true;
+
+	if( jr_int("host_affinity_giveup_sec", m_host_affinity_giveup_sec, i_object, io_changes))
+		m_host_affinity_giveup_set = true;
+
+	// Anchor host is editable too: setting it explicitly re-arms the giveup clock now.
+	if( jr_string("host_affinity_host", m_host_affinity_host, i_object, io_changes))
+		m_host_affinity_since = time(NULL);
+
 	Work::jsonRead( i_object, io_changes);
 
 	// Paramers below are not editable and read only on creation
@@ -119,6 +138,10 @@ bool Job::jsonRead( const JSON &i_object, std::string * io_changes)
 	jr_int64 ("time_creation", m_time_creation, i_object);
 	jr_int64 ("time_started",  m_time_started,  i_object);
 	jr_int64 ("time_done",     m_time_done,     i_object);
+
+	// Host affinity giveup clock: restored from store, updated by the server only.
+	// (host_affinity_host itself is editable, read in the editable section above.)
+	jr_int64 ("host_affinity_since", m_host_affinity_since, i_object);
 
 	jr_int32vec("try_this_tasks_num",  m_try_this_tasks_num,  i_object);
 	jr_int32vec("try_this_blocks_num", m_try_this_blocks_num, i_object);
@@ -198,6 +221,16 @@ void Job::v_jsonWrite( std::ostringstream & o_str, int i_type) const
 
 	if( isIgnorePausedFlag())
 		o_str << ",\n\"ignorepaused\":true";
+
+	// Host affinity: only write non defaults to keep JSON small.
+	if( m_host_affinity != 0 )
+		o_str << ",\n\"host_affinity\":" << (int)m_host_affinity;
+	if( m_host_affinity_giveup_sec != -1 )
+		o_str << ",\n\"host_affinity_giveup_sec\":" << m_host_affinity_giveup_sec;
+	if( m_host_affinity_host.size())
+		o_str << ",\n\"host_affinity_host\":\"" << af::strEscape( m_host_affinity_host ) << "\"";
+	if( m_host_affinity_since != 0 )
+		o_str << ",\n\"host_affinity_since\":" << m_host_affinity_since;
 
 	if( m_command_pre.size())
 		o_str << ",\n\"command_pre\":\""  << af::strEscape( m_command_pre  ) << "\"";
@@ -279,6 +312,58 @@ void Job::initDefaultValues()
 
 	m_depend_mask.setRegEx();
 	m_depend_mask_global.setRegEx();
+
+	// Host affinity is OFF by default (vanilla afanasy scheduling);
+	// per-user 'host_affinity_auto' turns it on for that user's new jobs
+	// (see applyUserAffinityDefaults, called at job registration).
+	m_host_affinity = 0;
+	m_host_affinity_set = false;
+	m_host_affinity_giveup_sec = -1;
+	m_host_affinity_giveup_set = false;
+	m_host_affinity_since = 0;
+}
+
+// Apply owning user's affinity defaults at registration, only for what
+// the submit did not set explicitly.
+void Job::applyUserAffinityDefaults( int8_t i_user_auto, int i_user_giveup_sec)
+{
+	if( !m_host_affinity_set )
+		m_host_affinity = i_user_auto;
+	if( !m_host_affinity_giveup_set && ( m_host_affinity != 0 ))
+		m_host_affinity_giveup_sec = i_user_giveup_sec;
+}
+
+bool Job::hostAffinityCheck( const std::string & i_render_name) const
+{
+	// Disabled, or no anchor yet (first task can run anywhere):
+	if(( m_host_affinity == 0 ) || ( m_host_affinity_host.empty()))
+		return true;
+
+	if( m_host_affinity_host == i_render_name )
+		return true;
+
+	// ponytail: clock-based giveup only - counts from the last task dispatched to
+	// the anchor host. Upgrade path: also query render availability for an earlier bail.
+	if( m_host_affinity_giveup_sec >= 0 )
+	{
+		if( m_host_affinity_since == 0 )
+			return true;
+		if(( time(NULL) - m_host_affinity_since ) > m_host_affinity_giveup_sec )
+			return true;
+	}
+
+	return false;
+}
+
+void Job::hostAffinityAnchor( const std::string & i_render_name)
+{
+	if( m_host_affinity == 0 )
+		return;
+
+	// Re-anchor: if the anchor host changed (giveup, or affinity re-enabled),
+	// following tasks follow the new host and its files.
+	m_host_affinity_host = i_render_name;
+	m_host_affinity_since = time(NULL);
 }
 
 bool Job::isValid( std::string * o_err) const
