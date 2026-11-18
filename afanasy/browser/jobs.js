@@ -589,7 +589,7 @@ JobNode.prototype.init = function() {
 	this.elName.onmousedown = function(e) {
 		e.preventDefault();
 	};
-	this.elName.onclick = function(e) {
+	this.elName.ondblclick = function(e) {
 		e.stopPropagation();
 		e.preventDefault();
 		e.currentTarget.m_job.setOpen(!e.currentTarget.m_job.opened, true);
@@ -633,6 +633,8 @@ JobNode.prototype.init = function() {
 		cm_ElCreateFloatText(this.element, 'right', 'Ignore render "Nimby" state.', '<b>INB</b>');
 	this.elIgnorePaused =
 		cm_ElCreateFloatText(this.element, 'right', 'Ignore render "Paused" state.', '<b>IPS</b>');
+	// Informational only: affinity is changed in the job Parameters panel (left sidebar).
+	this.elAffinity = cm_ElCreateFloatText(this.element, 'right', 'Host affinity.', '<b>AFF</b>');
 	this.elDependMask = cm_ElCreateFloatText(this.element, 'right', 'Depend Mask');
 	this.elDependMaskGlobal = cm_ElCreateFloatText(this.element, 'right', 'Global Depend Mask');
 	this.elNeedProperties = cm_ElCreateFloatText(this.element, 'right', 'Properties');
@@ -861,6 +863,30 @@ JobNode.prototype.update = function(i_obj) {
 		this.elIgnorePaused.style.display = 'block';
 	else
 		this.elIgnorePaused.style.display = 'none';
+
+	// Affinity is off by default: show the badge only when it is ON.
+	// Editing is done in the job Parameters panel (Host Affinity / Host / Giveup Sec).
+	if ((this.params.host_affinity == null) || (this.params.host_affinity == 0))
+	{
+		this.elAffinity.style.display = 'none';
+	}
+	else
+	{
+		var aff_text = 'AFF';
+		var aff_title = 'Host affinity ON: tasks follow the host that already ran this job. Change it in Parameters.';
+		if (this.params.host_affinity_host)
+		{
+			aff_text += '(' + this.params.host_affinity_host + ')';
+			aff_title += ' Anchor host: ' + this.params.host_affinity_host + '.';
+		}
+		if (this.params.host_affinity_giveup_sec != null)
+			aff_title += ' Gives up after ' + this.params.host_affinity_giveup_sec + ' seconds.';
+		else
+			aff_title += ' Never gives up.';
+		this.elAffinity.innerHTML = '<b>' + aff_text + '</b>';
+		this.elAffinity.title = aff_title;
+		this.elAffinity.style.display = 'block';
+	}
 
 	if (this.params.thumb_path)
 		this.showThumb(this.params.thumb_path);
@@ -2847,7 +2873,35 @@ JobNode.buildVideoPreviewStepsOptionsAsync = function(i_mesh_folder, i_on_progre
 			return [];
 		}
 
-		// Keep only subfolders that actually contain PNG files.
+		// Keep subfolders that contain PNG files: directly, or one level deeper.
+		// images/, premul/, mask/, teeth/ hold camera subfolders (videoScan/,
+		// detailCapture/) where the frames actually live: they become
+		// "mask/videoScan" style options. ponytail: fixed depth 2 only, which
+		// matches the pipeline layout; deeper trees would need recursion.
+		var hasPng = function(entries)
+		{
+			for (var j = 0; j < entries.length; j++)
+			{
+				var ee = entries[j];
+				if ((ee == null) || (ee.type != 'file') || (ee.name == null))
+					continue;
+				if (JobNode.endsWith(('' + ee.name).toLowerCase(), '.png'))
+					return true;
+			}
+			return false;
+		};
+
+		var listDir = function(path)
+		{
+			return fetch('/@LIST@' + encodeURIComponent(path), {"credentials": 'same-origin'}).then(function(resp) {
+				if (false == resp.ok)
+					return null;
+				return resp.json();
+			}).catch(function() {
+				return null;
+			});
+		};
+
 		var total = dirs.length;
 		var done = 0;
 		report(0, total);
@@ -2862,26 +2916,39 @@ JobNode.buildVideoPreviewStepsOptionsAsync = function(i_mesh_folder, i_on_progre
 					report(done, total);
 					return;
 				}
-				var dirListUrl = '/@LIST@' + encodeURIComponent(dirPath);
-				checks.push(fetch(dirListUrl, {"credentials": 'same-origin'}).then(function(resp) {
-					if (false == resp.ok)
-						return null;
-					return resp.json();
-				}).then(function(dirData) {
+				checks.push(listDir(dirPath).then(function(dirData) {
 					if ((dirData == null) || (dirData.entries == null) || (dirData.entries.length == 0))
-						return null;
+						return [];
+					if (hasPng(dirData.entries))
+						return [dirName];
+					// PNGs may sit one level deeper: camera subfolders.
+					var subs = [];
 					for (var j = 0; j < dirData.entries.length; j++)
 					{
 						var ee = dirData.entries[j];
-						if ((ee == null) || (ee.type != 'file') || (ee.name == null))
+						if ((ee == null) || (ee.type != 'dir') || (ee.name == null))
 							continue;
-						var lower = ('' + ee.name).toLowerCase();
-						if (JobNode.endsWith(lower, '.png'))
-							return dirName;
+						var subName = ('' + ee.name).replace(/^[\\s]+|[\\s]+$/g, '');
+						var subPath = JobNode.joinPaths(dirPath, subName);
+						if ((subName.length == 0) || (subPath == null))
+							continue;
+						(function(sn, sp) {
+							subs.push(listDir(sp).then(function(subData) {
+								if ((subData == null) || (subData.entries == null) || (false == hasPng(subData.entries)))
+									return null;
+								return dirName + '/' + sn;
+							}));
+						})(subName, subPath);
 					}
-					return null;
+					return Promise.all(subs).then(function(rs) {
+						var out = [];
+						for (var m = 0; m < rs.length; m++)
+							if (rs[m])
+								out.push(rs[m]);
+						return out;
+					});
 				}).catch(function() {
-					return null;
+					return [];
 				}).then(function(result) {
 					done++;
 					report(done, total);
@@ -2894,8 +2961,9 @@ JobNode.buildVideoPreviewStepsOptionsAsync = function(i_mesh_folder, i_on_progre
 			var good = [];
 			for (var k = 0; k < results.length; k++)
 			{
-				if (results[k])
-					good.push(results[k]);
+				if (Array.isArray(results[k]))
+					for (var m = 0; m < results[k].length; m++)
+						good.push(results[k][m]);
 			}
 
 			if (good.length == 0)
@@ -3414,18 +3482,7 @@ JobNode.buildMeshPreviewSourcesFromFolderAsync = function(i_params, i_folder, i_
 				mtlByLower[lower] = e.name;
 		}
 
-		if (objEntries.length == 0)
-		{
-			if (i_allow_fallback)
-			{
-				// Fallback to legacy heuristic (may resolve explicit file path via RULES/@PROJECT@).
-				var direct = JobNode.buildMeshPreviewSources(i_params);
-				if (direct)
-					return {"items": [{"obj": direct.obj, "texture": direct.texture, "label": "OBJ"}], "selected": 0, "folder": folder};
-			}
-			return null;
-		}
-
+		// No job-root OBJs is fine mid-job: pipeline intermediates below still load.
 		var guessMtlForObj = function(objName)
 		{
 			if ((objName == null) || (objName.length == 0))
@@ -3457,40 +3514,33 @@ JobNode.buildMeshPreviewSourcesFromFolderAsync = function(i_params, i_folder, i_
 			items.push({"obj": objUrl, "mtl": mtlUrl, "label": e.name, "mtime": e.mtime || 0, "nameLower": ('' + e.name).toLowerCase()});
 		}
 
-		// Prefer a "_highres_" mesh as default and first button.
-		var highresIndex = -1;
+		// Default pick: prefer "textured" and "unguided" meshes (what the
+		// Asesso pipeline shows people), then highres, then name heuristics.
 		for (var i = 0; i < items.length; i++)
 		{
-			if ((items[i].nameLower.indexOf('_highres_') != -1) &&
-				((highresIndex == -1) || ((items[i].mtime || 0) > (items[highresIndex].mtime || 0))))
+			var lower = items[i].nameLower;
+			var score = 0;
+			if (lower.indexOf('textured') != -1) score += 400;
+			if (lower.indexOf('unguided') != -1) score += 150;
+			if (lower.indexOf('_highres_') != -1) score += 100;
+			if (lower.indexOf('preview') != -1) score += 50;
+			if (lower.indexOf('mesh') != -1) score += 30;
+			if (safeName && (lower.indexOf(safeName) != -1)) score += 25;
+			score += Math.min(20, Math.floor((items[i].mtime || 0) / 100000000));
+
+			if (score > bestScore)
 			{
-				highresIndex = i;
+				bestScore = score;
+				bestIndex = i;
 			}
 		}
 
-		if (highresIndex != -1)
+		// First source button = the default pick.
+		if (bestIndex > 0)
 		{
-			var hi = items.splice(highresIndex, 1)[0];
-			items.unshift(hi);
+			var best = items.splice(bestIndex, 1)[0];
+			items.unshift(best);
 			bestIndex = 0;
-		}
-		else
-		{
-			for (var i = 0; i < items.length; i++)
-			{
-				var lower = items[i].nameLower;
-				var score = 0;
-				if (lower.indexOf('preview') != -1) score += 50;
-				if (lower.indexOf('mesh') != -1) score += 30;
-				if (safeName && (lower.indexOf(safeName) != -1)) score += 25;
-				score += Math.min(20, Math.floor((items[i].mtime || 0) / 100000000));
-
-				if (score > bestScore)
-				{
-					bestScore = score;
-					bestIndex = i;
-				}
-			}
 		}
 
 		for (var i = 0; i < items.length; i++)
@@ -3499,7 +3549,205 @@ JobNode.buildMeshPreviewSourcesFromFolderAsync = function(i_params, i_folder, i_
 			delete items[i].nameLower;
 		}
 
-		return {"items": items, "selected": bestIndex, "folder": folder};
+		// Mid-job inspectable intermediates under videoScan.steps.smart:
+		// openmvs_phase2 OBJ/PLY, da3/pipeline/base*/tsdf* PLY, sparse/0 points.
+		var smartItems = [];
+		var smartRoot = JobNode.joinPaths(folder, 'videoScan.steps.smart');
+		var smartChain = Promise.resolve();
+
+		var smartList = function(i_path)
+		{
+			return fetch('/@LIST@' + encodeURIComponent(i_path), {"credentials": 'same-origin'}).then(function(resp) {
+				if (false == resp.ok)
+					return null;
+				return resp.json();
+			}).catch(function() {
+				return null;
+			});
+		};
+
+		if (smartRoot != null)
+		{
+			smartChain = smartList(smartRoot).then(function(sd) {
+				if ((sd == null) || (sd.entries == null))
+					return null;
+
+				var stepDirs = {};
+				for (var i = 0; i < sd.entries.length; i++)
+				{
+					var de = sd.entries[i];
+					if ((de == null) || (de.type != 'dir') || (de.name == null))
+						continue;
+					stepDirs[('' + de.name).toLowerCase()] = de.name;
+				}
+
+				var chains = [];
+
+				// openmvs_phase2: OBJ (with same-folder MTL) and PLY meshes:
+				if (stepDirs['openmvs_phase2'])
+				{
+					(function(phase2Name) {
+						var phase2Folder = JobNode.joinPaths(smartRoot, phase2Name);
+						if (phase2Folder == null)
+							return;
+						chains.push(smartList(phase2Folder).then(function(pd) {
+							if ((pd == null) || (pd.entries == null))
+								return;
+							var pMtl = {};
+							var pFiles = [];
+							for (var i = 0; i < pd.entries.length; i++)
+							{
+								var pe = pd.entries[i];
+								if ((pe == null) || (pe.type != 'file') || (pe.name == null))
+									continue;
+								var pLower = ('' + pe.name).toLowerCase();
+								if (JobNode.endsWith(pLower, '.mtl'))
+									pMtl[pLower] = pe.name;
+								if (JobNode.endsWith(pLower, '.obj') || JobNode.endsWith(pLower, '.ply'))
+									pFiles.push(pe.name);
+							}
+							for (var i = 0; i < pFiles.length; i++)
+							{
+								var pUrl = cgru_ProjectServerLink(JobNode.joinPaths(phase2Folder, pFiles[i]));
+								if (pUrl == null)
+									continue;
+								if (JobNode.endsWith(('' + pFiles[i]).toLowerCase(), '.ply'))
+									smartItems.push({"ply": pUrl, "label": "phase2/" + pFiles[i]});
+								else
+								{
+									var pItem = {"obj": pUrl, "label": "phase2/" + pFiles[i]};
+									var pBase = ('' + pFiles[i]).replace(/\.[^.]+$/, '');
+									if (pMtl[(pBase + '.mtl').toLowerCase()])
+										pItem.mtl = cgru_ProjectServerLink(JobNode.joinPaths(phase2Folder, pMtl[(pBase + '.mtl').toLowerCase()]));
+									smartItems.push(pItem);
+								}
+							}
+						}));
+					})(stepDirs['openmvs_phase2']);
+				}
+
+				// da3/pipeline/base*/tsdf*/*.ply:
+				if (stepDirs['da3'])
+				{
+					var da3Pipeline = JobNode.joinPaths(JobNode.joinPaths(smartRoot, stepDirs['da3']), 'pipeline');
+					if (da3Pipeline != null)
+					{
+						chains.push(smartList(da3Pipeline).then(function(pd) {
+							if ((pd == null) || (pd.entries == null))
+								return null;
+							var baseDirs = [];
+							for (var i = 0; i < pd.entries.length; i++)
+							{
+								var be = pd.entries[i];
+								if ((be == null) || (be.type != 'dir') || (be.name == null))
+									continue;
+								if (/^base/.test('' + be.name))
+									baseDirs.push(be.name);
+							}
+							var baseChains = [];
+							for (var i = 0; i < baseDirs.length; i++)
+							{
+								(function(baseName) {
+									var baseFolder = JobNode.joinPaths(da3Pipeline, baseName);
+									if (baseFolder == null)
+										return;
+									baseChains.push(smartList(baseFolder).then(function(bd) {
+										if ((bd == null) || (bd.entries == null))
+											return null;
+										var tsdfDirs = [];
+										for (var j = 0; j < bd.entries.length; j++)
+										{
+											var te = bd.entries[j];
+											if ((te == null) || (te.type != 'dir') || (te.name == null))
+												continue;
+											if (/^tsdf/.test('' + te.name))
+												tsdfDirs.push(te.name);
+										}
+										var tsdfChains = [];
+										for (var j = 0; j < tsdfDirs.length; j++)
+										{
+											(function(tsdfName) {
+												var tsdfFolder = JobNode.joinPaths(baseFolder, tsdfName);
+												if (tsdfFolder == null)
+													return;
+												tsdfChains.push(smartList(tsdfFolder).then(function(td) {
+													if ((td == null) || (td.entries == null))
+														return;
+													for (var k = 0; k < td.entries.length; k++)
+													{
+														var fe = td.entries[k];
+														if ((fe == null) || (fe.type != 'file') || (fe.name == null))
+															continue;
+														if (false == JobNode.endsWith(('' + fe.name).toLowerCase(), '.ply'))
+															continue;
+														var plyUrl = cgru_ProjectServerLink(JobNode.joinPaths(tsdfFolder, fe.name));
+														if (plyUrl == null)
+															continue;
+														smartItems.push({"ply": plyUrl, "label": "da3/" + baseName + "/" + tsdfName + "/" + fe.name});
+													}
+												}));
+											})(tsdfDirs[j]);
+										}
+										return Promise.all(tsdfChains);
+									}));
+								})(baseDirs[i]);
+							}
+							return Promise.all(baseChains);
+						}));
+					}
+				}
+
+				// sparse/0: COLMAP colored sparse point cloud:
+				if (stepDirs['sparse'])
+				{
+					var sparse0 = JobNode.joinPaths(JobNode.joinPaths(smartRoot, stepDirs['sparse']), '0');
+					if (sparse0 != null)
+					{
+						chains.push(smartList(sparse0).then(function(sd0) {
+							if ((sd0 == null) || (sd0.entries == null))
+								return;
+							for (var i = 0; i < sd0.entries.length; i++)
+							{
+								var ce = sd0.entries[i];
+								if ((ce == null) || (ce.type != 'file') || (ce.name == null))
+									continue;
+								if (('' + ce.name).toLowerCase() == 'points3d.bin')
+								{
+									var binUrl = cgru_ProjectServerLink(JobNode.joinPaths(sparse0, ce.name));
+									if (binUrl != null)
+										smartItems.push({"colmap": binUrl, "label": "sparse/0 points"});
+									return;
+								}
+							}
+						}));
+					}
+				}
+
+				return Promise.all(chains);
+			}).catch(function() {
+				return null;
+			});
+		}
+
+		return smartChain.then(function() {
+			smartItems.sort(function(a, b) { return (a.label < b.label) ? -1 : ((a.label > b.label) ? 1 : 0); });
+			for (var i = 0; i < smartItems.length; i++)
+				items.push(smartItems[i]);
+
+			if (items.length == 0)
+			{
+				if (i_allow_fallback)
+				{
+					// Fallback to legacy heuristic (may resolve explicit file path via RULES/@PROJECT@).
+					var direct = JobNode.buildMeshPreviewSources(i_params);
+					if (direct)
+						return {"items": [{"obj": direct.obj, "texture": direct.texture, "label": "OBJ"}], "selected": 0, "folder": folder};
+				}
+				return null;
+			}
+
+			return {"items": items, "selected": bestIndex, "folder": folder};
+		});
 	}).catch(function() {
 		if (i_allow_fallback)
 		{
@@ -4122,6 +4370,9 @@ JobNode.params_job = {
 	time_life /**************/: {"type": 'hrs', "label": 'Life Time'},
 	hidden /*****************/: {"type": 'bl1', "label": 'Hidden'},
 	ppa /********************/: {"type": 'bl1', "label": 'Preview Pending Approval'},
+	host_affinity /**********/: {"type": 'bl1', "label": 'Host Affinity', "tooltip": 'Keep tasks on the host that already ran this job (its files stay local). OFF = tasks may run on any host.'},
+	host_affinity_host /*****/: {"type": 'str', "label": 'Affinity Host', "tooltip": 'Anchor host name. Usually set automatically by the first task; edit to force another host (giveup clock re-arms now).'},
+	host_affinity_giveup_sec: {"type": 'num', "label": 'Affinity Giveup Sec', "tooltip": 'Seconds after the anchor host last took a task, after which tasks may go to any host (and re-anchor there). -1 = never give up.'},
 	user_name /**************/: {"type": 'str', "label": 'Owner', "permissions": 'visor'}
 };
 

@@ -22,9 +22,12 @@ function MeshPreview(i_parent, i_message_parent)
 	this.onVersionChanged = null;
 	this.m_source_select_focused = false;
 
-	this.renderMode = 'textured'; // textured | flat | wireframe
+	this.renderMode = 'textured'; // textured | flat | wireframe | normals
+	this.renderModeOverride = null;
+	this.renderModeOverrideLoadId = 0;
 	this.flatMaterial = null;
 	this.wireframeMaterial = null;
+	this.normalMaterial = null;
 	this.mesh = null;
 	this.textureLoader = null;
 	this.ambientLight = null;
@@ -89,6 +92,7 @@ function MeshPreview(i_parent, i_message_parent)
 	this.progressHideTimer = null;
 	this.progressTexTimer = null;
 	this.loadingManager = null;
+	this.textureCheckActive = false;
 
 	this.elToolbar = document.createElement('div');
 	this.elToolbar.classList.add('mesh_preview_toolbar');
@@ -107,6 +111,13 @@ function MeshPreview(i_parent, i_message_parent)
 	this.btnRenderFlat.textContent = 'F';
 	this.btnRenderFlat.title = 'No texture';
 	this.elToolbar.appendChild(this.btnRenderFlat);
+
+	this.btnRenderNormals = document.createElement('button');
+	this.btnRenderNormals.type = 'button';
+	this.btnRenderNormals.classList.add('mesh_preview_toolbtn');
+	this.btnRenderNormals.textContent = 'N';
+	this.btnRenderNormals.title = 'Normals';
+	this.elToolbar.appendChild(this.btnRenderNormals);
 
 	this.btnRenderWire = document.createElement('button');
 	this.btnRenderWire.type = 'button';
@@ -139,13 +150,16 @@ function MeshPreview(i_parent, i_message_parent)
 	this.btnRenderTextured.onmousedown = stopBtnEvent;
 	this.btnRenderFlat.onmousedown = stopBtnEvent;
 	this.btnRenderWire.onmousedown = stopBtnEvent;
+	this.btnRenderNormals.onmousedown = stopBtnEvent;
 
 	this.btnRenderTextured.onclick = function(e) { stopBtnEvent(e); return this.m_preview.setRenderMode('textured'); };
 	this.btnRenderFlat.onclick = function(e) { stopBtnEvent(e); return this.m_preview.setRenderMode('flat'); };
 	this.btnRenderWire.onclick = function(e) { stopBtnEvent(e); return this.m_preview.setRenderMode('wireframe'); };
+	this.btnRenderNormals.onclick = function(e) { stopBtnEvent(e); return this.m_preview.setRenderMode('normals'); };
 	this.btnRenderTextured.m_preview = this;
 	this.btnRenderFlat.m_preview = this;
 	this.btnRenderWire.m_preview = this;
+	this.btnRenderNormals.m_preview = this;
 
 	var self = this;
 	this.elVersionSelect.onfocus = function() { self.m_version_select_focused = true; };
@@ -193,6 +207,7 @@ MeshPreview.prototype.resetLoadProgress = function()
 	}
 
 	this.loadingManager = null;
+	this.textureCheckActive = false;
 	this.progressObj = 0;
 	this.progressTex = 0;
 	this.progressObjDone = true;
@@ -264,6 +279,11 @@ MeshPreview.prototype.startTextureProgress = function()
 			self.progressTexTimer = null;
 			return;
 		}
+		if (self.textureCheckActive && self.areMeshTexturesReady())
+		{
+			self.markTextureDone();
+			return;
+		}
 		if (self.progressTex >= 0.9)
 			return;
 		// Simple "soft" progress, as browser image loaders don't provide byte progress reliably.
@@ -278,6 +298,8 @@ MeshPreview.prototype.markTextureDone = function()
 {
 	if (this.progressTexDone)
 		return;
+	if (this.textureCheckActive && (false == this.areMeshTexturesReady()))
+		return;
 
 	this.progressTexDone = true;
 	if (this.progressTexTimer)
@@ -288,7 +310,74 @@ MeshPreview.prototype.markTextureDone = function()
 
 	if (this.elProgressTexFill)
 		this.elProgressTexFill.style.width = '100%';
+	this.textureCheckActive = false;
+	if (this.clearRenderModeOverride(this.loadId))
+		this.applyRenderModeToMesh();
 	this.maybeHideLoadProgress();
+};
+
+MeshPreview.prototype.collectMeshTextures = function()
+{
+	var textures = [];
+	if (this.mesh == null)
+		return textures;
+
+	this.mesh.traverse(function(child) {
+		if (!child.isMesh)
+			return;
+		var mats = Array.isArray(child.material) ? child.material : [child.material];
+		for (var i = 0; i < mats.length; i++)
+		{
+			var mat = mats[i];
+			if ((mat == null) || (mat.map == null))
+				continue;
+			if (textures.indexOf(mat.map) == -1)
+				textures.push(mat.map);
+		}
+	});
+
+	return textures;
+};
+
+MeshPreview.prototype.isTextureReady = function(i_tex)
+{
+	if (i_tex == null)
+		return true;
+
+	var img = i_tex.image;
+	if (img == null)
+		return false;
+
+	if (img.complete !== undefined)
+	{
+		if (img.complete == false)
+			return false;
+		if (img.naturalWidth != null)
+			return img.naturalWidth > 0;
+	}
+
+	if ((img.width != null) && (img.height != null))
+		return (img.width > 0) && (img.height > 0);
+
+	return true;
+};
+
+MeshPreview.prototype.areMeshTexturesReady = function()
+{
+	if (this.mesh == null)
+		return false;
+
+	var textures = this.collectMeshTextures();
+	if (textures.length == 0)
+		return true;
+
+	for (var i = 0; i < textures.length; i++)
+	{
+		if (false == this.isTextureReady(textures[i]))
+			return false;
+	}
+
+	return true;
 };
 
 MeshPreview.prototype.maybeHideLoadProgress = function()
@@ -399,7 +488,7 @@ MeshPreview.prototype.preserveMeshOrientation = function()
 MeshPreview.prototype.loadRenderModeFromStorage = function()
 {
 	var mode = localStorage['mesh_preview_render_mode'];
-	if ((mode == 'textured') || (mode == 'flat') || (mode == 'wireframe'))
+	if ((mode == 'textured') || (mode == 'flat') || (mode == 'wireframe') || (mode == 'normals'))
 		this.renderMode = mode;
 };
 
@@ -408,21 +497,62 @@ MeshPreview.prototype.saveRenderModeToStorage = function()
 	try { localStorage['mesh_preview_render_mode'] = this.renderMode; } catch (err) {}
 };
 
+MeshPreview.prototype.getEffectiveRenderMode = function()
+{
+	if ((this.renderModeOverride != null) && (this.renderModeOverrideLoadId == this.loadId))
+		return this.renderModeOverride;
+	return this.renderMode;
+};
+
+MeshPreview.prototype.setRenderModeOverride = function(i_mode, i_loadId)
+{
+	if (i_mode == null)
+	{
+		if (this.renderModeOverride == null)
+			return false;
+		this.renderModeOverride = null;
+		this.renderModeOverrideLoadId = 0;
+		this.updateRenderModeButtons();
+		return true;
+	}
+
+	this.renderModeOverride = i_mode;
+	this.renderModeOverrideLoadId = i_loadId;
+	this.updateRenderModeButtons();
+	return true;
+};
+
+MeshPreview.prototype.clearRenderModeOverride = function(i_loadId)
+{
+	if (this.renderModeOverride == null)
+		return false;
+	if ((i_loadId != null) && (this.renderModeOverrideLoadId != i_loadId))
+		return false;
+	this.renderModeOverride = null;
+	this.renderModeOverrideLoadId = 0;
+	this.updateRenderModeButtons();
+	return true;
+};
+
 MeshPreview.prototype.updateRenderModeButtons = function()
 {
 	if (this.btnRenderTextured == null)
 		return;
 
-	this.btnRenderTextured.classList.toggle('active', this.renderMode == 'textured');
-	this.btnRenderFlat.classList.toggle('active', this.renderMode == 'flat');
-	this.btnRenderWire.classList.toggle('active', this.renderMode == 'wireframe');
+	var mode = this.getEffectiveRenderMode();
+	this.btnRenderTextured.classList.toggle('active', mode == 'textured');
+	this.btnRenderFlat.classList.toggle('active', mode == 'flat');
+	this.btnRenderWire.classList.toggle('active', mode == 'wireframe');
+	this.btnRenderNormals.classList.toggle('active', mode == 'normals');
 };
 
 MeshPreview.prototype.setRenderMode = function(i_mode)
 {
-	if ((i_mode != 'textured') && (i_mode != 'flat') && (i_mode != 'wireframe'))
+	if ((i_mode != 'textured') && (i_mode != 'flat') && (i_mode != 'wireframe') && (i_mode != 'normals'))
 		return;
 
+	this.renderModeOverride = null;
+	this.renderModeOverrideLoadId = 0;
 	this.renderMode = i_mode;
 	this.saveRenderModeToStorage();
 	this.updateRenderModeButtons();
@@ -442,6 +572,11 @@ MeshPreview.prototype.applyRenderModeToMesh = function()
 			self.wireframeMaterial = new THREE.MeshBasicMaterial({
 				'color': 0xDDDDDD,
 				'wireframe': true,
+				'side': THREE.DoubleSide
+			});
+
+		if (self.normalMaterial == null)
+			self.normalMaterial = new THREE.MeshNormalMaterial({
 				'side': THREE.DoubleSide
 			});
 
@@ -465,7 +600,7 @@ MeshPreview.prototype.applyRenderModeToMesh = function()
 					"void main() {" +
 					"  vec3 n = normalize(vNormal);" +
 					"  vec3 v = vec3(0.0, 0.0, 1.0);" +
-					"  n = dot(-v, n) < 0.0 ? n : -n;" +
+					// "  n = dot(-v, n) < 0.0 ? n : -n;" +
 					"  float facing = max(dot(n, v), 0.0);" +
 					"  float shade = 0.25 + 0.75 * facing;" +
 					"  vec3 base = vec3(0.82, 0.82, 0.82);" +
@@ -514,7 +649,7 @@ MeshPreview.prototype.applyRenderModeToMesh = function()
 		return new THREE.MeshBasicMaterial(params);
 	};
 
-	var mode = this.renderMode;
+	var mode = this.getEffectiveRenderMode();
 	this.mesh.traverse(function(child) {
 		if (!child.isMesh)
 			return;
@@ -534,27 +669,22 @@ MeshPreview.prototype.applyRenderModeToMesh = function()
 			return;
 		}
 
+		if (mode == 'normals')
+		{
+			child.material = self.normalMaterial;
+			return;
+		}
+
 		if (mode == 'flat')
 		{
-			// Flat shading needs normals.
-			if (child.geometry && child.geometry.computeVertexNormals)
-			{
-				var geom = child.geometry;
-				var hasNormals = false;
-				if (geom.getAttribute)
-					hasNormals = geom.getAttribute('normal') != null;
-				else if (geom.attributes)
-					hasNormals = geom.attributes.normal != null;
-				if (false == hasNormals)
-					geom.computeVertexNormals();
-			}
-				child.material = self.flatMaterial;
-				return;
-			}
+			child.geometry.computeVertexNormals();
+			child.material = self.flatMaterial;
+			return;
+		}
 
-			child.material = child.userData.meshPreviewOriginalMaterialUnlit ?
-				child.userData.meshPreviewOriginalMaterialUnlit : child.userData.meshPreviewOriginalMaterial;
-		});
+		child.material = child.userData.meshPreviewOriginalMaterialUnlit ?
+		child.userData.meshPreviewOriginalMaterialUnlit : child.userData.meshPreviewOriginalMaterial;
+	});
 };
 
 MeshPreview.prototype.updateLightsForRenderMode = function()
@@ -564,8 +694,9 @@ MeshPreview.prototype.updateLightsForRenderMode = function()
 	if (this.headLight == null)
 		return;
 
+	var mode = this.getEffectiveRenderMode();
 	// Lights are only needed for "F" (no texture) mode.
-	if (this.renderMode == 'flat')
+	if (mode == 'flat')
 	{
 		this.ambientLight.intensity = 0.25;
 		this.headLight.intensity = 0.6;
@@ -1047,6 +1178,7 @@ MeshPreview.prototype.setMessage = function(i_text)
 
 MeshPreview.prototype.clearPreview = function()
 {
+	this.clearRenderModeOverride();
 	this.loadId++;
 	this.resetLoadProgress();
 	this.currentSources = null;
@@ -1076,9 +1208,10 @@ MeshPreview.prototype.load = function(i_sources)
 		return this.load(i_sources.items[selected]);
 	}
 
-	if ((i_sources == null) || (i_sources.obj == null))
+	if ((i_sources == null) || ((i_sources.obj == null) && (i_sources.ply == null) && (i_sources.colmap == null)))
 	{
 		// Cancel any in-flight loaders:
+		this.clearRenderModeOverride();
 		this.loadId++;
 		this.resetLoadProgress();
 		this.currentSources = null;
@@ -1091,10 +1224,13 @@ MeshPreview.prototype.load = function(i_sources)
 	if ((this.currentSources != null) &&
 		(this.currentSources.obj == i_sources.obj) &&
 		(this.currentSources.mtl == i_sources.mtl) &&
-		(this.currentSources.texture == i_sources.texture))
+		(this.currentSources.texture == i_sources.texture) &&
+		(this.currentSources.ply == i_sources.ply) &&
+		(this.currentSources.colmap == i_sources.colmap))
 		return;
 
 	// Cancel previous load and create a new token:
+	this.clearRenderModeOverride();
 	this.loadId++;
 	var loadId = this.loadId;
 	this.resetLoadProgress();
@@ -1110,7 +1246,9 @@ MeshPreview.prototype.load = function(i_sources)
 	this.currentSources = {
 		"obj": i_sources.obj,
 		"mtl": i_sources.mtl,
-		"texture": i_sources.texture
+		"texture": i_sources.texture,
+		"ply": i_sources.ply,
+		"colmap": i_sources.colmap
 	};
 
 	this.setMessage('Loading mesh preview…');
@@ -1144,6 +1282,18 @@ MeshPreview.prototype.load = function(i_sources)
 		this.progressTexDone = false;
 	this.setObjProgress(0);
 
+	// PLY (openmvs/tsdf intermediates) and COLMAP sparse points bypass OBJ path:
+	if (i_sources.ply)
+	{
+		this.loadPly(loadId, i_sources.ply);
+		return;
+	}
+	if (i_sources.colmap)
+	{
+		this.loadColmap(loadId, i_sources.colmap);
+		return;
+	}
+
 	if (i_sources.mtl && (typeof THREE.MTLLoader !== 'undefined'))
 	{
 		this.loadWithMtl(loadId, i_sources.obj, i_sources.mtl);
@@ -1176,6 +1326,124 @@ MeshPreview.prototype.load = function(i_sources)
 			self.onMeshFailed();
 		}
 	);
+};
+
+MeshPreview.prototype.loadPly = function(i_loadId, i_url)
+{
+	if (typeof THREE.PLYLoader === 'undefined')
+	{
+		this.resetLoadProgress();
+		this.setMessage('PLYLoader not loaded.');
+		return;
+	}
+
+	var self = this;
+	var loader = this.loadingManager ? new THREE.PLYLoader(this.loadingManager) : new THREE.PLYLoader();
+	loader.load(
+		i_url,
+		function(geometry) {
+			if (self.loadId != i_loadId)
+				return;
+			self.markObjDone();
+
+			// Intermediates often arrive without normals:
+			if (geometry.getAttribute && (geometry.getAttribute('normal') == null))
+				geometry.computeVertexNormals();
+
+			var hasColors = geometry.getAttribute && (geometry.getAttribute('color') != null);
+			var material = new THREE.MeshPhongMaterial({side: THREE.DoubleSide, vertexColors: hasColors});
+			if (hasColors)
+				material.shininess = 0;
+
+			self.finalizeMesh(new THREE.Mesh(geometry, material));
+		},
+		function(xhr) {
+			if (self.loadId != i_loadId)
+				return;
+			if ((xhr == null) || (false == isFinite(xhr.loaded)))
+				return;
+			if ((xhr.total != null) && isFinite(xhr.total) && (xhr.total > 0))
+				self.setObjProgress(xhr.loaded / xhr.total);
+			else
+				self.setObjProgress(Math.min(0.95, self.progressObj + 0.02));
+		},
+		function() {
+			if (self.loadId != i_loadId)
+				return;
+			self.resetLoadProgress();
+			self.onMeshFailed();
+		}
+	);
+};
+
+MeshPreview.prototype.loadColmap = function(i_loadId, i_url)
+{
+	// COLMAP sparse/0/points3D.bin: fetch whole file then parse (no streamed progress).
+	var self = this;
+	this.setObjProgress(0.5);
+	fetch(i_url, {"credentials": 'same-origin'}).then(function(resp) {
+		if (false == resp.ok)
+			return null;
+		return resp.arrayBuffer();
+	}).then(function(buf) {
+		if (self.loadId != i_loadId)
+			return;
+		var geometry = (buf == null) ? null : self.parseColmapPoints(buf);
+		if (geometry == null)
+		{
+			self.resetLoadProgress();
+			self.onMeshFailed();
+			return;
+		}
+		self.markObjDone();
+		// finalizeMesh() normalizes scene to ~2 units, so a fixed point size works for
+		// any source scale (metric or NOT_METRIC scenes alike).
+		var material = new THREE.PointsMaterial({size: 0.008, vertexColors: true, sizeAttenuation: true});
+		self.finalizeMesh(new THREE.Points(geometry, material));
+	}).catch(function() {
+		if (self.loadId != i_loadId)
+			return;
+		self.resetLoadProgress();
+		self.onMeshFailed();
+	});
+};
+
+MeshPreview.prototype.parseColmapPoints = function(i_buffer)
+{
+	// points3D.bin: leading num_points u64 header, then per point:
+	// id u64, x/y/z f64, rgb 3x u8, error f64, track_length u64,
+	// then track_length x (image_id u32, point2D_idx u32).
+	var dv = new DataView(i_buffer);
+	var off = 8; // skip num_points header
+	var positions = [];
+	var colors = [];
+	while ((off + 51) <= dv.byteLength)
+	{
+		off += 8; // point3D_id, not needed for display
+		var x = dv.getFloat64(off, true);
+		var y = dv.getFloat64(off + 8, true);
+		var z = dv.getFloat64(off + 16, true);
+		off += 24;
+		var r = dv.getUint8(off) / 255;
+		var g = dv.getUint8(off + 1) / 255;
+		var b = dv.getUint8(off + 2) / 255;
+		off += 3;
+		off += 8; // reproj error
+		var trackLen = dv.getBigUint64(off, true);
+		off += 8;
+		off += Number(trackLen) * 8;
+
+		positions.push(x, y, z);
+		colors.push(r, g, b);
+	}
+
+	if (positions.length == 0)
+		return null;
+
+	var geometry = new THREE.BufferGeometry();
+	geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+	geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+	return geometry;
 };
 
 MeshPreview.prototype.loadWithMtl = function(i_loadId, i_obj_url, i_mtl_url)
@@ -1212,6 +1480,7 @@ MeshPreview.prototype.loadWithMtl = function(i_loadId, i_obj_url, i_mtl_url)
 			self.setObjProgress(Math.max(self.progressObj, 0.1));
 
 			// Textures referenced by MTL can start loading on preload.
+			self.textureCheckActive = true;
 			self.startTextureProgress();
 			try { materialCreator.preload(); } catch (err) {}
 			var objLoader = self.loadingManager ? new THREE.OBJLoader(self.loadingManager) : new THREE.OBJLoader();
@@ -1336,6 +1605,8 @@ MeshPreview.prototype.onMeshLoadedFromMtl = function(i_object)
 		}
 	});
 
+	if ((this.renderMode == 'textured') && this.textureCheckActive)
+		this.setRenderModeOverride('flat', this.loadId);
 	this.finalizeMesh(i_object);
 };
 
@@ -1346,18 +1617,6 @@ MeshPreview.prototype.setSources = function(i_sources, i_selected)
 
 	this.sources = (Array.isArray(i_sources) && i_sources.length) ? i_sources.slice(0) : null;
 
-	var tailLabel = function(label, maxLen)
-	{
-		if (label == null)
-			return '';
-		label = '' + label;
-		if ((maxLen == null) || (maxLen < 8))
-			maxLen = 22;
-		if (label.length <= maxLen)
-			return label;
-		return '…' + label.substr(label.length - maxLen);
-	};
-
 	var key = null;
 	if (this.sources && this.sources.length)
 	{
@@ -1365,9 +1624,12 @@ MeshPreview.prototype.setSources = function(i_sources, i_selected)
 		for (var i = 0; i < this.sources.length; i++)
 		{
 			var s = this.sources[i];
-			if ((s == null) || (s.obj == null))
+			if (s == null)
 				continue;
-			key += (s.obj + '|' + (s.mtl ? s.mtl : '') + '|' + (s.texture ? s.texture : '') + '|' + (s.label ? s.label : '') + ';');
+			var srcUrl = s.obj ? s.obj : (s.ply ? s.ply : s.colmap);
+			if (srcUrl == null)
+				continue;
+			key += (srcUrl + '|' + (s.mtl ? s.mtl : '') + '|' + (s.texture ? s.texture : '') + '|' + (s.label ? s.label : '') + ';');
 		}
 	}
 
@@ -1398,19 +1660,21 @@ MeshPreview.prototype.setSources = function(i_sources, i_selected)
 		return;
 	}
 
-	// Convert source buttons into a dropdown menu (top overlay, right of version dropdown).
+	// Dropdown (bottom of panel, full panel width, full file names).
 	if (this.elSourceSelect && (false == this.m_source_select_focused))
 	{
 		for (var i = 0; i < this.sources.length; i++)
 		{
 			var s = this.sources[i];
-			if ((s == null) || (s.obj == null) || (s.obj == ''))
+			var srcUrl = s ? (s.obj ? s.obj : (s.ply ? s.ply : s.colmap)) : null;
+			if ((srcUrl == null) || (srcUrl == ''))
 				continue;
 
 			var fullLabel = s.label ? s.label : ('Mesh ' + (i + 1));
 			var elOpt = document.createElement('option');
 			elOpt.value = '' + i;
-			elOpt.textContent = tailLabel(fullLabel, 28);
+			elOpt.textContent = fullLabel;
+			elOpt.title = fullLabel;
 			this.elSourceSelect.appendChild(elOpt);
 		}
 
@@ -1547,6 +1811,13 @@ MeshPreview.prototype.onMeshLoaded = function(i_object, i_texture)
 			return map;
 		};
 
+	if (i_texture && this.textureLoader)
+	{
+		if (this.renderMode == 'textured')
+			this.setRenderModeOverride('flat', loadId);
+		this.finalizeMesh(i_object);
+	}
+
 	var applyMaterial = function(map)
 	{
 		if (self.loadId != loadId)
@@ -1638,6 +1909,10 @@ MeshPreview.prototype.onMeshLoaded = function(i_object, i_texture)
 					if (map && mat.uniforms && mat.uniforms.uMap)
 						mat.uniforms.uMap.value = map;
 					child.material = mat;
+					if (child.userData == null)
+						child.userData = {};
+					child.userData.meshPreviewOriginalMaterial = null;
+					child.userData.meshPreviewOriginalMaterialUnlit = null;
 					child.castShadow = false;
 					child.receiveShadow = false;
 
@@ -1686,10 +1961,14 @@ MeshPreview.prototype.onMeshLoaded = function(i_object, i_texture)
 			}
 		});
 
-		self.finalizeMesh(i_object);
+		if (self.mesh === i_object)
+			self.applyRenderModeToMesh();
+		else
+			self.finalizeMesh(i_object);
 	};
 	if (i_texture && this.textureLoader)
 	{
+		this.textureCheckActive = false;
 		self.startTextureProgress();
 		// Ensure the texture loader participates in our per-load manager (for completion callbacks).
 		if (this.loadingManager)
@@ -1701,15 +1980,15 @@ MeshPreview.prototype.onMeshLoaded = function(i_object, i_texture)
 			function(texture) {
 				if (self.loadId != loadId)
 					return;
-				self.markTextureDone();
 				applyMaterial(texture);
+				self.markTextureDone();
 			},
 			null,
 			function () {
 				if (self.loadId != loadId)
 					return;
-				self.markTextureDone();
 				applyMaterial(null);
+				self.markTextureDone();
 			}
 		);
 	}
@@ -1763,15 +2042,53 @@ MeshPreview.prototype.finalizeMesh = function(i_object)
 
 	this.applyRenderModeToMesh();
 
-	this.camera.position.set(0, 0, 4);
-	this.camera.up.set(0, 1, 0);
-	if (this.controls)
-	{
-		this.controls.target.set(0, 0, 0);
-		this.controls.update();
-	}
+	// Always reset the camera so the selected mesh fits the current view.
+	this.frameMesh();
 
 	this.setMessage('');
+};
+
+// Frame the current mesh: place the camera so the final world bounding sphere
+// (after orientation restore) fits both the vertical FOV and the horizontal
+// FOV derived from the canvas aspect ratio.
+// ponytail: fit happens at load time only; resizing the panel after a load
+// keeps the fitted distance (upgrade path: call frameMesh from resize()).
+MeshPreview.prototype.frameMesh = function()
+{
+	if ((this.renderer == null) || (this.camera == null) || (this.controls == null) || (this.mesh == null))
+		return;
+
+	this.mesh.updateMatrixWorld(true);
+	var box = new THREE.Box3().setFromObject(this.mesh);
+	if (box.empty())
+	{
+		this.camera.position.set(0, 0, 4);
+		this.camera.up.set(0, 1, 0);
+		this.controls.target.set(0, 0, 0);
+		this.controls.update();
+		return;
+	}
+
+	var sphere = box.getBoundingSphere(new THREE.Sphere());
+	if ((false == isFinite(sphere.radius)) || (sphere.radius <= 0))
+		return;
+
+	var width = this.renderer.domElement.clientWidth;
+	var height = this.renderer.domElement.clientHeight;
+	var aspect = ((width > 0) && (height > 0)) ? (width / height) : 1;
+
+	// Bounding-sphere fit: the wider of the two half angles needs the
+	// larger distance, so use the smaller half angle's sine.
+	var halfV = this.camera.fov * Math.PI / 360.0;
+	var halfH = Math.atan(Math.tan(halfV) * aspect);
+	var dist = sphere.radius / Math.sin(Math.min(halfV, halfH));
+	dist *= 1.05;
+
+	this.camera.up.set(0, 1, 0);
+	this.controls.target.copy(sphere.center);
+	this.camera.position.copy(sphere.center).add(new THREE.Vector3(0, 0, dist));
+	this.camera.lookAt(sphere.center);
+	this.controls.update();
 };
 
 MeshPreview.prototype.onMeshFailed = function()

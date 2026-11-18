@@ -267,7 +267,9 @@ float: right;
 			}
 .panel.right .section.mesh_preview .mesh_preview_holder .mesh_preview_sources_select {
 				left: 6px;
+				right: 6px;
 				bottom: 14px;
+				max-width: none;
 			}
 .panel.right .section.mesh_preview .mesh_preview_holder .mesh_preview_progress {
 				position: absolute;
